@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="blocks/coursesync/db" VERSION="20260916" COMMENT="XMLDB file for Moodle block_coursesync"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="block_coursesync_synclog" COMMENT="One row per 'Sync now' run: who triggered it, when, and what happened - what was pulled, what was flagged as a conflict, what failed, and what was left for a later phase to support.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="block_instances.id this run was triggered from."/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Destination course id, denormalised here so history can be queried without joining through block_instances/context."/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="User who triggered this sync."/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="success" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="1 if the run completed (even with individual conflicts/failures inside it), 0 if a precondition or the remote listing call itself failed."/>
+        <FIELD NAME="errorcode" TYPE="char" LENGTH="100" NOTNULL="false" SEQUENCE="false" COMMENT="Set only when success=0 - see content_renderer's error-message mapping for what these mean."/>
+        <FIELD NAME="createdcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="conflictcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="failedcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="unsupportedcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="createdjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON list of activities created this run (remote cmid, modname, name, new local cmid)."/>
+        <FIELD NAME="conflictsjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON list of activities flagged as conflicts (remote cmid, modname, name, and the existing local cmid/name they matched)."/>
+        <FIELD NAME="failedjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON list of activities whose pull/create failed this run, with an error message each."/>
+        <FIELD NAME="unsupportedjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON list of activities detected but of a type with no activity_handler yet."/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="blockinstanceid" TYPE="foreign" FIELDS="blockinstanceid" REFTABLE="block_instances" REFFIELDS="id"/>
+        <KEY NAME="courseid" TYPE="foreign" FIELDS="courseid" REFTABLE="course" REFFIELDS="id"/>
+        <KEY NAME="userid" TYPE="foreign" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="blockinstanceid-timecreated" UNIQUE="false" FIELDS="blockinstanceid, timecreated" COMMENT="History is always listed per block instance, most recent first."/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>
