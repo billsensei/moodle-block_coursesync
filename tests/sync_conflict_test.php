@@ -87,6 +87,105 @@ final class sync_conflict_test extends \advanced_testcase {
     }
 
     /**
+     * An activity of the same type and name already sitting in the
+     * destination course - e.g. because the course was built from a backup
+     * of the source, or a teacher independently created equivalent content -
+     * must be excluded, even though nothing shares its idnumber: it isn't
+     * flagged as a conflict, isn't created a second time, and isn't counted
+     * in any part of the result.
+     */
+    public function test_same_name_and_type_activity_is_silently_excluded(): void {
+        global $DB;
+
+        $course = $this->getDataGenerator()->create_course();
+
+        $this->getDataGenerator()->create_module('page', [
+            'course' => $course->id,
+            'name' => 'Remote page',
+        ]);
+
+        $client = new stub_remote_client(
+            [['cmid' => 666, 'modname' => 'page', 'name' => 'Remote page', 'idnumber' => '', 'timemodified' => 1000]],
+            [666 => $this->page_payload()]
+        );
+
+        $result = (new sync_runner($client, $course->id, 'irrelevant'))->run(0);
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(0, $result['created']);
+        $this->assertCount(0, $result['conflicts']);
+        $this->assertCount(0, $result['unsupported']);
+        $this->assertCount(0, $result['failed']);
+
+        // Still only the one, original page - nothing pulled in alongside it.
+        $this->assertEquals(1, $DB->count_records('page', ['course' => $course->id]));
+
+        $idnumber = sync_runner::make_idnumber(666);
+        $this->assertEquals(
+            0,
+            $DB->count_records('course_modules', ['course' => $course->id, 'idnumber' => $idnumber])
+        );
+    }
+
+    /**
+     * The match is by name AND type together - an existing activity of a
+     * different type under the same name must not suppress the pull.
+     */
+    public function test_same_name_but_different_type_is_still_created(): void {
+        global $DB;
+
+        $course = $this->getDataGenerator()->create_course();
+
+        $this->getDataGenerator()->create_module('label', [
+            'course' => $course->id,
+            'name' => 'Remote page',
+        ]);
+
+        $client = new stub_remote_client(
+            [['cmid' => 111, 'modname' => 'page', 'name' => 'Remote page', 'idnumber' => '', 'timemodified' => 1000]],
+            [111 => $this->page_payload()]
+        );
+
+        $result = (new sync_runner($client, $course->id, 'irrelevant'))->run(0);
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(1, $result['created']);
+        $this->assertCount(0, $result['conflicts']);
+
+        $idnumber = sync_runner::make_idnumber(111);
+        $this->assertEquals(
+            1,
+            $DB->count_records('course_modules', ['course' => $course->id, 'idnumber' => $idnumber])
+        );
+    }
+
+    /**
+     * The name comparison ignores case and surrounding whitespace, so minor
+     * formatting differences don't defeat the match.
+     */
+    public function test_same_name_match_ignores_case_and_whitespace(): void {
+        global $DB;
+
+        $course = $this->getDataGenerator()->create_course();
+
+        $this->getDataGenerator()->create_module('page', [
+            'course' => $course->id,
+            'name' => '  Remote PAGE  ',
+        ]);
+
+        $client = new stub_remote_client(
+            [['cmid' => 222, 'modname' => 'page', 'name' => 'remote page', 'idnumber' => '', 'timemodified' => 1000]],
+            [222 => $this->page_payload()]
+        );
+
+        $result = (new sync_runner($client, $course->id, 'irrelevant'))->run(0);
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(0, $result['created']);
+        $this->assertCount(0, $result['conflicts']);
+    }
+
+    /**
      * The non-conflicting case: nothing existing under that idnumber, so
      * the activity is actually created.
      */

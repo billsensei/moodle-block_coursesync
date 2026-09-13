@@ -129,6 +129,11 @@ syncing a remote one would leave you with two.
 
 - Syncing again only looks for what's **new or changed** since your last
   sync - it won't re-pull or duplicate something already brought in.
+- If your course already has an activity of the same type with the exact
+  same name as one being pulled - whether it came from a course backup, a
+  shared template, or you built it yourself - it's treated as already
+  present and quietly left out of the pull. It isn't shown as a conflict,
+  since nothing actually collided; it just isn't news to you.
 - Large files attached to a Resource activity may occasionally fail to sync
   if they're very large - this is reported to you clearly as a failure for
   that item, not a silent gap.

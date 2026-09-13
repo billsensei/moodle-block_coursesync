@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'block_coursesync';
-$plugin->version   = 2026091801;
+$plugin->version   = 2026091802;
 $plugin->requires  = 2026042000; // Moodle 5.2 (branch 502 baseline).
 $plugin->maturity  = MATURITY_BETA;
-$plugin->release   = 'v0.8.1 (Phase 8)';
+$plugin->release   = 'v0.8.2 (Phase 8)';

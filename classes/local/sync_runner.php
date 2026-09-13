@@ -24,7 +24,22 @@ namespace block_coursesync\local;
  * and Forum as of Phase 5), and creates them in the destination course, each
  * in the destination section matching the number it came from on the source
  * (see pull_and_create()) - never in an existing activity's place, and never
- * as a duplicate of one already pulled (see process_activities()).
+ * as a duplicate of one already pulled (see process_activities()), nor of
+ * one that's simply already sitting in the destination course under the
+ * same name and activity type - the two checks process_activities() runs,
+ * in order, are:
+ *
+ * 1. idnumber match (the coursesync- tag this class itself creates, or a
+ *    teacher-assigned idnumber that happens to collide) - flagged as a
+ *    conflict, visible in the sync summary and history, since something
+ *    specific occupies the exact identity the pulled activity would take.
+ * 2. name + activity type match against anything already in the
+ *    destination course - silently excluded, as if it had never been
+ *    listed: this is the common case of a destination course that already
+ *    has equivalent content (from a backup/restore, a shared template, or
+ *    a teacher's own work) that just never went through this idnumber
+ *    scheme, so there's nothing to show a teacher that they don't already
+ *    know about.
  *
  * Doesn't touch block config, lastsync, or sync history itself -
  * block_coursesync::sync_now() decides what to persist from the result this
@@ -103,10 +118,21 @@ class sync_runner {
 
     /**
      * Pulls and creates each activity this instance's registered handlers
-     * support - unless the destination course already has an activity under
-     * the idnumber it would get, in which case it's flagged as a conflict
-     * and left alone (never overwritten or duplicated), whether that
-     * existing activity came from an earlier sync or a teacher's own work.
+     * support, skipping anything that's already effectively in the
+     * destination course. Two different things count as "already there":
+     *
+     * - An existing activity under the idnumber this one would get - flagged
+     *   as a conflict and left alone (never overwritten or duplicated),
+     *   whether that existing activity came from an earlier sync or a
+     *   teacher's own work.
+     * - An existing activity of the same type with the same name, however it
+     *   got there - excluded silently (not created, not flagged, not counted
+     *   anywhere in the result), since it isn't news to the teacher and
+     *   nothing collided that needs their attention.
+     *
+     * The idnumber check runs first: something already tagged from an
+     * earlier sync is reported as a conflict, not silently dropped, even
+     * though it would also match on name.
      *
      * @param array $activities From block_coursesync_get_modified_activities.
      * @return array{0: array, 1: array, 2: array, 3: array} [created, conflicts, unsupported, failed]
@@ -120,9 +146,11 @@ class sync_runner {
         $failed = [];
 
         // Only fetched if actually needed, and only once per run - used to
-        // describe what an activity conflicts with, not to look anything up
-        // about the activities being pulled.
+        // describe what an activity conflicts with, and to check for
+        // existing activities of the same name and type, not to look
+        // anything up about the activities being pulled.
         $destinationmodinfo = null;
+        $existingnames = null;
 
         foreach ($activities as $activity) {
             if (!activity_handler_registry::is_supported($activity['modname'])) {
@@ -145,6 +173,13 @@ class sync_runner {
                 continue;
             }
 
+            $existingnames ??= $this->index_existing_names(
+                $destinationmodinfo ??= get_fast_modinfo($this->destinationcourseid)
+            );
+            if (isset($existingnames[$activity['modname']][self::normalise_name($activity['name'])])) {
+                continue;
+            }
+
             $outcome = $this->pull_and_create($activity, $idnumber);
             if ($outcome === null) {
                 $created[] = $activity;
@@ -154,6 +189,39 @@ class sync_runner {
         }
 
         return [$created, $conflicts, $unsupported, $failed];
+    }
+
+    /**
+     * Builds a modname => {normalised name => true} lookup of every
+     * non-deleting course module already in the destination course, so
+     * process_activities() can recognise "an activity of this type with this
+     * name is already here" without a query per candidate activity.
+     *
+     * @param \course_modinfo $modinfo
+     * @return array<string, array<string, true>>
+     */
+    protected function index_existing_names(\course_modinfo $modinfo): array {
+        $index = [];
+        foreach ($modinfo->get_cms() as $cm) {
+            if ($cm->deletioninprogress) {
+                continue;
+            }
+            $index[$cm->modname][self::normalise_name($cm->get_formatted_name())] = true;
+        }
+        return $index;
+    }
+
+    /**
+     * Normalises a name for the same-name-and-type match in
+     * index_existing_names()/process_activities() - case and surrounding
+     * whitespace shouldn't stop "Syllabus" and " syllabus " from being
+     * recognised as the same activity.
+     *
+     * @param string $name
+     * @return string
+     */
+    protected static function normalise_name(string $name): string {
+        return \core_text::strtolower(trim($name));
     }
 
     /**

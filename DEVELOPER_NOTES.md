@@ -82,9 +82,16 @@ classes/local/
                                     relative number (course_sections.section)
                                     it had on the source, creating that
                                     section on the destination first if
-                                    needed - no name-based matching, so this
-                                    only lines up when both courses share the
-                                    same section structure.
+                                    needed - no name-based matching for
+                                    section placement, so this only lines up
+                                    when both courses share the same section
+                                    structure. Before pulling, skips anything
+                                    already effectively in the destination:
+                                    an idnumber collision is flagged as a
+                                    conflict (process_activities()), while a
+                                    same-type-same-name match against any
+                                    existing activity - regardless of how it
+                                    got there - is excluded silently.
   activity_handler.php             Destination-side interface: recreate one
   activity_handler_registry.php    activity type locally. Registry maps
                                     modname => handler class - the only file
@@ -249,11 +256,11 @@ that `create_from_remote_data()` returned an int. Include a case with
 ## Testing (Phase 8)
 
 - **PHPUnit** (`tests/`): change detection (`activity_lookup_test.php`),
-  all five v1 handlers (`activity_handlers_test.php`), conflict-flagging
-  and lastsync advancement (`sync_conflict_test.php`, against
-  `tests/fixtures/stub_remote_client.php` - a `remote_client` subclass
-  returning canned data instead of a real HTTP call), the token
-  encryption round-trip (`token_encryption_test.php`), and
+  all five v1 handlers (`activity_handlers_test.php`), conflict-flagging,
+  same-name-and-type exclusion, and lastsync advancement
+  (`sync_conflict_test.php`, against `tests/fixtures/stub_remote_client.php`
+  - a `remote_client` subclass returning canned data instead of a real HTTP
+  call), the token encryption round-trip (`token_encryption_test.php`), and
   `history_renderer_test.php`.
 - **Behat** (`tests/behat/sync_activities.feature`): one scenario driving
   the full teacher-facing flow end to end. A single Behat run only ever
