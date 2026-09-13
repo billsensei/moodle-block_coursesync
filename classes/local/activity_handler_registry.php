@@ -38,6 +38,7 @@ class activity_handler_registry {
         'forum' => forum_activity_handler::class,
         'assign' => assign_activity_handler::class,
         'h5pactivity' => h5pactivity_activity_handler::class,
+        'quiz' => quiz_activity_handler::class,
     ];
 
     /**

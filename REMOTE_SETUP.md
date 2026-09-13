@@ -17,9 +17,11 @@ automatically once this plugin is installed on the source site:
 - `block_coursesync_get_activity_content` (Phase 4) - returns the full
   settings/content payload needed to recreate one activity, for activity
   types this plugin has an exporter for: **Page, URL, Label, Resource, and
-  Forum** (settings only) as of Phase 5, plus **Assignment** (settings only)
-  and **H5P** as of Phase 9. For Resource and H5P, this includes the
-  underlying file(s), base64-encoded in the same payload.
+  Forum** (settings only) as of Phase 5, **Assignment** (settings only)
+  and **H5P** as of Phase 9, and **Quiz** (including its questions) as of
+  Phase 10. For Resource and H5P, this includes the underlying file(s),
+  base64-encoded in the same payload; for Quiz, so does any image embedded
+  in a question's text or feedback.
 
 Do this once, on the **source** site, as a site administrator:
 
@@ -57,9 +59,11 @@ Clicking **Sync now**:
 
 1. Lists activities modified since `lastsync` (never, the first time).
 2. Of those, pulls full content for the ones whose type is currently
-   supported - **Page, URL, Label, File (Resource), and Forum** (settings
-   only - see `classes/local/activity_handler_registry.php`). Other types
-   are still detected and listed in the preview, but are not pulled.
+   supported - **Page, URL, Label, File (Resource), Forum** (settings only),
+   **Assignment** (settings only), **H5P**, and **Quiz** (including its
+   questions, for the question types listed below) - see
+   `classes/local/activity_handler_registry.php`. Other types are still
+   detected and listed in the preview, but are not pulled.
 3. For each one, first checks whether this course already has an activity
    with the idnumber the pulled item would get. If so, it is **flagged as a
    conflict and left alone** - never overwritten or duplicated, whether the
@@ -106,6 +110,17 @@ triggered the run. Runs are stored in `block_coursesync_synclog` - see
   the destination with two. This is treated as a permanent, structural
   carve-out (the sync keeps reporting it as unable to handle, same as an
   unsupported type would), not a bug to fix later.
+- **Quiz**: unlike every other type, this one pulls real content, not just
+  settings - each question is recreated in the destination quiz's own
+  question bank, including any image embedded in its text or feedback. Only
+  **Multiple choice, True/False, Short answer, Numerical, Essay, Matching,
+  and Description** questions are pulled; any other question type in the
+  quiz (Calculated, Cloze, drag-and-drop, a "random from category" slot, ...)
+  is detected but skipped - see `DEVELOPER_NOTES.md`'s "Quiz and its
+  questions" section for the full list and why each was left for later.
+  Quiz feedback boundaries and access-restriction sub-plugins (Safe Exam
+  Browser, IP restriction lists) aren't synced either - settings-only scope
+  cuts, same spirit as Assignment's.
 
 ## Security (Phase 7)
 
@@ -132,7 +147,7 @@ triggered the run. Runs are stored in `block_coursesync_synclog` - see
 - No automated changes are made to the remote site's configuration. The
   one-time setup above must still be done by hand (or scripted separately)
   on the source site.
-- Only the five v1 types above are pulled. Other types are still detected
+- Only the activity types above are pulled. Other types are still detected
   (and listed in the preview) but skipped by Sync now until a later phase
   adds their `activity_handler`/`activity_exporter` pair.
 - A flagged conflict is recorded and left alone - there's no UI to resolve

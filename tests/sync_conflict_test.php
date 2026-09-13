@@ -215,13 +215,18 @@ final class sync_conflict_test extends \advanced_testcase {
     /**
      * An unsupported type is left alone (not a failure) and caps how far
      * lastsync can advance - it must reappear on the next sync, not be
-     * silently skipped forever once a handler for it exists.
+     * silently skipped forever once a handler for it exists. Uses
+     * 'workshop' rather than 'quiz' as the stand-in unsupported type here:
+     * quiz gained a handler in Phase 10 (see quiz_activity_test.php /
+     * quiz_roundtrip_test.php), which is exactly the "once a handler exists"
+     * case this test's own docblock warns about - so this had to move to a
+     * type that's still genuinely unregistered.
      */
     public function test_unsupported_type_caps_new_lastsync(): void {
         $course = $this->getDataGenerator()->create_course();
 
         $client = new stub_remote_client(
-            [['cmid' => 888, 'modname' => 'quiz', 'name' => 'A quiz', 'idnumber' => '', 'timemodified' => 5000]],
+            [['cmid' => 888, 'modname' => 'workshop', 'name' => 'A workshop', 'idnumber' => '', 'timemodified' => 5000]],
             []
         );
 

@@ -117,6 +117,18 @@ class sanitizer {
     }
 
     /**
+     * Cleans a float field (question defaultmark/penalty/fraction/tolerance,
+     * ...), with a fallback for anything that isn't numeric.
+     *
+     * @param mixed $value
+     * @param float $default
+     * @return float
+     */
+    public static function float($value, float $default = 0.0): float {
+        return is_numeric($value) ? (float) $value : $default;
+    }
+
+    /**
      * Cleans a FORMAT_* constant (introformat/contentformat) - anything
      * other than one of Moodle's own known values falls back to
      * FORMAT_HTML rather than being stored as-is and trusted later.

@@ -1,7 +1,7 @@
 # Course Sync: developer notes
 
 Architecture summary and extension guide for anyone maintaining or building
-on block_coursesync (v0.9, Phase 9). This complements the docblocks
+on block_coursesync (v0.10, Phase 10). This complements the docblocks
 in the code itself, which is where the authoritative, up-to-date detail
 lives - this file is a map, not a duplicate.
 
@@ -101,9 +101,24 @@ classes/local/
   activity_exporter_registry.php   type's payload. Same registry pattern.
   <modname>_activity_handler.php   One pair per supported type: page, url,
   <modname>_activity_exporter.php  label, resource, forum (Phase 5); assign,
-                                    h5pactivity (Phase 9).
+                                    h5pactivity (Phase 9); quiz (Phase 10 -
+                                    see "Quiz and its questions" below).
   activity_lookup.php              Change detection (Phase 3): activities
                                     modified after a given time, per course.
+  question_handler.php             The same activity_exporter/
+  question_handler_registry.php    activity_handler/registry pattern, one
+  question_exporter.php            level down: one question in a quiz.
+  question_exporter_registry.php   quiz_activity_exporter/handler are the
+  <qtype>_question_handler.php     only callers - see "Quiz and its
+  <qtype>_question_exporter.php    questions" below. One pair per supported
+                                    qtype: multichoice, truefalse,
+                                    shortanswer, numerical, essay, match,
+                                    description (Phase 10).
+  question_file_helper.php         Embedded-file handling shared by every
+                                    question_exporter/question_handler pair -
+                                    the question-bank equivalent of
+                                    sanitizer.php being shared by every
+                                    activity_handler.
   sanitizer.php                    Cleans remote-sourced content before it's
                                     stored (Phase 7) - see its docblock for
                                     which PARAM_* is used for what.
@@ -136,10 +151,12 @@ tests/                            PHPUnit (Phase 8) + one Behat scenario
 ## Adding a new activity type handler (v2+)
 
 This is the extension point Phase 4 established and every type since has
-followed: page/url/label/resource/forum (Phase 5), then assign/h5pactivity
+followed: page/url/label/resource/forum (Phase 5), assign/h5pactivity
 (Phase 9 - see those classes for a worked example of a type with its own
-sub-plugin config (`assign`) and one with file content (`h5pactivity`)). To
-add support for activity type `<modname>` (e.g. `quiz`):
+sub-plugin config (`assign`) and one with file content (`h5pactivity`)), then
+quiz (Phase 10 - see "Quiz and its questions" below; it's the odd one out,
+since its own payload embeds a second, separate exporter/handler/registry
+pattern for questions). To add support for activity type `<modname>`:
 
 ### 1. Write the exporter (source side)
 
@@ -256,11 +273,127 @@ that `create_from_remote_data()` returned an int. Include a case with
 `<script>` or similarly dangerous content in a text field to confirm
 `sanitizer` is actually being used, not just present in the file.
 
-## Testing (Phase 8, extended Phase 9)
+## Quiz and its questions (Phase 10)
+
+Quiz is the one activity type whose payload embeds a second, independent
+exporter/handler/registry pattern: `quiz_activity_exporter` doesn't just
+export the quiz's own settings, it also exports every slot, and for a slot
+with a fixed question reference, nests that question's own payload from
+`question_exporter_registry` inside it. `quiz_activity_handler` does the
+mirror image: create the quiz, then for each slot, hand its nested payload
+to `question_handler_registry` to create the actual question before wiring
+it into the quiz. See `question_exporter.php`/`question_handler.php`'s own
+docblocks for the pattern in detail - it's deliberately the same shape as
+`activity_exporter`/`activity_handler`, just one level further in.
+
+**Which question types are supported.** v1 covers multichoice, true/false,
+short answer, numerical, essay, matching, and description - the types most
+real quizzes actually use. A slot using any other qtype (calculated/
+calculatedsimple/calculatedmulti, multianswer/Cloze, the drag-and-drop
+family - ddwtos/ddmarker/ddimageortext, gapselect, random, ordering,
+randomsamatch, ...) is *detected* (it appears in the quiz's own "not yet
+supported" slots) but not pulled - the same "unsupported type" treatment an
+activity gets, one level down. These weren't skipped for lack of a plan:
+each has its own schema and at least one substantially harder problem than
+the v1 set -
+
+- **calculated / calculatedsimple / calculatedmulti**: answers are formulas
+  over wildcards (`{x}`), with dataset items that can be *shared across
+  multiple questions in the same category* (`question_datasets` /
+  `question_dataset_definitions` - a "shared" dataset isn't owned by any one
+  question). Exporting one question correctly means deciding what happens
+  to a dataset other questions on the source still reference.
+- **multianswer (Cloze)**: the "outer" question's questiontext embeds
+  `{1:SHORTANSWER:...}`-style markup, and each embedded answer is itself a
+  *separate, real row* in `question` (qtype shortanswer/numerical/
+  multichoice under the hood), linked via `question_multianswer.sequence` -
+  exporting one means recursively exporting several, then re-creating them
+  in the right order so the outer question's own save step can re-link them.
+- **the drag-and-drop family and gapselect**: coordinates/drop-zones
+  (`qtype_ddmarker_drops`, `qtype_ddimageortext_drops`, ...) and, for
+  ddimageortext specifically, a background image file with its own
+  per-drop-zone geometry - more moving pieces than a wrong answer/feedback
+  pair, and harder to unit-test the geometry math is even right.
+- **random / randomsamatch**: never resolve to one fixed question at all
+  (see quiz_activity_exporter's docblock for how a random *slot* is
+  reported) - there is no single "the question" to export.
+
+Adding one of these follows the exact same two-file-plus-registry pattern as
+the v1 set (below) - it's the *content* of `export()`/`create()` that's
+harder here, not the shape.
+
+**Adding a new question type**, following `multichoice_question_exporter`/
+`multichoice_question_handler`'s worked example:
+
+1. **Exporter**: `classes/local/<qtype>_question_exporter.php`, implementing
+   `question_exporter`. Read that qtype's own table(s) directly (see
+   `lib/db/install.xml` for the shared `question`/`question_answers`/
+   `question_hints` schema, and `question/type/<qtype>/db/install.xml` for
+   that type's own tables) - the same "direct $DB queries, no question
+   engine" style every exporter in this plugin already uses. Use
+   `question_file_helper::export_files()` for any field with its own file
+   area (check that qtype's `move_files()` override to find every
+   component/filearea/itemid it moves - that's the authoritative list of
+   which fields carry files).
+2. **Handler**: `classes/local/<qtype>_question_handler.php`, implementing
+   `question_handler`. Build a `$question` stdClass with only `->qtype` set,
+   and a `$form` stdClass shaped exactly like that qtype's own
+   `edit_<qtype>_form.php` would submit - **read that qtype's
+   `questiontype.php::save_question_options()` (and `extra_question_fields()`)
+   line by line** to know which `$form` properties it reads and in what
+   shape; there is no other documentation of this contract. Two file
+   mechanisms exist depending on which field:
+   - `questiontext`/`generalfeedback` (handled by `save_question()` itself,
+     not the qtype's own code): must use
+     `question_file_helper::store_in_draft_area()` for `['itemid' => ...]` -
+     this is the ONLY mechanism `save_question()` understands for these two
+     fields.
+   - every other rich field (an answer's text/feedback, combined feedback, a
+     match subquestion, essay's graderinfo, ...): use
+     `question_file_helper::richfield()` / `to_import_files()` for
+     `['files' => ...]` instead - simpler, no draft area needed, and it's
+     what `import_or_save_files()` (called from inside that qtype's own
+     `save_question_options()`) supports directly.
+   Call `\question_bank::get_qtype('<qtype>')->save_question($question, $form)`
+   and return `(int) $result->id`. **Read the qtype's `save_question_options()`
+   for any hard failure path before trusting a round-trip of valid source
+   data is safe**: most validation failures throw a catchable
+   `moodle_exception` (fine - sync_runner's own try/catch turns that into a
+   "failed" entry), but at least one qtype (`match`, on a subquestion with
+   text but a blank answer) calls the legacy `notice()` helper instead, which
+   `exit()`s the whole PHP process rather than throwing - see
+   `match_question_handler`'s docblock for how that's defused by filtering
+   the input before it ever reaches that code.
+3. **Register both** in `question_exporter_registry`'s and
+   `question_handler_registry`'s maps. Nothing else needs to change -
+   `quiz_activity_exporter`/`quiz_activity_handler` only ever go through
+   these registries, never a specific qtype.
+4. **Test it**, following `tests/local/question_handlers_test.php`'s
+   pattern: build a payload by hand (or export a real question created via
+   `$this->getDataGenerator()->get_plugin_generator('core_question')`), feed
+   it to the handler against a fresh category, and assert on the real
+   resulting `question`/qtype-table rows.
+
+**Category placement.** Every pulled question is created in the *new* quiz's
+own module-context default category (`question_get_default_category()`, the
+exact category a teacher's first manually-added question would land in) -
+never a shared course-level bank - so a sync never collides with anything
+already in the destination course's other question banks.
+
+**Quiz settings scope cuts** (see `quiz_activity_handler`'s docblock for the
+mechanics): quiz feedback boundaries (`quiz_feedback` - the "well done" /
+"please revise" messages for a grade range) aren't synced; access-restriction
+sub-plugins beyond the plain password/subnet/browsersecurity columns already
+on the `quiz` row (Safe Exam Browser, IP restriction lists, ...) aren't
+either. Both are settings-only cuts, same spirit as assign's "only the two
+most common submission sub-plugins" scope.
+
+## Testing (Phase 8, extended Phase 9-10)
 
 - **PHPUnit** (`tests/`): change detection (`activity_lookup_test.php`),
-  all seven handlers (`activity_handlers_test.php`), conflict-flagging,
-  same-name-and-type exclusion, and lastsync advancement
+  all eight non-quiz handlers (`activity_handlers_test.php`), quiz itself and
+  every v1 question type (`quiz_activity_test.php`, `question_handlers_test.php`),
+  conflict-flagging, same-name-and-type exclusion, and lastsync advancement
   (`sync_conflict_test.php`, against `tests/fixtures/stub_remote_client.php`
   - a `remote_client` subclass returning canned data instead of a real HTTP
   call), the token encryption round-trip (`token_encryption_test.php`), and
@@ -295,15 +428,22 @@ that `create_from_remote_data()` returned an int. Include a case with
   itself displays (site name, course name, error messages) is escaped at
   output time (`content_renderer.php`, `history_renderer.php`) -
   `\core\notification::add()` (used by `redirect()`) does **not**
-  auto-escape, which is easy to miss.
+  auto-escape, which is easy to miss. This applies equally to a quiz's
+  question payloads (Phase 10) - every question_handler runs its own
+  remote-sourced text through `sanitizer` before it reaches
+  `\question_bank::...->save_question()`, the same principle as every
+  activity_handler.
 
 ## What v1 deliberately doesn't do
 
 See `REMOTE_SETUP.md`'s "What this plugin does *not* do" section - still
-accurate as of Phase 9. In short: no automated remote-site configuration,
-only the seven registered activity types are pulled (others are detected
+accurate as of Phase 10. In short: no automated remote-site configuration,
+only the registered activity types are pulled (others are detected
 but skipped, not treated as failures), and a flagged conflict has no
 in-block resolution UI - a teacher resolves it manually and syncs again.
 Assignment sync is settings-only: student submissions, grades, and
 feedback never leave the source site, only the assignment's own
-configuration (see `assign_activity_exporter`'s docblock).
+configuration (see `assign_activity_exporter`'s docblock). Quiz sync pulls
+questions themselves (not just the quiz's own settings), but only for the
+question types listed in "Quiz and its questions" above - see that section
+for exactly what's cut and why.

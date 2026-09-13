@@ -34,6 +34,7 @@ class activity_exporter_registry {
         'forum' => forum_activity_exporter::class,
         'assign' => assign_activity_exporter::class,
         'h5pactivity' => h5pactivity_activity_exporter::class,
+        'quiz' => quiz_activity_exporter::class,
     ];
 
     /**

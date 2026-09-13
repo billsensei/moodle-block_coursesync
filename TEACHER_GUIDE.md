@@ -119,13 +119,33 @@ collapsed - click on one to expand it.
 
 As of this version: **Page, URL, Label, File (Resource), Forum** (settings
 only - not its discussions or posts), **Assignment** (settings only - no
-student submissions, grades, or feedback ever leave the source site), and
-**H5P** (including its content package). Other types are detected and shown
-in the preview so you know they exist, but aren't pulled yet.
+student submissions, grades, or feedback ever leave the source site),
+**H5P** (including its content package), and **Quiz** (including its
+questions - see below). Other types are detected and shown in the preview
+so you know they exist, but aren't pulled yet.
 
 One exception: a course's built-in **"Announcements" forum** is never
 pulled, even though it's a forum - every course already has its own, so
 syncing a remote one would leave you with two.
+
+## Syncing a quiz
+
+A synced quiz's own settings (timing, grading, review options, and so on)
+come across, and so do its questions - each one recreated in the new quiz's
+own question bank, including any image in the question or its feedback.
+
+Only **Multiple choice, True/False, Short answer, Numerical, Essay,
+Matching, and Description** questions are pulled. A question of any other
+type (Calculated, Cloze, drag-and-drop, or a "random from category" slot)
+still shows up in the quiz - it just isn't recreated yet, the same way an
+unsupported activity type is detected but not pulled. Nothing about
+grading, question order, or the rest of the quiz is affected by a skipped
+question - it just isn't there.
+
+A quiz's own **feedback messages for a grade range**, and any
+**access restrictions** beyond a plain password (Safe Exam Browser, an
+allowed IP range, ...), are not carried over - set those up again on the
+destination if you need them.
 
 ## Good to know
 

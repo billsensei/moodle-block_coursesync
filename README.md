@@ -11,7 +11,7 @@ locally — flagging anything that would collide with an existing activity as
 a conflict rather than touching it. Nothing is ever written back to the
 source site.
 
-> **Status:** v0.9.0 (Phase 9), maturity `BETA`. Requires Moodle **5.2**
+> **Status:** v0.10.0 (Phase 10), maturity `BETA`. Requires Moodle **5.2**
 > (`2026042000`) or later.
 
 ## What it does
@@ -38,7 +38,10 @@ source site.
 Page, URL, Label, File (Resource), Forum (settings only — no discussions or
 posts, and the built-in "Announcements" forum is never pulled), Assignment
 (settings only — submissions, grades, and feedback never leave the source
-site), and H5P (including its content package).
+site), H5P (including its content package), and Quiz (including its
+questions — Multiple choice, True/False, Short answer, Numerical, Essay,
+Matching, and Description; other question types are detected but not yet
+pulled — see [DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)).
 
 ## How it works, briefly
 
