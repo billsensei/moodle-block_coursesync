@@ -12,7 +12,8 @@ a conflict rather than touching it. Nothing is ever written back to the
 source site.
 
 **Important Information**
-This was created with the help of Claude Code! Also, this is a project that is in the early stages and this is unstable code that should only be used in a sandbox environment. Use at your own risk!
+
+**This was created with the help of Claude Code! Also, this is a project that is in the early stages and this is unstable code that should only be used in a sandbox environment. Use at your own risk!**
 
 > **Status:** v0.10.0 (Phase 10), maturity `BETA`. Requires Moodle **5.2**
 > (`2026042000`) or later.
