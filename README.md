@@ -11,7 +11,7 @@ locally — flagging anything that would collide with an existing activity as
 a conflict rather than touching it. Nothing is ever written back to the
 source site.
 
-**Important Information**
+## Important Information
 
 **This was created with the help of Claude Code! Also, this is a project that is in the early stages and this is unstable code that should only be used in a sandbox environment. Use at your own risk!**
 
