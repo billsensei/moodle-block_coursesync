@@ -36,6 +36,8 @@ class activity_handler_registry {
         'label' => label_activity_handler::class,
         'resource' => resource_activity_handler::class,
         'forum' => forum_activity_handler::class,
+        'assign' => assign_activity_handler::class,
+        'h5pactivity' => h5pactivity_activity_handler::class,
     ];
 
     /**

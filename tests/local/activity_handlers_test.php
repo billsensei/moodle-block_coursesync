@@ -37,6 +37,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(label_activity_handler::class)]
 #[CoversClass(resource_activity_handler::class)]
 #[CoversClass(forum_activity_handler::class)]
+#[CoversClass(assign_activity_handler::class)]
+#[CoversClass(h5pactivity_activity_handler::class)]
 final class activity_handlers_test extends \advanced_testcase {
     public function setUp(): void {
         parent::setUp();
@@ -278,5 +280,160 @@ final class activity_handlers_test extends \advanced_testcase {
         $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
         $forum = $DB->get_record('forum', ['id' => $cm->instance], '*', MUST_EXIST);
         $this->assertSame('general', $forum->type);
+    }
+
+    public function test_assign_handler_creates_a_matching_assignment(): void {
+        global $DB;
+
+        $course = $this->course();
+        $payload = [
+            'name' => 'Remote assignment <script>alert(1)</script>',
+            'intro' => '<p>Submit your work.</p><script>alert(2)</script>',
+            'introformat' => FORMAT_HTML,
+            'duedate' => 1893456000,
+            'grade' => 100,
+            'submissiondrafts' => 1,
+            'teamsubmission' => 0,
+            'blindmarking' => 0,
+            'attemptreopenmethod' => 'manual',
+            'maxattempts' => 3,
+            'assignsubmission_onlinetext_enabled' => 1,
+            'assignsubmission_onlinetext_wordlimit' => 500,
+            'assignsubmission_onlinetext_wordlimitenabled' => 1,
+            'assignsubmission_file_enabled' => 0,
+            'assignfeedback_comments_enabled' => 1,
+            'assignfeedback_comments_commentinline' => 1,
+        ];
+
+        $handler = new assign_activity_handler();
+        $cmid = $handler->create_from_remote_data($course->id, 0, $payload, 'coursesync-109');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $this->assertSame('coursesync-109', $cm->idnumber);
+        // Regression test: assign::add_instance() does NOT set course_modules.instance itself.
+        $this->assertGreaterThan(0, $cm->instance);
+
+        $assign = $DB->get_record('assign', ['id' => $cm->instance], '*', MUST_EXIST);
+        $this->assertStringNotContainsString('<script>', $assign->name);
+        $this->assertStringNotContainsString('<script>', $assign->intro);
+        $this->assertStringContainsString('Submit your work.', $assign->intro);
+        $this->assertSame('manual', $assign->attemptreopenmethod);
+        $this->assertEquals(3, $assign->maxattempts);
+
+        // Regression test: without this handler explicitly setting each
+        // known sub-plugin's "*_enabled" field, assign::add_instance()
+        // force-disables every installed submission/feedback sub-plugin -
+        // see the handler's docblock. onlinetext and comments should end up
+        // enabled (as the payload asked); file should end up disabled.
+        $onlinetextenabled = $DB->get_field('assign_plugin_config', 'value', [
+            'assignment' => $assign->id, 'subtype' => 'assignsubmission', 'plugin' => 'onlinetext', 'name' => 'enabled',
+        ]);
+        $fileenabled = $DB->get_field('assign_plugin_config', 'value', [
+            'assignment' => $assign->id, 'subtype' => 'assignsubmission', 'plugin' => 'file', 'name' => 'enabled',
+        ]);
+        $commentsenabled = $DB->get_field('assign_plugin_config', 'value', [
+            'assignment' => $assign->id, 'subtype' => 'assignfeedback', 'plugin' => 'comments', 'name' => 'enabled',
+        ]);
+        $this->assertEquals(1, $onlinetextenabled);
+        $this->assertEquals(0, $fileenabled);
+        $this->assertEquals(1, $commentsenabled);
+
+        $wordlimit = $DB->get_field('assign_plugin_config', 'value', [
+            'assignment' => $assign->id, 'subtype' => 'assignsubmission', 'plugin' => 'onlinetext', 'name' => 'wordlimit',
+        ]);
+        $this->assertEquals(500, $wordlimit);
+    }
+
+    /**
+     * An unrecognised attemptreopenmethod (never sent by
+     * assign_activity_exporter, but this plugin never trusts remote data to
+     * match what its own exporter would send) falls back to 'untilpass'
+     * rather than being stored as an arbitrary string assign's own code
+     * branches on.
+     */
+    public function test_assign_handler_falls_back_to_untilpass_for_an_unknown_reopen_method(): void {
+        global $DB;
+
+        $course = $this->course();
+        $payload = ['name' => 'Odd assignment', 'intro' => '', 'attemptreopenmethod' => 'not-a-real-method'];
+
+        $handler = new assign_activity_handler();
+        $cmid = $handler->create_from_remote_data($course->id, 0, $payload, 'coursesync-110');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $assign = $DB->get_record('assign', ['id' => $cm->instance], '*', MUST_EXIST);
+        $this->assertSame('untilpass', $assign->attemptreopenmethod);
+    }
+
+    public function test_h5pactivity_handler_creates_a_matching_activity_and_package(): void {
+        global $DB;
+
+        // A package file is stashed in a draft area owned by the *current*
+        // user before being moved into its final location (see the
+        // handler's docblock) - in real use this is always a real logged-in
+        // teacher (sync.php requires_login()), so the test needs one too,
+        // unlike every other test here that doesn't touch the file API's
+        // user-context path.
+        $this->setAdminUser();
+
+        $course = $this->course();
+        $filecontent = 'fake h5p package bytes';
+        $payload = [
+            'name' => 'Remote H5P <script>alert(1)</script>',
+            'intro' => '<p>Play this.</p><script>alert(2)</script>',
+            'introformat' => FORMAT_HTML,
+            'grade' => 50,
+            'displayoptions' => 0,
+            'enabletracking' => 1,
+            'grademethod' => 1,
+            'reviewmode' => 1,
+            'package' => [
+                'filename' => 'content.h5p',
+                'contentbase64' => base64_encode($filecontent),
+            ],
+        ];
+
+        $handler = new h5pactivity_activity_handler();
+        $cmid = $handler->create_from_remote_data($course->id, 0, $payload, 'coursesync-111');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $this->assertSame('coursesync-111', $cm->idnumber);
+        $this->assertGreaterThan(0, $cm->instance);
+
+        $h5pactivity = $DB->get_record('h5pactivity', ['id' => $cm->instance], '*', MUST_EXIST);
+        $this->assertStringNotContainsString('<script>', $h5pactivity->name);
+        $this->assertStringNotContainsString('<script>', $h5pactivity->intro);
+        $this->assertEquals(50, $h5pactivity->grade);
+
+        $fs = get_file_storage();
+        $context = \context_module::instance($cmid);
+        $files = $fs->get_area_files($context->id, 'mod_h5pactivity', 'package', 0, 'sortorder', false);
+        $this->assertCount(1, $files);
+
+        $file = reset($files);
+        $this->assertSame('content.h5p', $file->get_filename());
+        $this->assertSame($filecontent, $file->get_content());
+    }
+
+    /**
+     * A source activity with no package uploaded yet must still create a
+     * (content-less) destination activity, not fail the whole sync.
+     */
+    public function test_h5pactivity_handler_handles_a_missing_package(): void {
+        global $DB;
+
+        $course = $this->course();
+        $payload = ['name' => 'Empty H5P', 'intro' => '', 'package' => null];
+
+        $handler = new h5pactivity_activity_handler();
+        $cmid = $handler->create_from_remote_data($course->id, 0, $payload, 'coursesync-112');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $this->assertGreaterThan(0, $cm->instance);
+
+        $fs = get_file_storage();
+        $context = \context_module::instance($cmid);
+        $files = $fs->get_area_files($context->id, 'mod_h5pactivity', 'package', 0, 'sortorder', false);
+        $this->assertCount(0, $files);
     }
 }

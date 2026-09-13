@@ -17,7 +17,8 @@ automatically once this plugin is installed on the source site:
 - `block_coursesync_get_activity_content` (Phase 4) - returns the full
   settings/content payload needed to recreate one activity, for activity
   types this plugin has an exporter for: **Page, URL, Label, Resource, and
-  Forum** (settings only) as of Phase 5. For Resource, this includes the
+  Forum** (settings only) as of Phase 5, plus **Assignment** (settings only)
+  and **H5P** as of Phase 9. For Resource and H5P, this includes the
   underlying file(s), base64-encoded in the same payload.
 
 Do this once, on the **source** site, as a site administrator:

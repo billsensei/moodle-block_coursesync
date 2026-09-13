@@ -21,7 +21,8 @@ namespace block_coursesync\local;
  * a given time (the same block_coursesync_get_modified_activities Phase 3
  * added), pulls full content for whichever activity types this plugin
  * currently supports (activity_handler_registry; Page, URL, Label, Resource,
- * and Forum as of Phase 5), and creates them in the destination course, each
+ * and Forum as of Phase 5, plus Assignment and H5P as of Phase 9), and
+ * creates them in the destination course, each
  * in the destination section matching the number it came from on the source
  * (see pull_and_create()) - never in an existing activity's place, and never
  * as a duplicate of one already pulled (see process_activities()), nor of

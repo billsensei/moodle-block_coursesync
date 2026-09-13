@@ -32,6 +32,8 @@ class activity_exporter_registry {
         'label' => label_activity_exporter::class,
         'resource' => resource_activity_exporter::class,
         'forum' => forum_activity_exporter::class,
+        'assign' => assign_activity_exporter::class,
+        'h5pactivity' => h5pactivity_activity_exporter::class,
     ];
 
     /**

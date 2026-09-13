@@ -19,7 +19,8 @@
  *
  * "Sync now" lists what changed on the mapped course since lastsync, pulls
  * full content for whichever types classes/local/activity_handler_registry.php
- * currently supports (Page, URL, Label, Resource, and Forum as of Phase 5),
+ * currently supports (Page, URL, Label, Resource, Forum as of Phase 5, and
+ * Assignment/H5P as of Phase 9),
  * and recreates them locally - flagging anything that collides with an
  * existing local activity as a conflict rather than touching it. Every run
  * is recorded to sync history (block_coursesync_synclog), viewable from

@@ -117,9 +117,11 @@ collapsed - click on one to expand it.
 
 ## What kinds of activities can be pulled in?
 
-As of this version: **Page, URL, Label, File (Resource), and Forum**
-(settings only - not its discussions or posts). Other types are detected
-and shown in the preview so you know they exist, but aren't pulled yet.
+As of this version: **Page, URL, Label, File (Resource), Forum** (settings
+only - not its discussions or posts), **Assignment** (settings only - no
+student submissions, grades, or feedback ever leave the source site), and
+**H5P** (including its content package). Other types are detected and shown
+in the preview so you know they exist, but aren't pulled yet.
 
 One exception: a course's built-in **"Announcements" forum** is never
 pulled, even though it's a forum - every course already has its own, so

@@ -1,7 +1,7 @@
 # Course Sync: developer notes
 
 Architecture summary and extension guide for anyone maintaining or building
-on block_coursesync (v0.8, end of Phase 8). This complements the docblocks
+on block_coursesync (v0.9, Phase 9). This complements the docblocks
 in the code itself, which is where the authoritative, up-to-date detail
 lives - this file is a map, not a duplicate.
 
@@ -99,8 +99,9 @@ classes/local/
                                     new type (see below).
   activity_exporter.php            Source-side interface: build one activity
   activity_exporter_registry.php   type's payload. Same registry pattern.
-  <modname>_activity_handler.php   One pair per supported type (Phase 5):
-  <modname>_activity_exporter.php  page, url, label, resource, forum.
+  <modname>_activity_handler.php   One pair per supported type: page, url,
+  <modname>_activity_exporter.php  label, resource, forum (Phase 5); assign,
+                                    h5pactivity (Phase 9).
   activity_lookup.php              Change detection (Phase 3): activities
                                     modified after a given time, per course.
   sanitizer.php                    Cleans remote-sourced content before it's
@@ -134,9 +135,11 @@ tests/                            PHPUnit (Phase 8) + one Behat scenario
 
 ## Adding a new activity type handler (v2+)
 
-This is the extension point Phase 4 established and every v1 type
-(page/url/label/resource/forum, Phase 5) follows. To add support for
-activity type `<modname>` (e.g. `quiz`):
+This is the extension point Phase 4 established and every type since has
+followed: page/url/label/resource/forum (Phase 5), then assign/h5pactivity
+(Phase 9 - see those classes for a worked example of a type with its own
+sub-plugin config (`assign`) and one with file content (`h5pactivity`)). To
+add support for activity type `<modname>` (e.g. `quiz`):
 
 ### 1. Write the exporter (source side)
 
@@ -253,10 +256,10 @@ that `create_from_remote_data()` returned an int. Include a case with
 `<script>` or similarly dangerous content in a text field to confirm
 `sanitizer` is actually being used, not just present in the file.
 
-## Testing (Phase 8)
+## Testing (Phase 8, extended Phase 9)
 
 - **PHPUnit** (`tests/`): change detection (`activity_lookup_test.php`),
-  all five v1 handlers (`activity_handlers_test.php`), conflict-flagging,
+  all seven handlers (`activity_handlers_test.php`), conflict-flagging,
   same-name-and-type exclusion, and lastsync advancement
   (`sync_conflict_test.php`, against `tests/fixtures/stub_remote_client.php`
   - a `remote_client` subclass returning canned data instead of a real HTTP
@@ -297,7 +300,10 @@ that `create_from_remote_data()` returned an int. Include a case with
 ## What v1 deliberately doesn't do
 
 See `REMOTE_SETUP.md`'s "What this plugin does *not* do" section - still
-accurate as of Phase 8. In short: no automated remote-site configuration,
-only the five registered activity types are pulled (others are detected but
-skipped, not treated as failures), and a flagged conflict has no in-block
-resolution UI - a teacher resolves it manually and syncs again.
+accurate as of Phase 9. In short: no automated remote-site configuration,
+only the seven registered activity types are pulled (others are detected
+but skipped, not treated as failures), and a flagged conflict has no
+in-block resolution UI - a teacher resolves it manually and syncs again.
+Assignment sync is settings-only: student submissions, grades, and
+feedback never leave the source site, only the assignment's own
+configuration (see `assign_activity_exporter`'s docblock).
