@@ -21,7 +21,10 @@ namespace block_coursesync\local;
  * a given time (the same block_coursesync_get_modified_activities Phase 3
  * added), pulls full content for whichever activity types this plugin
  * currently supports (activity_handler_registry; Page, URL, Label, Resource,
- * and Forum as of Phase 5), and creates them in the destination course.
+ * and Forum as of Phase 5), and creates them in the destination course, each
+ * in the destination section matching the number it came from on the source
+ * (see pull_and_create()) - never in an existing activity's place, and never
+ * as a duplicate of one already pulled (see process_activities()).
  *
  * Doesn't touch block config, lastsync, or sync history itself -
  * block_coursesync::sync_now() decides what to persist from the result this
@@ -171,7 +174,16 @@ class sync_runner {
     }
 
     /**
-     * Pulls one activity's content and creates it locally.
+     * Pulls one activity's content and creates it locally, in the destination
+     * section matching the number it's in on the source course - creating
+     * that section on the destination first if it doesn't exist yet
+     * (course_add_cm_to_section(), called by every activity_handler, does
+     * this itself via course_create_sections_if_missing()). Section numbers
+     * are relative (course_sections.section), so this only lines up cleanly
+     * when both courses share the same section structure - there's no
+     * name-based matching, and a source activity sitting in section 12 will
+     * happily create eleven empty sections on a five-section destination
+     * course to make room for it.
      *
      * @param array $activity One entry from block_coursesync_get_modified_activities.
      * @param string $idnumber
@@ -186,7 +198,12 @@ class sync_runner {
         try {
             $payload = json_decode($contentresult['data']['contentjson'] ?? '', true);
             $handler = activity_handler_registry::get_handler($activity['modname']);
-            $handler->create_from_remote_data($this->destinationcourseid, 0, $payload ?? [], $idnumber);
+            // The ?? 0 guards against a source running an older plugin version
+            // whose get_modified_activities response predates the 'section'
+            // field - falls back to the pre-existing "always section 0"
+            // behaviour rather than a missing-key error.
+            $sectionnum = (int) ($activity['section'] ?? 0);
+            $handler->create_from_remote_data($this->destinationcourseid, $sectionnum, $payload ?? [], $idnumber);
             return null;
         } catch (\Throwable $e) {
             return $e->getMessage();

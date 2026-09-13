@@ -35,7 +35,7 @@ functions, defined in `db/services.php` and implemented in
 |---|---|
 | `block_coursesync_ping` | Proves the connection + token work; returns the site name. |
 | `block_coursesync_check_course` | Resolves a course ID/shortname on the source and confirms the token can access it. |
-| `block_coursesync_get_modified_activities` | Lists a course's activities modified after a given time - **metadata only** (cmid, modname, name, idnumber, timemodified), no content. Backed by `classes/local/activity_lookup.php`. |
+| `block_coursesync_get_modified_activities` | Lists a course's activities modified after a given time - **metadata only** (cmid, modname, name, idnumber, timemodified, section), no content. Backed by `classes/local/activity_lookup.php`. |
 | `block_coursesync_get_activity_content` | Returns one activity's full settings/content payload, built by that type's `activity_exporter`. |
 
 All four are bundled into one external service ("Course Sync") that every
@@ -77,6 +77,14 @@ classes/local/
                                     -> compute new lastsync. No side effects
                                     outside the destination course itself -
                                     doesn't touch block config or history.
+                                    Places each new activity in the
+                                    destination section with the same
+                                    relative number (course_sections.section)
+                                    it had on the source, creating that
+                                    section on the destination first if
+                                    needed - no name-based matching, so this
+                                    only lines up when both courses share the
+                                    same section structure.
   activity_handler.php             Destination-side interface: recreate one
   activity_handler_registry.php    activity type locally. Registry maps
                                     modname => handler class - the only file

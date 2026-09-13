@@ -157,6 +157,65 @@ final class sync_conflict_test extends \advanced_testcase {
     }
 
     /**
+     * A pulled activity must land in the destination section with the same
+     * relative number it had on the source - not always section 0 - and
+     * that destination section must be created first if the destination
+     * course doesn't have enough sections yet.
+     */
+    public function test_created_activity_lands_in_the_corresponding_section(): void {
+        global $DB;
+
+        // Only sections 0 and 1 exist here - section 4 doesn't yet.
+        $course = $this->getDataGenerator()->create_course(['numsections' => 1]);
+
+        $client = new stub_remote_client(
+            [['cmid' => 444, 'modname' => 'page', 'name' => 'Remote page', 'idnumber' => '',
+                'timemodified' => 1000, 'section' => 4]],
+            [444 => $this->page_payload()]
+        );
+
+        $result = (new sync_runner($client, $course->id, 'irrelevant'))->run(0);
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(1, $result['created']);
+
+        $idnumber = sync_runner::make_idnumber(444);
+        $cm = $DB->get_record('course_modules', ['course' => $course->id, 'idnumber' => $idnumber], '*', MUST_EXIST);
+
+        // Course_modules.section is a course_sections.id foreign key, not the
+        // relative section number itself - resolve it to confirm the actual
+        // destination section number, not just that some section was used.
+        $section = $DB->get_record('course_sections', ['id' => $cm->section], '*', MUST_EXIST);
+        $this->assertSame(4, (int) $section->section);
+    }
+
+    /**
+     * A source running an older plugin version won't include 'section' in
+     * its get_modified_activities response - that must fall back to the
+     * pre-existing "always section 0" behaviour, not a missing-key error.
+     */
+    public function test_missing_section_field_falls_back_to_section_zero(): void {
+        global $DB;
+
+        $course = $this->getDataGenerator()->create_course();
+
+        $client = new stub_remote_client(
+            [['cmid' => 333, 'modname' => 'page', 'name' => 'Remote page', 'idnumber' => '', 'timemodified' => 1000]],
+            [333 => $this->page_payload()]
+        );
+
+        $result = (new sync_runner($client, $course->id, 'irrelevant'))->run(0);
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(1, $result['created']);
+
+        $idnumber = sync_runner::make_idnumber(333);
+        $cm = $DB->get_record('course_modules', ['course' => $course->id, 'idnumber' => $idnumber], '*', MUST_EXIST);
+        $section = $DB->get_record('course_sections', ['id' => $cm->section], '*', MUST_EXIST);
+        $this->assertSame(0, (int) $section->section);
+    }
+
+    /**
      * A minimal, valid page_activity_exporter-shaped payload for the tests above.
      *
      * @return array

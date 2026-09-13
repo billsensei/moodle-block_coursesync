@@ -28,9 +28,9 @@ use core_external\external_value;
  * block_coursesync_get_modified_activities external function.
  *
  * Lists course modules in a course modified after a given time. Metadata
- * only (course module id, activity type, name, idnumber, and when it was
- * last modified) - no content bodies. Actually pulling activity content is
- * a later phase.
+ * only (course module id, activity type, name, idnumber, section number, and
+ * when it was last modified) - no content bodies. Actually pulling activity
+ * content is a later phase.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync contributors
@@ -92,6 +92,8 @@ class get_modified_activities extends external_api {
                     'name' => new external_value(PARAM_TEXT, 'Activity name.'),
                     'idnumber' => new external_value(PARAM_RAW, 'Activity idnumber, or an empty string if unset.'),
                     'timemodified' => new external_value(PARAM_INT, 'Unix timestamp of the activity\'s own last edit.'),
+                    'section' => new external_value(PARAM_INT, 'Relative section number (course_sections.section) ' .
+                        'this activity is in on the source course.'),
                 ])
             ),
         ]);

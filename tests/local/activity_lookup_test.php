@@ -134,9 +134,24 @@ final class activity_lookup_test extends \advanced_testcase {
 
         $this->assertCount(1, $results);
         $this->assertSame(
-            ['cmid', 'modname', 'name', 'idnumber', 'timemodified'],
+            ['cmid', 'modname', 'name', 'idnumber', 'timemodified', 'section'],
             array_keys($results[0])
         );
         $this->assertSame('page', $results[0]['modname']);
+    }
+
+    /**
+     * The 'section' field is the activity's actual relative section number
+     * on the source course - not always 0 - since sync_runner relies on it
+     * to place the synced copy in the corresponding destination section.
+     */
+    public function test_section_reflects_the_activity_s_actual_section(): void {
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'section' => 2]);
+
+        $results = activity_lookup::get_modified_since($course->id, 0);
+
+        $this->assertCount(1, $results);
+        $this->assertSame(2, $results[0]['section']);
     }
 }

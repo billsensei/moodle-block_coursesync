@@ -37,7 +37,8 @@ class activity_lookup {
      *
      * @param int $courseid
      * @param int $since Unix timestamp; 0 means "everything".
-     * @return array<int, array{cmid: int, modname: string, name: string, idnumber: string, timemodified: int}>
+     * @return array<int, array{cmid: int, modname: string, name: string, idnumber: string,
+     *     timemodified: int, section: int}>
      */
     public static function get_modified_since(int $courseid, int $since): array {
         $modinfo = get_fast_modinfo($courseid);
@@ -59,6 +60,11 @@ class activity_lookup {
                 'name' => $cm->get_formatted_name(),
                 'idnumber' => (string) ($cm->idnumber ?? ''),
                 'timemodified' => $timemodified,
+                // Relative section number (course_sections.section) on the source
+                // course - sync_runner maps this to the same section number on the
+                // destination, so activities land where a teacher would expect them
+                // instead of always being dropped into section 0.
+                'section' => (int) $cm->sectionnum,
             ];
         }
 
