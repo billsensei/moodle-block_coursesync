@@ -63,8 +63,19 @@ $string['previewerror'] = 'Could not check for new activities - see the connecti
 $string['previewheading'] = '{$a} activity/activities found since last sync:';
 $string['previewitem'] = '{$a->name} ({$a->modname}) - last modified {$a->time}';
 $string['previewnone'] = 'No new or changed activities found since last sync.';
-$string['privacy:metadata'] = 'The Course Sync block stores a remote site URL and an encrypted web service ' .
-    'token for that site\'s own use - it does not store personal data about any Moodle user.';
+$string['randompoolcategoryname'] = 'Course Sync — random question pool (slot {$a})';
+$string['privacy:metadata:block_coursesync_synclog'] = 'A record of one "Sync now" run: who triggered it, when, ' .
+    'against which destination course, and a summary of what happened.';
+$string['privacy:metadata:block_coursesync_synclog:blockinstanceid'] = 'The block instance the sync was run from.';
+$string['privacy:metadata:block_coursesync_synclog:courseid'] = 'The destination course the sync ran against.';
+$string['privacy:metadata:block_coursesync_synclog:userid'] = 'The user who triggered the sync.';
+$string['privacy:metadata:block_coursesync_synclog:timecreated'] = 'The time the sync was run.';
+$string['privacy:metadata:block_coursesync_synclog:success'] = 'Whether the run completed.';
+$string['privacy:metadata:block_coursesync_synclog:errorcode'] = 'The precondition/remote error code, if the run did not complete.';
+$string['privacy:metadata:block_coursesync_synclog:createdcount'] = 'How many activities were created by this run.';
+$string['privacy:metadata:block_coursesync_synclog:conflictcount'] = 'How many activities this run flagged as conflicts.';
+$string['privacy:metadata:block_coursesync_synclog:failedcount'] = 'How many activities failed to be created by this run.';
+$string['privacy:metadata:block_coursesync_synclog:unsupportedcount'] = 'How many activities this run detected but could not yet sync.';
 $string['remotecourse'] = 'Remote course ID or shortname';
 $string['remotecourse_help'] = 'The numeric course ID or the shortname of the course on the remote site that ' .
     'this block should track. Checked against the remote site (via the stored token) each time you save. ' .

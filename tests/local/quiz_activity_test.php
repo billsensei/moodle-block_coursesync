@@ -70,6 +70,23 @@ final class quiz_activity_test extends \advanced_testcase {
         ];
     }
 
+    /**
+     * A minimal but valid truefalse question payload.
+     *
+     * @param string $name
+     * @return array
+     */
+    protected function truefalse_payload(string $name = 'Remote TF'): array {
+        return [
+            'name' => $name, 'questiontext' => '<p>True or false?</p>', 'questiontextformat' => FORMAT_HTML,
+            'questiontextfiles' => [], 'generalfeedback' => '', 'generalfeedbackformat' => FORMAT_HTML,
+            'generalfeedbackfiles' => [], 'defaultmark' => 1, 'penalty' => 1,
+            'correctanswer' => true, 'showstandardinstruction' => 0,
+            'feedbacktrue' => '', 'feedbacktrueformat' => FORMAT_HTML, 'feedbacktruefiles' => [],
+            'feedbackfalse' => '', 'feedbackfalseformat' => FORMAT_HTML, 'feedbackfalsefiles' => [],
+        ];
+    }
+
     public function test_creates_a_matching_quiz_with_settings_and_a_supported_slot(): void {
         global $DB;
 
@@ -166,6 +183,109 @@ final class quiz_activity_test extends \advanced_testcase {
         // Sumgrades must be recomputed from the slot(s) actually added.
         $quiz = $DB->get_record('quiz', ['id' => $quiz->id], '*', MUST_EXIST);
         $this->assertEquals(3, $quiz->sumgrades);
+    }
+
+    /**
+     * A random slot with a resolved pool (quiz_activity_exporter::export_random_pool())
+     * must become a REAL random slot on the destination - a fresh category
+     * holding every pulled pool question, plus a genuine question_set_references
+     * row - not a fixed question and not skipped. A pool entry with an
+     * unregistered qtype is dropped from the pool silently, same as any
+     * other unsupported-qtype skip in this plugin.
+     */
+    public function test_creates_a_real_random_slot_from_a_resolved_pool(): void {
+        global $DB;
+
+        $course = $this->getDataGenerator()->create_course();
+
+        $payload = [
+            'name' => 'Quiz with a random slot', 'intro' => '', 'introformat' => FORMAT_HTML,
+            'timeopen' => 0, 'timeclose' => 0, 'timelimit' => 0, 'overduehandling' => 'autosubmit',
+            'graceperiod' => 0, 'preferredbehaviour' => 'deferredfeedback', 'canredoquestions' => 0,
+            'attempts' => 0, 'attemptonlast' => 0, 'grademethod' => 1, 'decimalpoints' => 2,
+            'questiondecimalpoints' => -1, 'questionsperpage' => 1, 'navmethod' => 'free',
+            'shuffleanswers' => 1, 'grade' => 100, 'showuserpicture' => 0,
+            'reviewattempt' => 0, 'reviewcorrectness' => 0, 'reviewmaxmarks' => 0, 'reviewmarks' => 0,
+            'reviewspecificfeedback' => 0, 'reviewgeneralfeedback' => 0, 'reviewrightanswer' => 0,
+            'reviewoverallfeedback' => 0,
+            'slots' => [
+                ['slot' => 1, 'page' => 1, 'maxmark' => 2.5, 'supported' => true, 'qtype' => 'random', 'questions' => [
+                    ['qtype' => 'multichoice', 'question' => $this->multichoice_payload()],
+                    ['qtype' => 'truefalse', 'question' => $this->truefalse_payload('Pool TF')],
+                    // A pool entry of a qtype this plugin doesn't register a
+                    // handler for - must be dropped, not fail the slot.
+                    ['qtype' => 'calculated', 'question' => ['name' => 'Unreachable']],
+                ]],
+            ],
+        ];
+
+        $handler = new quiz_activity_handler();
+        $cmid = $handler->create_from_remote_data((int) $course->id, 0, $payload, 'coursesync-301');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $quizid = (int) $cm->instance;
+
+        $slots = $DB->get_records('quiz_slots', ['quizid' => $quizid]);
+        $this->assertCount(1, $slots, 'Exactly one real quiz_slots row for the random slot.');
+        $slot = reset($slots);
+        $this->assertEquals(2.5, $slot->maxmark, 'The exported maxmark must survive, not add_random_questions() default of 1.');
+
+        $setreference = $DB->get_record('question_set_references', [
+            'component' => 'mod_quiz', 'questionarea' => 'slot', 'itemid' => $slot->id,
+        ], '*', MUST_EXIST);
+        $filter = json_decode($setreference->filtercondition, true);
+        $poolcategoryid = (int) $filter['filter']['category']['values'][0];
+
+        // The pool category must be its own, separate from the quiz's shared
+        // default category (never present since this quiz has no fixed slots).
+        $quizcontext = \context_module::instance($cmid);
+        $defaultcategory = $DB->get_record('question_categories', [
+            'contextid' => $quizcontext->id, 'parent' => 0,
+        ], '*', IGNORE_MISSING);
+        // The top category (parent=0) always exists once question_get_default_category()
+        // has run; the pool category must be a child of ITS child (the default category),
+        // not the same row.
+        $poolcategory = $DB->get_record('question_categories', ['id' => $poolcategoryid], '*', MUST_EXIST);
+        $this->assertEquals($quizcontext->id, $poolcategory->contextid);
+
+        // Exactly the two supported pool questions were created in the pool
+        // category - the unregistered 'calculated' entry was skipped.
+        $poolquestions = $DB->get_records_sql(
+            "SELECT q.qtype
+               FROM {question} q
+               JOIN {question_versions} qv ON qv.questionid = q.id
+               JOIN {question_bank_entries} qbe ON qbe.id = qv.questionbankentryid
+              WHERE qbe.questioncategoryid = ?",
+            [$poolcategoryid]
+        );
+        $qtypes = array_map(fn($q) => $q->qtype, $poolquestions);
+        sort($qtypes);
+        $this->assertSame(['multichoice', 'truefalse'], $qtypes);
+    }
+
+    /**
+     * If every pool entry turns out to be unusable (all unregistered
+     * qtypes), no orphaned always-empty random slot is left behind.
+     */
+    public function test_random_slot_with_no_usable_pool_questions_creates_no_slot(): void {
+        global $DB;
+
+        $course = $this->getDataGenerator()->create_course();
+
+        $payload = [
+            'name' => 'Quiz with an unusable pool', 'intro' => '', 'introformat' => FORMAT_HTML,
+            'slots' => [
+                ['slot' => 1, 'page' => 1, 'maxmark' => 1.0, 'supported' => true, 'qtype' => 'random', 'questions' => [
+                    ['qtype' => 'calculated', 'question' => ['name' => 'Unreachable']],
+                ]],
+            ],
+        ];
+
+        $handler = new quiz_activity_handler();
+        $cmid = $handler->create_from_remote_data((int) $course->id, 0, $payload, 'coursesync-302');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $this->assertCount(0, $DB->get_records('quiz_slots', ['quizid' => $cm->instance]));
     }
 
     public function test_skips_random_and_unsupported_slots_without_failing_the_quiz(): void {

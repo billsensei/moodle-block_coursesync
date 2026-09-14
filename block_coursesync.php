@@ -49,6 +49,15 @@ class block_coursesync extends block_base {
     /**
      * Builds the block's content.
      *
+     * Everything this method can show - the remote site's identity, the
+     * mapped course's name, and a live preview of what's changed on it -
+     * is only for whoever is allowed to actually sync. Without
+     * block/coursesync:sync, a viewer (e.g. a student on the course page)
+     * gets an empty block body, the same as get_footer_links() already does
+     * for its own links: neither the remote site's existence nor its
+     * content should be visible to, or triggerable a remote call by,
+     * someone who can't use the block at all.
+     *
      * @return \stdClass
      */
     public function get_content(): stdClass {
@@ -58,6 +67,11 @@ class block_coursesync extends block_base {
 
         $this->content = new stdClass();
         $this->content->footer = '';
+
+        if (!has_capability('block/coursesync:sync', $this->context)) {
+            $this->content->text = '';
+            return $this->content;
+        }
 
         $remoteurl = trim((string) ($this->config->remoteurl ?? ''));
         if ($remoteurl === '') {

@@ -106,4 +106,83 @@ final class quiz_roundtrip_test extends \advanced_testcase {
         sort($destinationqtypes);
         $this->assertSame(['multichoice', 'truefalse'], $destinationqtypes);
     }
+
+    /**
+     * The scenario that motivated this test: a quiz built the standard way
+     * real teachers build one - "Add > a random question" pulling from a
+     * shared question-bank category - not just fixed questions added one at
+     * a time. Before this, quiz_activity_exporter reported every such slot
+     * as unsupported and quiz_activity_handler silently skipped it, so a
+     * quiz built entirely from random slots synced with NO questions at all
+     * despite reporting success.
+     */
+    public function test_a_random_slot_pulls_its_pool_and_survives_the_round_trip(): void {
+        global $DB, $CFG;
+
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $sourcecourse = $this->getDataGenerator()->create_course();
+        $sourcequiz = $this->getDataGenerator()->create_module('quiz', [
+            'course' => $sourcecourse->id,
+            'name' => 'Quiz with a random slot',
+        ]);
+
+        // The real-world shape: a shared, course-level category (not the
+        // quiz's own module-context category) that a random slot draws from.
+        $coursecontext = \context_course::instance($sourcecourse->id);
+        /** @var \core_question_generator $questiongenerator */
+        $questiongenerator = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $pool = $questiongenerator->create_question_category(['contextid' => $coursecontext->id]);
+
+        $questiongenerator->create_question('truefalse', null, ['category' => $pool->id, 'name' => 'Pool Q1']);
+        $questiongenerator->create_question('shortanswer', null, ['category' => $pool->id, 'name' => 'Pool Q2']);
+
+        $quizobj = \mod_quiz\quiz_settings::create($sourcequiz->id);
+        $quizobj->get_structure()->add_random_questions(1, 1, [
+            'filter' => [
+                'category' => [
+                    'jointype' => \core_question\local\bank\condition::JOINTYPE_DEFAULT,
+                    'values' => [$pool->id],
+                    'filteroptions' => ['includesubcategories' => false],
+                ],
+            ],
+        ]);
+
+        $sourcecm = get_fast_modinfo($sourcecourse)->get_cm($sourcequiz->cmid);
+
+        $exporter = new quiz_activity_exporter();
+        $payload = $exporter->export($sourcecm);
+
+        $this->assertCount(1, $payload['slots']);
+        $slot = $payload['slots'][0];
+        $this->assertTrue($slot['supported'], 'A resolvable random slot must be reported as supported.');
+        $this->assertSame('random', $slot['qtype']);
+        $this->assertCount(2, $slot['questions']);
+
+        // Simulate the actual wire transport (get_activity_content JSON-encodes,
+        // sync_runner JSON-decodes) rather than passing the PHP array straight
+        // through, since that round trip is part of what shipped broken.
+        $decoded = json_decode(json_encode($payload), true);
+
+        $destinationcourse = $this->getDataGenerator()->create_course();
+        $handler = new quiz_activity_handler();
+        $cmid = $handler->create_from_remote_data((int) $destinationcourse->id, 0, $decoded, 'coursesync-302');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $destinationslots = $DB->get_records('quiz_slots', ['quizid' => $cm->instance]);
+        $this->assertCount(1, $destinationslots);
+        $destinationslot = reset($destinationslots);
+
+        $setreference = $DB->get_record('question_set_references', [
+            'component' => 'mod_quiz', 'questionarea' => 'slot', 'itemid' => $destinationslot->id,
+        ], '*', MUST_EXIST);
+        $filter = json_decode($setreference->filtercondition, true);
+        $poolcategoryid = (int) $filter['filter']['category']['values'][0];
+
+        $poolquestioncount = $DB->count_records_sql(
+            'SELECT COUNT(1) FROM {question_bank_entries} WHERE questioncategoryid = ?',
+            [$poolcategoryid]
+        );
+        $this->assertSame(2, $poolquestioncount, 'Both pool questions must have been recreated on the destination.');
+    }
 }

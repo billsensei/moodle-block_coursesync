@@ -66,8 +66,16 @@ namespace block_coursesync\local;
  * "half-created"), just more visible here because a quiz has many
  * sub-items instead of one.
  *
- * Random slots (question_set_references) and any question whose qtype isn't
- * registered in question_handler_registry are skipped, not failed - see
+ * A random slot (question_set_references - "Add > a random question") is
+ * recreated as a real random slot too, not skipped: see create_random_slot()
+ * for how quiz_activity_exporter's pulled pool of currently-eligible
+ * questions becomes a fresh destination-only category plus a genuine random
+ * quiz_slots row via \mod_quiz\structure::add_random_questions(), so the
+ * destination quiz keeps picking a different question at random each
+ * attempt, same as the source. Only a random slot the exporter couldn't
+ * resolve at all (nothing eligible in its category, or an unrecognised
+ * filter shape), and any fixed question whose qtype isn't registered in
+ * question_handler_registry, are skipped rather than failed - see
  * quiz_activity_exporter's docblock for how those are marked in the payload.
  * Unlike an unsupported *activity* type, a skipped slot doesn't block
  * lastsync from advancing (sync_runner only inspects the top-level unsupported/
@@ -236,6 +244,12 @@ class quiz_activity_handler implements activity_handler {
      * a no-op for a quiz this new, but cheap and harmless to call for
      * consistency with that same real flow).
      *
+     * A random slot (qtype 'random', a 'questions' pool instead of a single
+     * 'question' - see quiz_activity_exporter::export_random_pool()) is
+     * handled separately by create_random_slot(), since it needs its own
+     * category and a real random quiz_slots row, not a single fixed
+     * question added via quiz_add_quiz_question().
+     *
      * @param int $quizid
      * @param int $cmid
      * @param int $courseid
@@ -256,9 +270,19 @@ class quiz_activity_handler implements activity_handler {
         $quiz->cmid = $cmid;
 
         foreach ($slots as $slot) {
-            if (empty($slot['supported']) || !isset($slot['question'])) {
-                // Random reference or an unregistered qtype - see
-                // quiz_activity_exporter's docblock.
+            if (empty($slot['supported'])) {
+                // A random slot that resolved to nothing pullable, or an
+                // unregistered activity qtype - see quiz_activity_exporter's
+                // docblock.
+                continue;
+            }
+
+            if (($slot['qtype'] ?? '') === 'random' && isset($slot['questions'])) {
+                $this->create_random_slot($quizid, $context, $category, $slot);
+                continue;
+            }
+
+            if (!isset($slot['question'])) {
                 continue;
             }
 
@@ -275,6 +299,120 @@ class quiz_activity_handler implements activity_handler {
 
         quiz_delete_previews($quiz);
         \mod_quiz\quiz_settings::create($quizid)->get_grade_calculator()->recompute_quiz_sumgrades();
+    }
+
+    /**
+     * Recreates a random slot: every pulled pool question
+     * (quiz_activity_exporter::export_random_pool()) is created in a fresh
+     * category dedicated to this one slot, then a real random quiz_slots row
+     * is added pointing at it via \mod_quiz\structure::add_random_questions()
+     * - the same core API mod/quiz/edit.php's own "Add > a random question"
+     * action uses - so the destination quiz keeps genuinely picking a
+     * different question at random each attempt, the same as the source.
+     *
+     * Each random slot gets its OWN category (create_random_pool_category()),
+     * never the shared per-quiz default category fixed slots use: two random
+     * slots that happened to reference the same source category would
+     * otherwise end up sharing one destination category, silently merging
+     * their pools (and a fixed slot's own question sitting in that shared
+     * category would wrongly become part of the random pool too). The
+     * trade-off is that N slots referencing the same source category get N
+     * separate copies of it on the destination rather than one shared copy -
+     * simpler and safe, at the cost of some duplication; deduplicating by
+     * source category is a possible future improvement, not a correctness
+     * requirement.
+     *
+     * Silently creates no slot at all if every pool question turns out to be
+     * something this plugin couldn't recreate (shouldn't normally happen -
+     * the exporter only ever includes qtypes question_handler_registry also
+     * supports) rather than leaving an empty, always-fails random slot behind.
+     *
+     * @param int $quizid
+     * @param \context_module $context The new quiz's own module context.
+     * @param \stdClass $defaultcategory The per-quiz category fixed slots use - this slot's own category is filed under it.
+     * @param array $slot One 'random' entry from quiz_activity_exporter::export_slots().
+     */
+    protected function create_random_slot(
+        int $quizid,
+        \context_module $context,
+        \stdClass $defaultcategory,
+        array $slot
+    ): void {
+        global $DB;
+
+        $poolcategory = $this->create_random_pool_category($context, $defaultcategory, (int) ($slot['slot'] ?? 0));
+        $categoryspec = $poolcategory->id . ',' . $poolcategory->contextid;
+
+        $created = 0;
+        foreach ($slot['questions'] as $entry) {
+            $qtype = (string) ($entry['qtype'] ?? '');
+            $handler = question_handler_registry::get_handler($qtype);
+            if (!$handler || !isset($entry['question'])) {
+                continue;
+            }
+
+            $handler->create($entry['question'], $categoryspec);
+            $created++;
+        }
+
+        if ($created === 0) {
+            $DB->delete_records('question_categories', ['id' => $poolcategory->id]);
+            return;
+        }
+
+        $structure = \mod_quiz\quiz_settings::create($quizid)->get_structure();
+        $structure->add_random_questions((int) ($slot['page'] ?? 1), 1, [
+            'filter' => [
+                'category' => [
+                    'jointype' => \core_question\local\bank\condition::JOINTYPE_DEFAULT,
+                    'values' => [(string) $poolcategory->id],
+                    'filteroptions' => ['includesubcategories' => false],
+                ],
+            ],
+        ]);
+
+        // The slot add_random_questions() just created always has maxmark=1 -
+        // overwrite with the exported value, same reasoning as
+        // apply_review_options() overwriting quiz_process_options()'s own
+        // computed values.
+        $newslot = $DB->get_records('quiz_slots', ['quizid' => $quizid], 'id DESC', 'id', 0, 1);
+        if ($newslot) {
+            $DB->set_field('quiz_slots', 'maxmark', sanitizer::float($slot['maxmark'] ?? 1, 1), [
+                'id' => (int) array_key_first($newslot),
+            ]);
+        }
+    }
+
+    /**
+     * Creates a fresh question category, under the per-quiz default category,
+     * dedicated to one random slot's pool - see create_random_slot()'s
+     * docblock for why each random slot gets its own rather than sharing.
+     * Mirrors the minimal field set question_get_default_category() itself
+     * uses to create a category.
+     *
+     * @param \context_module $context
+     * @param \stdClass $defaultcategory
+     * @param int $slotnumber For the category's own display name only.
+     * @return \stdClass
+     */
+    protected function create_random_pool_category(
+        \context_module $context,
+        \stdClass $defaultcategory,
+        int $slotnumber
+    ): \stdClass {
+        global $DB;
+
+        $category = new \stdClass();
+        $category->name = get_string('randompoolcategoryname', 'block_coursesync', $slotnumber);
+        $category->contextid = $context->id;
+        $category->info = '';
+        $category->infoformat = FORMAT_HTML;
+        $category->stamp = make_unique_id_code();
+        $category->parent = $defaultcategory->id;
+        $category->sortorder = 999;
+        $category->id = $DB->insert_record('question_categories', $category);
+
+        return $category;
     }
 
     /**

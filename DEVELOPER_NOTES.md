@@ -286,14 +286,48 @@ it into the quiz. See `question_exporter.php`/`question_handler.php`'s own
 docblocks for the pattern in detail - it's deliberately the same shape as
 `activity_exporter`/`activity_handler`, just one level further in.
 
-**Which question types are supported.** v1 covers multichoice, true/false,
-short answer, numerical, essay, matching, and description - the types most
-real quizzes actually use. A slot using any other qtype (calculated/
-calculatedsimple/calculatedmulti, multianswer/Cloze, the drag-and-drop
-family - ddwtos/ddmarker/ddimageortext, gapselect, random, ordering,
-randomsamatch, ...) is *detected* (it appears in the quiz's own "not yet
-supported" slots) but not pulled - the same "unsupported type" treatment an
-activity gets, one level down. These weren't skipped for lack of a plan:
+**Random slots ("Add > a random question") are resolved, not skipped.** A
+slot referencing a category rather than one fixed question - the way most
+real quizzes are actually built - has no single question to export, but IS
+still synced: `quiz_activity_exporter::export_random_pool()` runs the exact
+same filter-condition machinery core's own `random_question_loader` uses to
+pick a question at attempt time (`\core_question\local\bank\filter_condition_manager`,
+covering category/subcategories/tags/... - not just a bare category id) to
+find every currently-eligible question, and exports each one with a
+supported qtype. `quiz_activity_handler::create_random_slot()` recreates the
+pool in a category dedicated to that one slot, then adds a genuine random
+`quiz_slots` row via `\mod_quiz\structure::add_random_questions()` - the
+same core API the quiz editing screen's own "Add > a random question" action
+uses - so the destination keeps picking a different question at random each
+attempt, the same as the source. This was Phase 10's original gap: v1
+shipped only resolving *fixed* question references and reporting every
+random slot as unsupported, which meant a quiz built entirely from random
+slots (the common case) synced with no questions at all despite reporting
+success - see `quiz_roundtrip_test.php`'s round-trip test for the scenario
+that caught this. A random slot only falls back to being reported as
+unsupported (the original v1 behaviour) when nothing in its category
+resolves at all: an empty/deleted category, every question in it an
+unsupported qtype, or a filter shape no registered qbank plugin condition
+class recognises.
+
+What this deliberately does NOT preserve: the source's own use-count
+balancing across attempts (a fresh destination pool has no attempt history
+to balance against anyway), and two slots on the same quiz that reference
+the same source category each get their own independent copy of that
+category's pool on the destination rather than sharing one - see
+`create_random_slot()`'s own docblock for why (in short: sharing one
+category between slots risks a fixed slot's own question, or another random
+slot's pool, silently leaking into this slot's pool too).
+
+**Which fixed question types are supported.** v1 covers multichoice,
+true/false, short answer, numerical, essay, matching, and description - the
+types most real quizzes actually use. A fixed slot, or a random slot's pool
+question, using any other qtype (calculated/calculatedsimple/calculatedmulti,
+multianswer/Cloze, the drag-and-drop family - ddwtos/ddmarker/ddimageortext,
+gapselect, ordering, randomsamatch, ...) is *detected* (a fixed slot appears
+in the quiz's own "not yet supported" slots; a pool question of one of these
+types is silently excluded from its slot's pool, the same as an unsupported
+activity type) but not pulled. These weren't skipped for lack of a plan:
 each has its own schema and at least one substantially harder problem than
 the v1 set -
 
@@ -314,9 +348,6 @@ the v1 set -
   ddimageortext specifically, a background image file with its own
   per-drop-zone geometry - more moving pieces than a wrong answer/feedback
   pair, and harder to unit-test the geometry math is even right.
-- **random / randomsamatch**: never resolve to one fixed question at all
-  (see quiz_activity_exporter's docblock for how a random *slot* is
-  reported) - there is no single "the question" to export.
 
 Adding one of these follows the exact same two-file-plus-registry pattern as
 the v1 set (below) - it's the *content* of `export()`/`create()` that's
