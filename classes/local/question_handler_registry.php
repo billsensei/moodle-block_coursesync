@@ -35,6 +35,7 @@ class question_handler_registry {
         'essay' => essay_question_handler::class,
         'match' => match_question_handler::class,
         'description' => description_question_handler::class,
+        'multianswer' => multianswer_question_handler::class,
     ];
 
     /**

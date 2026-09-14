@@ -112,12 +112,15 @@ triggered the run. Runs are stored in `block_coursesync_synclog` - see
   unsupported type would), not a bug to fix later.
 - **Quiz**: unlike every other type, this one pulls real content, not just
   settings - each question is recreated in the destination quiz's own
-  question bank, including any image embedded in its text or feedback. Only
-  **Multiple choice, True/False, Short answer, Numerical, Essay, Matching,
-  and Description** questions are pulled; any other question type in the
-  quiz (Calculated, Cloze, drag-and-drop, a "random from category" slot, ...)
-  is detected but skipped - see `DEVELOPER_NOTES.md`'s "Quiz and its
-  questions" section for the full list and why each was left for later.
+  question bank, including any image embedded in its text or feedback, and
+  both a fixed question in a slot and an "Add > a random question" slot
+  pulled from a question-bank category. **Multiple choice, True/False, Short
+  answer, Numerical, Essay, Matching, Description, and Cloze/multianswer**
+  questions are pulled (a Cloze question's own embedded fragments can be any
+  of these types too - see `DEVELOPER_NOTES.md`); any other question type in
+  the quiz (Calculated, drag-and-drop, ...) is detected but skipped - see
+  `DEVELOPER_NOTES.md`'s "Quiz and its questions" section for the full list
+  and why each was left for later.
   Quiz feedback boundaries and access-restriction sub-plugins (Safe Exam
   Browser, IP restriction lists) aren't synced either - settings-only scope
   cuts, same spirit as Assignment's.

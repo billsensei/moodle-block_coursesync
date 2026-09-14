@@ -23,9 +23,12 @@ namespace block_coursesync\local;
  *
  * v1 (Phase 10) deliberately covers the question types most quizzes actually
  * use, not every qtype Moodle ships: multichoice, true/false, short answer,
- * numerical, essay, matching, and description. A quiz slot using any other
- * qtype (calculated/calculatedsimple/calculatedmulti, multianswer/Cloze,
- * the drag-and-drop family, gapselect, random, ...) is detected by
+ * numerical, essay, matching, description, and multianswer/Cloze (the last
+ * added after v1 shipped - see multianswer_question_exporter's docblock for
+ * why it's able to support any embedded sub-type the destination site has
+ * installed, not just the ones in this list). A quiz slot using any other
+ * qtype (calculated/calculatedsimple/calculatedmulti, the drag-and-drop
+ * family, gapselect, ordering, randomsamatch, ...) is detected by
  * quiz_activity_exporter (it appears in the "not yet supported" list, same
  * as an unsupported activity type) but is not pulled - see
  * DEVELOPER_NOTES.md for what adding one of those involves.
@@ -44,6 +47,7 @@ class question_exporter_registry {
         'essay' => essay_question_exporter::class,
         'match' => match_question_exporter::class,
         'description' => description_question_exporter::class,
+        'multianswer' => multianswer_question_exporter::class,
     ];
 
     /**

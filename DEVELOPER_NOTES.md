@@ -319,11 +319,20 @@ category's pool on the destination rather than sharing one - see
 category between slots risks a fixed slot's own question, or another random
 slot's pool, silently leaking into this slot's pool too).
 
-**Which fixed question types are supported.** v1 covers multichoice,
+**Which fixed question types are supported.** v1 covered multichoice,
 true/false, short answer, numerical, essay, matching, and description - the
-types most real quizzes actually use. A fixed slot, or a random slot's pool
-question, using any other qtype (calculated/calculatedsimple/calculatedmulti,
-multianswer/Cloze, the drag-and-drop family - ddwtos/ddmarker/ddimageortext,
+types most real quizzes actually use directly. **multianswer (Cloze)** was
+added after v1 shipped, once real-world use turned up a quiz built entirely
+from one - see `multianswer_question_exporter`/`multianswer_question_handler`'s
+docblocks for how it works: unlike every other question type, it doesn't
+export a structured settings array at all, it reconstructs the raw Cloze
+source markup and lets `qtype_multianswer`'s own save path parse and create
+every embedded sub-question itself - which means it isn't limited to any
+fixed list of embeddable sub-types the way the rest of this registry is; it
+supports whatever qtype a fragment names, as long as the destination site
+has that qtype installed. A fixed slot, or a random slot's pool question,
+using any other still-unsupported qtype (calculated/calculatedsimple/
+calculatedmulti, the drag-and-drop family - ddwtos/ddmarker/ddimageortext,
 gapselect, ordering, randomsamatch, ...) is *detected* (a fixed slot appears
 in the quiz's own "not yet supported" slots; a pool question of one of these
 types is silently excluded from its slot's pool, the same as an unsupported
@@ -337,12 +346,6 @@ the v1 set -
   `question_dataset_definitions` - a "shared" dataset isn't owned by any one
   question). Exporting one question correctly means deciding what happens
   to a dataset other questions on the source still reference.
-- **multianswer (Cloze)**: the "outer" question's questiontext embeds
-  `{1:SHORTANSWER:...}`-style markup, and each embedded answer is itself a
-  *separate, real row* in `question` (qtype shortanswer/numerical/
-  multichoice under the hood), linked via `question_multianswer.sequence` -
-  exporting one means recursively exporting several, then re-creating them
-  in the right order so the outer question's own save step can re-link them.
 - **the drag-and-drop family and gapselect**: coordinates/drop-zones
   (`qtype_ddmarker_drops`, `qtype_ddimageortext_drops`, ...) and, for
   ddimageortext specifically, a background image file with its own
@@ -352,6 +355,49 @@ the v1 set -
 Adding one of these follows the exact same two-file-plus-registry pattern as
 the v1 set (below) - it's the *content* of `export()`/`create()` that's
 harder here, not the shape.
+
+## multianswer (Cloze), added post-v1
+
+Every other question type in this registry follows the same shape: export a
+flat settings array, hand it to a `$form` object shaped like that qtype's own
+`edit_<qtype>_form.php`, call `save_question()`. multianswer doesn't fit that
+shape because it isn't really one question - `qtype_multianswer::save_question()`
+itself overrides the base implementation to first regex-parse the *raw Cloze
+markup text* (`{1:SHORTANSWER:=Paris#feedback}`-style fragments embedded
+directly in the question text) via `qtype_multianswer_extract_question()`,
+which is what actually builds and creates every embedded sub-question (of
+whatever qtype each fragment names) and writes the `question_multianswer`
+sequence row - before the outer question is even saved.
+
+Once saved, the outer question's own `question.questiontext` no longer holds
+that raw markup - it's rewritten to positional placeholders (`{#1}`, `{#2}`,
+...), and each fragment survives unchanged as the `questiontext` of its own,
+now-independent `question` row (linked back via `question_multianswer.sequence`
+and `question.parent` = the outer question's id, which is also how core hides
+them from ordinary bank listings). So exporting is just: read the outer
+question's own placeholder text (as `quiz_activity_exporter`/the random-pool
+resolver already hand every `question_exporter`), read
+`question_multianswer.sequence`, and read each sub-question's own
+`questiontext` - three plain field reads, no recursion into other exporters
+needed. Recreating is the mirror image: `reconstruct_source_text()` replaces
+each `{#N}` placeholder with that position's fragment text, reproducing the
+exact original raw source, then that's handed to `qtype_multianswer`'s own
+`save_question()` override completely normally - which does 100% of the
+actual work (parsing, creating every sub-question via
+`question_bank::get_qtype($fragmentqtype)->save_question(...)`, writing the
+sequence row) via real core code, not anything this plugin re-implements.
+This is why multianswer support isn't limited to this registry's own list of
+embeddable sub-types: parsing dispatches through core's *own* qtype registry,
+so any qtype the destination site has installed can appear inside a Cloze
+fragment and still work.
+
+Known gap: an image embedded directly in the *outer* question text (outside
+any `{N:TYPE:...}` fragment) isn't pulled - the raw-source save path this
+qtype uses has no file-import mechanism for that field even for a teacher
+typing it by hand (the raw-markup textarea in `edit_multianswer_form.php`
+has no image button either), so this is a real limitation of the format
+itself, not a shortcut taken here. A fragment's own text has no file
+mechanism in any qtype or editing path - that's not a gap at all.
 
 **Adding a new question type**, following `multichoice_question_exporter`/
 `multichoice_question_handler`'s worked example:

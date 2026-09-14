@@ -33,6 +33,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
  */
 #[CoversClass(quiz_activity_exporter::class)]
 #[CoversClass(quiz_activity_handler::class)]
+#[CoversClass(multianswer_question_exporter::class)]
+#[CoversClass(multianswer_question_handler::class)]
 final class quiz_roundtrip_test extends \advanced_testcase {
     public function setUp(): void {
         parent::setUp();
@@ -184,5 +186,104 @@ final class quiz_roundtrip_test extends \advanced_testcase {
             [$poolcategoryid]
         );
         $this->assertSame(2, $poolquestioncount, 'Both pool questions must have been recreated on the destination.');
+    }
+
+    /**
+     * The actual real-world bug report this test exists to pin down: a quiz
+     * whose only slot is a FIXED reference to a multianswer (Cloze) question
+     * synced with the quiz shell created but zero questions in it, because
+     * multianswer wasn't a registered qtype at all until now. Builds the
+     * source question the same way a teacher's own save would (raw Cloze
+     * markup through qtype_multianswer's real save path, not a synthetic
+     * payload), with a mix of shortanswer and multichoice fragments.
+     */
+    public function test_a_multianswer_slot_survives_the_round_trip(): void {
+        global $DB, $CFG;
+
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+        require_once($CFG->dirroot . '/question/type/multianswer/questiontype.php');
+
+        $sourcecourse = $this->getDataGenerator()->create_course();
+        $sourcequiz = $this->getDataGenerator()->create_module('quiz', [
+            'course' => $sourcecourse->id,
+            'name' => 'Quiz with a Cloze question',
+        ]);
+
+        $coursecontext = \context_course::instance($sourcecourse->id);
+        /** @var \core_question_generator $questiongenerator */
+        $questiongenerator = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $category = $questiongenerator->create_question_category(['contextid' => $coursecontext->id]);
+
+        // Built via qtype_multianswer's own real save path, from raw Cloze
+        // source text - exactly what saving this question through the
+        // question bank editor would have produced, not a shape this
+        // plugin invented for testing.
+        $mcquestion = new \stdClass();
+        $mcquestion->qtype = 'multianswer';
+        $mcform = new \stdClass();
+        $mcform->category = $category->id . ',' . $category->contextid;
+        $mcform->name = 'Source Cloze';
+        $mcform->questiontext = [
+            'text' => '<p>The capital of France is {1:SHORTANSWER:=Paris}. ' .
+                'Pick the odd number: {1:MULTICHOICE:=Three#Right~Four#Wrong}.</p>',
+            'format' => FORMAT_HTML,
+            'itemid' => 0,
+        ];
+        $mcform->generalfeedback = ['text' => '', 'format' => FORMAT_HTML, 'itemid' => 0];
+        $mcform->penalty = 1;
+        $saved = \question_bank::get_qtype('multianswer')->save_question($mcquestion, $mcform);
+
+        $quizforadd = $DB->get_record('quiz', ['id' => $sourcequiz->id], '*', MUST_EXIST);
+        quiz_add_quiz_question((int) $saved->id, $quizforadd);
+
+        $sourcecm = get_fast_modinfo($sourcecourse)->get_cm($sourcequiz->cmid);
+
+        $exporter = new quiz_activity_exporter();
+        $payload = $exporter->export($sourcecm);
+
+        $this->assertCount(1, $payload['slots']);
+        $this->assertTrue($payload['slots'][0]['supported'], 'A multianswer slot must now be reported as supported.');
+        $this->assertSame('multianswer', $payload['slots'][0]['qtype']);
+
+        // Full production path: JSON encode/decode, same as the real web
+        // service transport.
+        $decoded = json_decode(json_encode($payload), true);
+
+        $destinationcourse = $this->getDataGenerator()->create_course();
+        $handler = new quiz_activity_handler();
+        $cmid = $handler->create_from_remote_data((int) $destinationcourse->id, 0, $decoded, 'coursesync-303');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $destinationslots = $DB->get_records('quiz_slots', ['quizid' => $cm->instance]);
+        $this->assertCount(1, $destinationslots, 'The quiz must not be left with zero questions.');
+        $destinationslot = reset($destinationslots);
+
+        $reference = $DB->get_record('question_references', [
+            'component' => 'mod_quiz', 'questionarea' => 'slot', 'itemid' => $destinationslot->id,
+        ], '*', MUST_EXIST);
+        $version = $DB->get_record(
+            'question_versions',
+            ['questionbankentryid' => $reference->questionbankentryid],
+            '*',
+            MUST_EXIST
+        );
+        $destinationquestion = $DB->get_record('question', ['id' => $version->questionid], '*', MUST_EXIST);
+        $this->assertSame('multianswer', $destinationquestion->qtype);
+
+        $sequence = $DB->get_field(
+            'question_multianswer',
+            'sequence',
+            ['question' => $destinationquestion->id],
+            MUST_EXIST
+        );
+        $subids = explode(',', $sequence);
+        $this->assertCount(2, $subids, 'Both embedded fragments (shortanswer and multichoice) must be recreated.');
+
+        $subtypes = [];
+        foreach ($subids as $subid) {
+            $subtypes[] = $DB->get_field('question', 'qtype', ['id' => $subid], MUST_EXIST);
+        }
+        sort($subtypes);
+        $this->assertSame(['multichoice', 'shortanswer'], $subtypes);
     }
 }

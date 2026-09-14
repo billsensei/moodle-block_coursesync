@@ -39,6 +39,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(essay_question_handler::class)]
 #[CoversClass(match_question_handler::class)]
 #[CoversClass(description_question_handler::class)]
+#[CoversClass(multianswer_question_handler::class)]
 final class question_handlers_test extends \advanced_testcase {
     public function setUp(): void {
         parent::setUp();
@@ -296,5 +297,61 @@ final class question_handlers_test extends \advanced_testcase {
         $this->assertSame('description', $question->qtype);
         $this->assertEquals(0, $question->defaultmark);
         $this->assertStringContainsString('Read this first.', $question->questiontext);
+    }
+
+    /**
+     * Unlike every other handler, this one doesn't build a $form matching
+     * the qtype's own settings - it reconstructs the raw Cloze source text
+     * and lets qtype_multianswer's own save path parse and create every
+     * embedded sub-question itself (see the handler's docblock). This test
+     * uses two different embedded qtypes (shortanswer and numerical) in one
+     * question - not just the shortanswer case this plugin's real reported
+     * bug involved - to confirm the reconstruction and core's own dispatch
+     * both handle a mixed pool correctly, not just the single-qtype case.
+     */
+    public function test_multianswer_handler_creates_every_embedded_subquestion(): void {
+        global $DB;
+
+        $payload = [
+            'name' => 'Remote Cloze <script>alert(1)</script>',
+            'questiontext' => '<p>The capital of France is {#1}. 2 + 2 = {#2}.</p>',
+            'fragments' => [
+                '{1:SHORTANSWER:=Paris#Correct!}',
+                '{1:NUMERICAL:=4:0}',
+            ],
+            'generalfeedback' => '', 'generalfeedbackformat' => FORMAT_HTML, 'generalfeedbackfiles' => [],
+            'penalty' => 1,
+        ];
+
+        $handler = new multianswer_question_handler();
+        $questionid = $handler->create($payload, $this->categoryspec());
+
+        $question = $DB->get_record('question', ['id' => $questionid], '*', MUST_EXIST);
+        $this->assertSame('multianswer', $question->qtype);
+        $this->assertStringNotContainsString('<script>', $question->name);
+        $this->assertStringContainsString('{#1}', $question->questiontext);
+        $this->assertStringContainsString('{#2}', $question->questiontext);
+        // The outer defaultmark is computed by core itself from the sum of
+        // the sub-questions actually created, not something this handler
+        // sets - confirms both sub-questions really were created, not just
+        // the outer shell.
+        $this->assertEquals(2, $question->defaultmark);
+
+        $sequence = $DB->get_field('question_multianswer', 'sequence', ['question' => $questionid], MUST_EXIST);
+        $subids = explode(',', $sequence);
+        $this->assertCount(2, $subids);
+
+        $sub1 = $DB->get_record('question', ['id' => $subids[0]], '*', MUST_EXIST);
+        $this->assertSame('shortanswer', $sub1->qtype);
+        $this->assertEquals($questionid, $sub1->parent);
+        $answer1 = $DB->get_record('question_answers', ['question' => $sub1->id], '*', MUST_EXIST);
+        $this->assertSame('Paris', $answer1->answer);
+        $this->assertSame('Correct!', $answer1->feedback);
+
+        $sub2 = $DB->get_record('question', ['id' => $subids[1]], '*', MUST_EXIST);
+        $this->assertSame('numerical', $sub2->qtype);
+        $this->assertEquals($questionid, $sub2->parent);
+        $answer2 = $DB->get_record('question_answers', ['question' => $sub2->id], '*', MUST_EXIST);
+        $this->assertEquals(4, (float) $answer2->answer);
     }
 }
