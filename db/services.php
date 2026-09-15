@@ -29,7 +29,7 @@
  *    content payload for one activity - only for types this plugin has an
  *    activity_exporter for (see classes/local/activity_exporter_registry.php;
  *    Page, URL, Label, Resource, and Forum as of Phase 5, Assignment
- *    and H5P as of Phase 9, and Quiz as of Phase 10).
+ *    and H5P as of Phase 9, Quiz as of Phase 10, and Glossary added after).
  *
  * Pre-registering the "Course Sync" service here (rather than asking the
  * remote admin to hand-build one in the web services UI) means the setup

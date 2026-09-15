@@ -39,6 +39,7 @@ class activity_handler_registry {
         'assign' => assign_activity_handler::class,
         'h5pactivity' => h5pactivity_activity_handler::class,
         'quiz' => quiz_activity_handler::class,
+        'glossary' => glossary_activity_handler::class,
     ];
 
     /**

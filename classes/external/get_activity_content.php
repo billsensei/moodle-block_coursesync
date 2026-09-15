@@ -29,7 +29,8 @@ use core_external\external_value;
  * Returns the full settings/content payload needed to recreate one course
  * module locally - for whichever activity types this plugin currently
  * supports (see activity_exporter_registry; Page, URL, Label, Resource, and
- * Forum as of Phase 5, Assignment and H5P as of Phase 9, and Quiz as of Phase 10).
+ * Forum as of Phase 5, Assignment and H5P as of Phase 9, Quiz as of Phase 10,
+ * and Glossary added after).
  *
  * The type-specific payload travels as a JSON string (contentjson) rather
  * than a fixed external_single_structure, because each activity type's

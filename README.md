@@ -42,7 +42,9 @@ source site.
 Page, URL, Label, File (Resource), Forum (settings only — no discussions or
 posts, and the built-in "Announcements" forum is never pulled), Assignment
 (settings only — submissions, grades, and feedback never leave the source
-site), H5P (including its content package), and Quiz (including its
+site), H5P (including its content package), Glossary (including its
+approved entries, attachments, aliases, and categories — an entry still
+awaiting moderation on the source isn't pulled), and Quiz (including its
 questions — both fixed questions and "Add > a random question" slots pulled
 from a question-bank category — Multiple choice, True/False, Short answer,
 Numerical, Essay, Matching, Description, and Cloze/multianswer; other

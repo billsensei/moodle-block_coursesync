@@ -39,6 +39,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(forum_activity_handler::class)]
 #[CoversClass(assign_activity_handler::class)]
 #[CoversClass(h5pactivity_activity_handler::class)]
+#[CoversClass(glossary_activity_handler::class)]
 final class activity_handlers_test extends \advanced_testcase {
     public function setUp(): void {
         parent::setUp();
@@ -435,5 +436,155 @@ final class activity_handlers_test extends \advanced_testcase {
         $context = \context_module::instance($cmid);
         $files = $fs->get_area_files($context->id, 'mod_h5pactivity', 'package', 0, 'sortorder', false);
         $this->assertCount(0, $files);
+    }
+
+    /**
+     * A glossary with a category and two entries - one referencing that
+     * category and carrying an attachment file, one with no category - must
+     * recreate the glossary, the category, both entries (attributed to the
+     * user running the sync - see the handler's docblock), the category
+     * link, and the file. XSS check applies to concept/definition same as
+     * every other handler's remote-sourced text fields.
+     */
+    public function test_glossary_handler_creates_entries_categories_and_a_file(): void {
+        global $DB;
+
+        // Core's glossary_edit_entry() attributes each entry to $USER and
+        // checks $USER's own mod/glossary:approve capability - needs a real logged
+        // in user, same reasoning as the h5pactivity package test above.
+        $this->setAdminUser();
+
+        $course = $this->course();
+        $filecontent = 'fake attachment bytes';
+        $payload = [
+            'name' => 'Remote glossary <script>alert(1)</script>',
+            'intro' => '<p>Key terms.</p>',
+            'introformat' => FORMAT_HTML,
+            'displayformat' => 'dictionary',
+            'entbypage' => 15,
+            'defaultapproval' => 1,
+            'approvaldisplayformat' => 'default',
+            'categories' => [
+                ['name' => 'Animals', 'usedynalink' => 1],
+            ],
+            'entries' => [
+                [
+                    'concept' => 'Cat <script>alert(2)</script>',
+                    'definition' => '<p>A small domesticated feline.</p>',
+                    'definitionformat' => FORMAT_HTML,
+                    'definitionfiles' => [],
+                    'attachments' => [
+                        ['filename' => 'cat.txt', 'contentbase64' => base64_encode($filecontent)],
+                    ],
+                    'usedynalink' => 1,
+                    'casesensitive' => 0,
+                    'fullmatch' => 1,
+                    'aliases' => ['Kitty', 'Feline'],
+                    'categoryindexes' => [0],
+                ],
+                [
+                    'concept' => 'Dog',
+                    'definition' => '<p>A domesticated canine.</p>',
+                    'definitionformat' => FORMAT_HTML,
+                    'definitionfiles' => [],
+                    'attachments' => [],
+                    'usedynalink' => 1,
+                    'casesensitive' => 0,
+                    'fullmatch' => 1,
+                    'aliases' => [],
+                    'categoryindexes' => [],
+                ],
+            ],
+        ];
+
+        $handler = new glossary_activity_handler();
+        $cmid = $handler->create_from_remote_data($course->id, 0, $payload, 'coursesync-121');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $this->assertSame('coursesync-121', $cm->idnumber);
+        $this->assertGreaterThan(0, $cm->instance);
+
+        $glossary = $DB->get_record('glossary', ['id' => $cm->instance], '*', MUST_EXIST);
+        $this->assertStringNotContainsString('<script>', $glossary->name);
+        $this->assertSame('dictionary', $glossary->displayformat);
+        $this->assertEquals(15, $glossary->entbypage);
+
+        $category = $DB->get_record('glossary_categories', ['glossaryid' => $glossary->id], '*', MUST_EXIST);
+        $this->assertSame('Animals', $category->name);
+
+        $entries = $DB->get_records('glossary_entries', ['glossaryid' => $glossary->id], 'concept ASC');
+        $this->assertCount(2, $entries);
+        [$cat, $dog] = array_values($entries);
+
+        $this->assertStringContainsString('Cat', $cat->concept);
+        $this->assertStringNotContainsString('<script>', $cat->concept);
+        $this->assertStringContainsString('domesticated feline', $cat->definition);
+        // Attributed to the user running the sync, and auto-approved (admin
+        // has mod/glossary:approve) - see the handler's docblock.
+        global $USER;
+        $this->assertEquals($USER->id, $cat->userid);
+        $this->assertEquals(1, $cat->approved);
+
+        $this->assertSame('Dog', $dog->concept);
+
+        $link = $DB->get_record('glossary_entries_categories', ['entryid' => $cat->id], '*', MUST_EXIST);
+        $this->assertEquals($category->id, $link->categoryid);
+        $this->assertCount(0, $DB->get_records('glossary_entries_categories', ['entryid' => $dog->id]));
+
+        $aliases = $DB->get_records('glossary_alias', ['entryid' => $cat->id], 'id ASC');
+        $this->assertEqualsCanonicalizing(['Kitty', 'Feline'], array_map(fn($a) => $a->alias, $aliases));
+
+        $fs = get_file_storage();
+        $context = \context_module::instance($cmid);
+        $files = $fs->get_area_files($context->id, 'mod_glossary', 'attachment', $cat->id, 'sortorder', false);
+        $this->assertCount(1, $files);
+        $file = reset($files);
+        $this->assertSame('cat.txt', $file->get_filename());
+        $this->assertSame($filecontent, $file->get_content());
+    }
+
+    /**
+     * A glossary with no entries must still create a (content-less)
+     * destination activity, not fail the whole sync - same "empty is fine"
+     * principle as quiz's own "no supported slots" case.
+     */
+    public function test_glossary_handler_handles_no_entries(): void {
+        global $DB;
+
+        $course = $this->course();
+        $payload = ['name' => 'Empty glossary', 'intro' => '', 'categories' => [], 'entries' => []];
+
+        $handler = new glossary_activity_handler();
+        $cmid = $handler->create_from_remote_data($course->id, 0, $payload, 'coursesync-122');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $this->assertGreaterThan(0, $cm->instance);
+        $this->assertCount(0, $DB->get_records('glossary_entries', ['glossaryid' => $cm->instance]));
+    }
+
+    /**
+     * An unrecognised displayformat/approvaldisplayformat (the destination
+     * site doesn't have that format plugin installed) must fall back to a
+     * safe known value rather than reaching glossary_add_instance(), which
+     * throws on an unknown format - see the handler's docblock.
+     */
+    public function test_glossary_handler_falls_back_for_an_unknown_displayformat(): void {
+        global $DB;
+
+        $course = $this->course();
+        $payload = [
+            'name' => 'Odd glossary', 'intro' => '',
+            'displayformat' => 'not-a-real-format',
+            'approvaldisplayformat' => 'not-a-real-format-either',
+            'categories' => [], 'entries' => [],
+        ];
+
+        $handler = new glossary_activity_handler();
+        $cmid = $handler->create_from_remote_data($course->id, 0, $payload, 'coursesync-123');
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+        $glossary = $DB->get_record('glossary', ['id' => $cm->instance], '*', MUST_EXIST);
+        $this->assertSame('dictionary', $glossary->displayformat);
+        $this->assertSame('default', $glossary->approvaldisplayformat);
     }
 }

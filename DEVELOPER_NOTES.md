@@ -102,7 +102,8 @@ classes/local/
   <modname>_activity_handler.php   One pair per supported type: page, url,
   <modname>_activity_exporter.php  label, resource, forum (Phase 5); assign,
                                     h5pactivity (Phase 9); quiz (Phase 10 -
-                                    see "Quiz and its questions" below).
+                                    see "Quiz and its questions" below);
+                                    glossary (added after).
   activity_lookup.php              Change detection (Phase 3): activities
                                     modified after a given time, per course.
   question_handler.php             The same activity_exporter/
@@ -156,7 +157,12 @@ followed: page/url/label/resource/forum (Phase 5), assign/h5pactivity
 sub-plugin config (`assign`) and one with file content (`h5pactivity`)), then
 quiz (Phase 10 - see "Quiz and its questions" below; it's the odd one out,
 since its own payload embeds a second, separate exporter/handler/registry
-pattern for questions). To add support for activity type `<modname>`:
+pattern for questions), then glossary (added after - see those classes for a
+worked example of a type whose real content is a *list* of child records
+(entries), each with its own files, plus a second, flatter list (categories)
+entries reference by position - not a sub-plugin and not one embedded
+payload like quiz's questions, a third shape this extension point supports).
+To add support for activity type `<modname>`:
 
 ### 1. Write the exporter (source side)
 
@@ -468,13 +474,19 @@ most common submission sub-plugins" scope.
 ## Testing (Phase 8, extended Phase 9-10)
 
 - **PHPUnit** (`tests/`): change detection (`activity_lookup_test.php`),
-  all eight non-quiz handlers (`activity_handlers_test.php`), quiz itself and
-  every v1 question type (`quiz_activity_test.php`, `question_handlers_test.php`),
-  conflict-flagging, same-name-and-type exclusion, and lastsync advancement
-  (`sync_conflict_test.php`, against `tests/fixtures/stub_remote_client.php`
-  - a `remote_client` subclass returning canned data instead of a real HTTP
-  call), the token encryption round-trip (`token_encryption_test.php`), and
-  `history_renderer_test.php`.
+  every non-quiz handler including glossary's entries/categories/files
+  (`activity_handlers_test.php`), a real glossary's full round trip through
+  JSON (`glossary_roundtrip_test.php`), quiz itself and every v1 question
+  type (`quiz_activity_test.php`, `question_handlers_test.php`), the
+  fixed-question and random-slot-pool round trips including multianswer/Cloze
+  (`quiz_roundtrip_test.php`), conflict-flagging, same-name-and-type
+  exclusion, and lastsync advancement (`sync_conflict_test.php`, against
+  `tests/fixtures/stub_remote_client.php` - a `remote_client` subclass
+  returning canned data instead of a real HTTP call), the source-side
+  enrolment/capability enforcement every web service depends on
+  (`course_lookup_test.php`), the token encryption round-trip
+  (`token_encryption_test.php`), the privacy provider
+  (`tests/privacy/provider_test.php`), and `history_renderer_test.php`.
 - **Behat** (`tests/behat/sync_activities.feature`): one scenario driving
   the full teacher-facing flow end to end. A single Behat run only ever
   drives one site, so this points the block at the **same** site running

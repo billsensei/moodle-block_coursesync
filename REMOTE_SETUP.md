@@ -18,8 +18,9 @@ automatically once this plugin is installed on the source site:
   settings/content payload needed to recreate one activity, for activity
   types this plugin has an exporter for: **Page, URL, Label, Resource, and
   Forum** (settings only) as of Phase 5, **Assignment** (settings only)
-  and **H5P** as of Phase 9, and **Quiz** (including its questions) as of
-  Phase 10. For Resource and H5P, this includes the underlying file(s),
+  and **H5P** as of Phase 9, **Quiz** (including its questions) as of
+  Phase 10, and **Glossary** (including its approved entries) added after.
+  For Resource, H5P, and Glossary, this includes the underlying file(s),
   base64-encoded in the same payload; for Quiz, so does any image embedded
   in a question's text or feedback.
 
@@ -60,10 +61,10 @@ Clicking **Sync now**:
 1. Lists activities modified since `lastsync` (never, the first time).
 2. Of those, pulls full content for the ones whose type is currently
    supported - **Page, URL, Label, File (Resource), Forum** (settings only),
-   **Assignment** (settings only), **H5P**, and **Quiz** (including its
-   questions, for the question types listed below) - see
-   `classes/local/activity_handler_registry.php`. Other types are still
-   detected and listed in the preview, but are not pulled.
+   **Assignment** (settings only), **H5P**, **Glossary** (its approved
+   entries), and **Quiz** (including its questions, for the question types
+   listed below) - see `classes/local/activity_handler_registry.php`. Other
+   types are still detected and listed in the preview, but are not pulled.
 3. For each one, first checks whether this course already has an activity
    with the idnumber the pulled item would get. If so, it is **flagged as a
    conflict and left alone** - never overwritten or duplicated, whether the
@@ -110,6 +111,14 @@ triggered the run. Runs are stored in `block_coursesync_synclog` - see
   the destination with two. This is treated as a permanent, structural
   carve-out (the sync keeps reporting it as unable to handle, same as an
   unsupported type would), not a bug to fix later.
+- **Glossary**: like Quiz, this pulls real content, not just settings -
+  every **approved** entry (concept, definition, embedded images,
+  attachments, aliases, and category membership). An entry still awaiting
+  moderation on the source is a draft, not published content, so it isn't
+  pulled - it appears on the destination once it's approved on the source
+  and synced again. Ratings/comments on entries are never synced, and the
+  "make available to all courses" (global glossary) flag never carries over
+  to the destination copy - see `DEVELOPER_NOTES.md`.
 - **Quiz**: unlike every other type, this one pulls real content, not just
   settings - each question is recreated in the destination quiz's own
   question bank, including any image embedded in its text or feedback, and
