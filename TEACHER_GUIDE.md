@@ -120,9 +120,11 @@ collapsed - click on one to expand it.
 As of this version: **Page, URL, Label, File (Resource), Forum** (settings
 only - not its discussions or posts), **Assignment** (settings only - no
 student submissions, grades, or feedback ever leave the source site),
-**H5P** (including its content package), and **Quiz** (including its
-questions - see below). Other types are detected and shown in the preview
-so you know they exist, but aren't pulled yet.
+**H5P** (including its content package), **Quiz** (including its
+questions - see below), and **Wiki** (including its pages and any
+image/audio/video/other file used in them - see below). Other types are
+detected and shown in the preview so you know they exist, but aren't
+pulled yet.
 
 One exception: a course's built-in **"Announcements" forum** is never
 pulled, even though it's a forum - every course already has its own, so
@@ -146,6 +148,19 @@ A quiz's own **feedback messages for a grade range**, and any
 **access restrictions** beyond a plain password (Safe Exam Browser, an
 allowed IP range, ...), are not carried over - set those up again on the
 destination if you need them.
+
+## Syncing a wiki
+
+Every page currently in the wiki comes across with its latest content, along
+with any image, audio, video, or other file used in it - only each page's
+**current** content is pulled, not its edit history.
+
+If the wiki uses **groups**, each group's own pages come across into a
+same-named group on the destination course (created automatically if it
+doesn't already exist there). If the wiki is set to **individual** mode,
+the wiki itself and its settings are still created, but nobody's personal
+pages are pulled - the same way a synced assignment never brings across
+student submissions.
 
 ## Good to know
 

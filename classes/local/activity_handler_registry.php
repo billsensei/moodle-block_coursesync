@@ -40,6 +40,7 @@ class activity_handler_registry {
         'h5pactivity' => h5pactivity_activity_handler::class,
         'quiz' => quiz_activity_handler::class,
         'glossary' => glossary_activity_handler::class,
+        'wiki' => wiki_activity_handler::class,
     ];
 
     /**

@@ -1,7 +1,7 @@
 # Course Sync: developer notes
 
 Architecture summary and extension guide for anyone maintaining or building
-on block_coursesync (v0.10, Phase 10). This complements the docblocks
+on block_coursesync (v0.11, Phase 11). This complements the docblocks
 in the code itself, which is where the authoritative, up-to-date detail
 lives - this file is a map, not a duplicate.
 
@@ -103,7 +103,8 @@ classes/local/
   <modname>_activity_exporter.php  label, resource, forum (Phase 5); assign,
                                     h5pactivity (Phase 9); quiz (Phase 10 -
                                     see "Quiz and its questions" below);
-                                    glossary (added after).
+                                    glossary (added after); wiki (Phase 11 -
+                                    see "Wiki and its subwikis" below).
   activity_lookup.php              Change detection (Phase 3): activities
                                     modified after a given time, per course.
   question_handler.php             The same activity_exporter/
@@ -471,12 +472,82 @@ on the `quiz` row (Safe Exam Browser, IP restriction lists, ...) aren't
 either. Both are settings-only cuts, same spirit as assign's "only the two
 most common submission sub-plugins" scope.
 
-## Testing (Phase 8, extended Phase 9-10)
+## Wiki and its subwikis (Phase 11)
+
+Wiki is the activity type whose content isn't one flat list of child
+records (glossary's entries) or one embedded payload (quiz's questions),
+but a list of GROUPS of child records: a `wiki` row owns one or more
+`wiki_subwikis` rows, and each subwiki owns its own `wiki_pages`, whose
+actual text lives in `wiki_versions` (only the latest version of each page
+is synced - see `wiki_activity_exporter`'s docblock).
+
+**Which subwikis travel.** A subwiki's `userid` column is 0 for the
+course-wide subwiki (plain collaborative mode) and for a group's own
+subwiki (collaborative or individual mode WITH separate/visible groups),
+and is a real user id for an INDIVIDUAL student's own personal subwiki
+(individual mode, with or without groups). Only `userid = 0` subwikis are
+exported - a student's own individual wiki pages are personal content,
+never pulled, the same cut already made for assignment submissions and
+forum posts. A source wiki in 'individual' mode therefore still syncs its
+own settings (`wikimode` included, unchanged) but zero pages - not a
+failure, the same as an empty glossary syncing with zero entries.
+
+**Files are per-SUBWIKI, not per-page.** Every other file-carrying exporter
+in this plugin (resource, h5pactivity, glossary, question attachments) owns
+its files by the record they belong to. A wiki page doesn't: its own markup
+references an attached image/audio/video/other file by plain FILENAME
+(Creole's `{{picture.png}}`, or a bare relative path in HTML format), which
+mod/wiki/locallib.php's `wiki_parser_real_path()` resolves at render time
+against the WHOLE SUBWIKI's shared `mod_wiki`/`attachments` file area
+(itemid = the subwiki's own id - see mod/wiki/lib.php's `wiki_pluginfile()`).
+So `wiki_activity_exporter` exports `files` once per subwiki rather than
+once per page, and `wiki_activity_handler::store_files()` writes them
+straight into the new subwiki's own attachments area (itemid = the new
+subwiki id) BEFORE any page is created. Because both sides key this file
+area by plain filename, no URL/reference rewriting is needed in a page's
+content at all - unlike every other exporter/handler pair in this plugin,
+which has to round-trip embedded files through a draft area and
+`@@PLUGINFILE@@` itemid substitution.
+
+**Group subwikis are matched to a destination group by NAME**
+(`wiki_activity_handler::resolve_group()`): an existing same-named group on
+the destination course is reused, otherwise one is created. This plugin has
+no cross-site group id mapping anywhere else, so name is the simplest
+unambiguous key available - there's no group `idnumber` convention set up
+across sites the way activity `idnumber`s are for conflict detection.
+
+**Content is always sanitized as HTML, regardless of the page's own
+markup format** (`html`, `creole`, or `nwiki`). `mod/wiki/parser/markups/html.php`
+proves 'html'-format pages reach rendered output with no cleaning of their
+own; `creole.php` happens to `htmlspecialchars()` its input first, but
+`nwiki.php` has no equivalent visible in its own source, and this plugin
+has no reliable long-term guarantee that stays true. Rather than branch
+sanitization on a format whose own escaping behaviour isn't uniformly
+provable, every page's content goes through `sanitizer::html()`
+unconditionally - see `wiki_activity_handler::create_subwikis()`'s
+docblock. The accepted tradeoff, same spirit as `sanitizer.php`'s own
+docblock: occasional over-cleaning of literal `<`/`>` characters in a
+non-HTML-format page, in exchange for never trusting a remote site's raw
+bytes into a rendering path this plugin can't fully verify is safe
+unescaped.
+
+**Not synced**: page version history (current content only - see exporter's
+docblock), page comments (mod_wiki's own comments.php feature - same
+user-generated-content cut as forum posts), page locks (transient editing
+state), and `wiki_synonyms` (title aliases - no supported creation path
+outside the wiki's own UI). `wiki_links` (the "page X links to page Y"
+index) isn't exported either - it's rebuilt automatically as a side effect
+of `wiki_save_page()` when each page is recreated, so there's nothing to
+carry over.
+
+## Testing (Phase 8, extended Phase 9-11)
 
 - **PHPUnit** (`tests/`): change detection (`activity_lookup_test.php`),
-  every non-quiz handler including glossary's entries/categories/files
+  every non-quiz, non-wiki handler including glossary's entries/categories/files
   (`activity_handlers_test.php`), a real glossary's full round trip through
-  JSON (`glossary_roundtrip_test.php`), quiz itself and every v1 question
+  JSON (`glossary_roundtrip_test.php`), a real wiki's course-wide and group
+  subwikis, pages, and attached files through the same JSON round trip
+  (`wiki_roundtrip_test.php`), quiz itself and every v1 question
   type (`quiz_activity_test.php`, `question_handlers_test.php`), the
   fixed-question and random-slot-pool round trips including multianswer/Cloze
   (`quiz_roundtrip_test.php`), conflict-flagging, same-name-and-type
@@ -526,7 +597,7 @@ most common submission sub-plugins" scope.
 ## What v1 deliberately doesn't do
 
 See `REMOTE_SETUP.md`'s "What this plugin does *not* do" section - still
-accurate as of Phase 10. In short: no automated remote-site configuration,
+accurate as of Phase 11. In short: no automated remote-site configuration,
 only the registered activity types are pulled (others are detected
 but skipped, not treated as failures), and a flagged conflict has no
 in-block resolution UI - a teacher resolves it manually and syncs again.
@@ -535,4 +606,7 @@ feedback never leave the source site, only the assignment's own
 configuration (see `assign_activity_exporter`'s docblock). Quiz sync pulls
 questions themselves (not just the quiz's own settings), but only for the
 question types listed in "Quiz and its questions" above - see that section
-for exactly what's cut and why.
+for exactly what's cut and why. Wiki sync pulls every course-wide/group
+page and its embedded files, but never an individual student's own
+personal wiki pages, and never page revision history - see "Wiki and its
+subwikis" above.

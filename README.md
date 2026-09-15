@@ -15,7 +15,7 @@ source site.
 
 **This was created with the help of Claude Code! Also, this is a project that is in the early stages and this is unstable code that should only be used in a sandbox environment. Use at your own risk!**
 
-> **Status:** v0.10.0 (Phase 10), maturity `BETA`. Requires Moodle **5.2**
+> **Status:** v0.11.0 (Phase 11), maturity `BETA`. Requires Moodle **5.2**
 > (`2026042000`) or later.
 
 ## What it does
@@ -44,11 +44,16 @@ posts, and the built-in "Announcements" forum is never pulled), Assignment
 (settings only — submissions, grades, and feedback never leave the source
 site), H5P (including its content package), Glossary (including its
 approved entries, attachments, aliases, and categories — an entry still
-awaiting moderation on the source isn't pulled), and Quiz (including its
+awaiting moderation on the source isn't pulled), Quiz (including its
 questions — both fixed questions and "Add > a random question" slots pulled
 from a question-bank category — Multiple choice, True/False, Short answer,
 Numerical, Essay, Matching, Description, and Cloze/multianswer; other
 question types are detected but not yet pulled — see
+[DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)), and Wiki (every page's current
+content — no revision history — from the course-wide wiki and any group
+wikis, including every image/audio/video/other file attached to those
+pages; an individual student's own personal wiki pages are never pulled,
+the same submissions-stay-on-the-source cut as Assignment — see
 [DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)).
 
 ## How it works, briefly

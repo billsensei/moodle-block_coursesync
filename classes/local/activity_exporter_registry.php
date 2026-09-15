@@ -36,6 +36,7 @@ class activity_exporter_registry {
         'h5pactivity' => h5pactivity_activity_exporter::class,
         'quiz' => quiz_activity_exporter::class,
         'glossary' => glossary_activity_exporter::class,
+        'wiki' => wiki_activity_exporter::class,
     ];
 
     /**
