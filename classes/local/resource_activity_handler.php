@@ -116,12 +116,15 @@ class resource_activity_handler implements activity_handler {
 
         foreach ($files as $filedata) {
             $content = base64_decode($filedata['contentbase64'] ?? '', true);
-            if ($content === false) {
-                // Malformed payload for this one file - skip it rather than
-                // fail the whole activity. This surfaces to the teacher as a
-                // "successfully created" activity missing a file, since a
-                // single bad file among several isn't a whole-activity
-                // failure - see sync_history for what does get recorded.
+            if ($content === false || strlen($content) > sanitizer::MAX_EMBEDDED_FILE_BYTES) {
+                // Malformed, or implausibly large for something written
+                // straight from a remote response with no upload-time
+                // maxbytes check (see sanitizer::MAX_EMBEDDED_FILE_BYTES) -
+                // skip it rather than fail the whole activity. This surfaces
+                // to the teacher as a "successfully created" activity
+                // missing a file, since a single bad file among several
+                // isn't a whole-activity failure - see sync_history for what
+                // does get recorded.
                 continue;
             }
 

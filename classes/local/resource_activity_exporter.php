@@ -44,7 +44,7 @@ class resource_activity_exporter implements activity_exporter {
         global $DB;
 
         $resource = $DB->get_record('resource', ['id' => $cm->instance], '*', MUST_EXIST);
-        $displayoptions = @unserialize($resource->displayoptions ?? '') ?: [];
+        $displayoptions = @unserialize($resource->displayoptions ?? '', ['allowed_classes' => false]) ?: [];
 
         return [
             'name' => $resource->name,

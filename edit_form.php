@@ -18,8 +18,8 @@
  * Config form for block_coursesync instances.
  *
  * The remote site URL, a guided setup wizard for the manual steps on the
- * REMOTE site, the token field, and (Phase 3) the mapped remote course.
- * No sync controls yet - that's a later phase.
+ * REMOTE site, the token field, the mapped remote course (Phase 3), and
+ * (Phase 12) the "include response summaries" sync option.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync contributors
@@ -106,6 +106,30 @@ class block_coursesync_edit_form extends block_edit_form {
         $mform->addHelpButton('config_token', 'token', 'block_coursesync');
 
         $this->add_course_mapping_fields($mform);
+        $this->add_sync_option_fields($mform);
+    }
+
+    /**
+     * Adds Phase 12's "include response summaries" checkbox - per-block-
+     * instance, same as config_allowinsecure above, so it applies to every
+     * Choice/Feedback activity this instance syncs. See
+     * activity_exporter_with_options's docblock for exactly what it adds
+     * (anonymised aggregate counts only, never individual answers) and why
+     * this plugin never does more than that.
+     *
+     * @param MoodleQuickForm $mform
+     */
+    protected function add_sync_option_fields($mform): void {
+        $mform->addElement('header', 'syncoptionsheader', get_string('syncoptionsheading', 'block_coursesync'));
+
+        $mform->addElement(
+            'advcheckbox',
+            'config_includeanswers',
+            '',
+            get_string('includeanswers', 'block_coursesync')
+        );
+        $mform->setDefault('config_includeanswers', 0);
+        $mform->addHelpButton('config_includeanswers', 'includeanswers', 'block_coursesync');
     }
 
     /**

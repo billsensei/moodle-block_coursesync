@@ -281,8 +281,9 @@ class glossary_activity_handler implements activity_handler {
 
         foreach ($files as $filedata) {
             $content = base64_decode($filedata['contentbase64'] ?? '', true);
-            if ($content === false) {
-                // Malformed payload for this one file - skip it rather than
+            if ($content === false || strlen($content) > sanitizer::MAX_EMBEDDED_FILE_BYTES) {
+                // Malformed, or oversized (see
+                // sanitizer::MAX_EMBEDDED_FILE_BYTES) - skip it rather than
                 // fail the whole entry, same as resource_activity_handler
                 // does per-file.
                 continue;

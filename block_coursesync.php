@@ -21,8 +21,11 @@
  * full content for whichever types classes/local/activity_handler_registry.php
  * currently supports (Page, URL, Label, Resource, Forum as of Phase 5,
  * Assignment/H5P as of Phase 9, Quiz - including its questions - as of
- * Phase 10, and Glossary - including its approved entries - added after),
- * and recreates them locally - flagging anything that collides with an
+ * Phase 10, Glossary and Wiki added after, Choice/Feedback - including
+ * an opt-in for anonymised aggregate response summaries, this block
+ * instance's own config_includeanswers checkbox (see edit_form.php) - as
+ * of Phase 12, and Book - including its chapters and any embedded file -
+ * as of Phase 13), and recreates them locally - flagging anything that collides with an
  * existing local activity as a conflict rather than touching it. Every run
  * is recorded to sync history (block_coursesync_synclog), viewable from
  * history.php. This class is deliberately kept to the block lifecycle
@@ -341,6 +344,11 @@ class block_coursesync extends block_base {
      * teacher asked for and got - except when there's no course to log it
      * against at all (get_owning_course() failing; see that method).
      *
+     * config_includeanswers (Phase 12) is read fresh here each run, not
+     * cached anywhere - so flipping it in this block's settings takes
+     * effect on the very next "Sync now", with no re-save/reconnect step
+     * needed.
+     *
      * @return array Same shape as sync_runner::run(), or a precondition
      *               failure shaped the same way (empty activity lists,
      *               newlastsync null) so content_renderer::sync_result_text()
@@ -367,7 +375,13 @@ class block_coursesync extends block_base {
 
         $since = (int) ($this->config->lastsync ?? 0);
         $client = $this->get_remote_client($remoteurl, $plaintexttoken);
-        $runner = new \block_coursesync\local\sync_runner($client, (int) $course->id, (string) $remotecourseid);
+        $includeanswers = !empty($this->config->includeanswers);
+        $runner = new \block_coursesync\local\sync_runner(
+            $client,
+            (int) $course->id,
+            (string) $remotecourseid,
+            $includeanswers
+        );
         $result = $runner->run($since);
 
         if ($result['success']) {

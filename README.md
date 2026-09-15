@@ -49,12 +49,20 @@ questions — both fixed questions and "Add > a random question" slots pulled
 from a question-bank category — Multiple choice, True/False, Short answer,
 Numerical, Essay, Matching, Description, and Cloze/multianswer; other
 question types are detected but not yet pulled — see
-[DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)), and Wiki (every page's current
+[DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)), Wiki (every page's current
 content — no revision history — from the course-wide wiki and any group
 wikis, including every image/audio/video/other file attached to those
 pages; an individual student's own personal wiki pages are never pulled,
 the same submissions-stay-on-the-source cut as Assignment — see
-[DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)).
+[DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)), Choice/Feedback (the
+choice's options / the feedback's questions themselves, always; who
+answered what never leaves the source site — an optional per-block-instance
+setting adds an anonymised aggregate response summary, total counts and
+per-option/question tallies only, as a read-only note on the synced
+activity, never as real responses — see
+[DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)), and Book (every chapter,
+including hidden ones, in order, with any embedded image/other file — no
+chapter tags).
 
 ## How it works, briefly
 

@@ -81,10 +81,20 @@ class remote_client {
      * Calls block_coursesync_get_activity_content on the remote site.
      *
      * @param int $cmid Course module id on the remote site.
+     * @param bool $includeanswers Phase 12: request anonymised aggregate response
+     *                              data too, for types that support it (see
+     *                              activity_exporter_with_options). Ignored by
+     *                              a remote site running an older plugin version
+     *                              that predates this parameter - the type just
+     *                              comes back without answer data, same as if
+     *                              this were false.
      * @return array{success: bool, errorcode: string, technical: ?string, data: ?array}
      */
-    public function get_activity_content(int $cmid): array {
-        return $this->call('block_coursesync_get_activity_content', ['cmid' => $cmid]);
+    public function get_activity_content(int $cmid, bool $includeanswers = false): array {
+        return $this->call('block_coursesync_get_activity_content', [
+            'cmid' => $cmid,
+            'includeanswers' => $includeanswers ? 1 : 0,
+        ]);
     }
 
     /**

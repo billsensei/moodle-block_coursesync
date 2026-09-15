@@ -41,6 +41,9 @@ class activity_handler_registry {
         'quiz' => quiz_activity_handler::class,
         'glossary' => glossary_activity_handler::class,
         'wiki' => wiki_activity_handler::class,
+        'choice' => choice_activity_handler::class,
+        'feedback' => feedback_activity_handler::class,
+        'book' => book_activity_handler::class,
     ];
 
     /**

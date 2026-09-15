@@ -261,8 +261,9 @@ class wiki_activity_handler implements activity_handler {
         $fs = get_file_storage();
         foreach ($files as $filedata) {
             $content = base64_decode($filedata['contentbase64'] ?? '', true);
-            if ($content === false) {
-                // Malformed payload for this one file - skip it rather than
+            if ($content === false || strlen($content) > sanitizer::MAX_EMBEDDED_FILE_BYTES) {
+                // Malformed, or oversized (see
+                // sanitizer::MAX_EMBEDDED_FILE_BYTES) - skip it rather than
                 // fail the whole subwiki, same per-file leniency as every
                 // other file-carrying handler in this plugin.
                 continue;

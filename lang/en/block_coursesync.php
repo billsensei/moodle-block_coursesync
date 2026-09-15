@@ -30,6 +30,14 @@ $string['allowinsecure'] = 'This is a development/testing connection (allow HTTP
 $string['allowinsecure_help'] = 'Only enable this to connect to a development or testing site on a private ' .
     'network without HTTPS. It bypasses this block\'s protections against server-side request forgery (SSRF) ' .
     'for this connection. Never enable it for a real, internet-facing site.';
+$string['answersummarybreakdownsuppressed'] = 'Per-option breakdown not shown: fewer than {$a} people responded, ' .
+    'and showing it could reveal an individual\'s answer.';
+$string['answersummaryheading'] = 'Response summary from source site (synced {$a})';
+$string['answersummaryitemaverage'] = 'average {$a->average} (min {$a->min}, max {$a->max})';
+$string['answersummaryitemresponses'] = '{$a} response(s)';
+$string['answersummaryoptionline'] = '{$a->text}: {$a->count}';
+$string['answersummarytotal'] = 'Total responses: {$a}';
+$string['answersummaryunnameditem'] = 'Untitled item';
 $string['backtocourse'] = 'Back to course';
 $string['contentremote'] = 'Remote site: {$a}';
 $string['coursemappingnone'] = 'No remote course mapped yet.';
@@ -55,6 +63,14 @@ $string['error_wrongurl'] = 'That address doesn\'t look like a Moodle site with 
     'enabled. Double-check the remote site URL.';
 $string['forumnewsnotsynced'] = 'This is a "news" (Announcements) forum. Every course already has one of ' .
     'its own, so this isn\'t created - syncing it would leave the course with two.';
+$string['includeanswers'] = 'Include response summaries for Choice and Feedback';
+$string['includeanswers_help'] = 'When enabled, syncing a Choice or Feedback activity also pulls an ' .
+    'anonymised summary of how people responded on the source site - total response counts, and (for a ' .
+    'Choice, or a Feedback multiple-choice question) how many picked each option. No individual\'s answer, ' .
+    'or who gave it, is ever synced - this plugin has no way to match a user on the source site to a user on ' .
+    'this one. The summary is added as a read-only note in the new activity\'s description, not as real ' .
+    'responses. When disabled (the default), only the Choice\'s options / Feedback\'s questions themselves are ' .
+    'synced.';
 $string['neverchecked'] = 'Not yet checked. Save this block\'s settings with a remote site URL and token to test the connection.';
 $string['nosynchistory'] = 'No syncs have been run yet.';
 $string['notyetconfigured'] = 'Course Sync — not yet configured';
@@ -101,6 +117,7 @@ $string['syncnocoursemapping'] = 'Set a working remote course mapping in this bl
 $string['syncnotconfigured'] = 'Set a remote site and token, and confirm the connection works, before syncing.';
 $string['syncnothingtodo'] = 'Nothing to sync - no new or changed activities of a supported type were found.';
 $string['syncnowbutton'] = 'Sync now';
+$string['syncoptionsheading'] = 'Sync options';
 $string['syncsummary'] = '{$a->created} created, {$a->conflicts} flagged as conflicts, {$a->unsupported} not yet ' .
     'supported (left for a later sync), {$a->failed} failed.';
 $string['token'] = 'Token';

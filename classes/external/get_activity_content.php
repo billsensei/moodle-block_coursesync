@@ -17,6 +17,7 @@
 namespace block_coursesync\external;
 
 use block_coursesync\local\activity_exporter_registry;
+use block_coursesync\local\activity_exporter_with_options;
 use block_coursesync\local\course_lookup;
 use core_external\external_api;
 use core_external\external_function_parameters;
@@ -30,13 +31,20 @@ use core_external\external_value;
  * module locally - for whichever activity types this plugin currently
  * supports (see activity_exporter_registry; Page, URL, Label, Resource, and
  * Forum as of Phase 5, Assignment and H5P as of Phase 9, Quiz as of Phase 10,
- * and Glossary added after).
+ * Glossary and Wiki added after, Choice and Feedback as of Phase 12, and
+ * Book as of Phase 13).
  *
  * The type-specific payload travels as a JSON string (contentjson) rather
  * than a fixed external_single_structure, because each activity type's
  * payload has a different shape and this function's own return structure
  * can't change per call. It's built by that type's activity_exporter and
  * meant to be read back only by that same type's activity_handler.
+ *
+ * includeanswers (Phase 12) is passed through to the exporter only when it
+ * implements activity_exporter_with_options - every other type's plain
+ * export() is called exactly as before, untouched by this. See that
+ * interface's docblock for why this is a separate interface rather than a
+ * new export() parameter every exporter would have to accept.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync contributors
@@ -51,6 +59,12 @@ class get_activity_content extends external_api {
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters([
             'cmid' => new external_value(PARAM_INT, 'Course module id on this (source) site.'),
+            'includeanswers' => new external_value(
+                PARAM_BOOL,
+                'Whether to include anonymised aggregate response data, for types that support it.',
+                VALUE_DEFAULT,
+                false
+            ),
         ]);
     }
 
@@ -58,10 +72,16 @@ class get_activity_content extends external_api {
      * Resolves the course module and exports its content.
      *
      * @param int $cmid
+     * @param bool $includeanswers
      * @return array{cmid: int, modname: string, idnumber: string, contentjson: string}
      */
-    public static function execute(int $cmid): array {
-        ['cmid' => $cmid] = self::validate_parameters(self::execute_parameters(), ['cmid' => $cmid]);
+    public static function execute(int $cmid, bool $includeanswers = false): array {
+        $params = self::validate_parameters(
+            self::execute_parameters(),
+            ['cmid' => $cmid, 'includeanswers' => $includeanswers]
+        );
+        $cmid = $params['cmid'];
+        $includeanswers = $params['includeanswers'];
 
         global $USER;
         $context = \context_system::instance();
@@ -74,7 +94,10 @@ class get_activity_content extends external_api {
             throw new \moodle_exception('activitytypenotsupported', 'block_coursesync', '', $cm->modname);
         }
 
-        $data = activity_exporter_registry::get_exporter($cm->modname)->export($cm);
+        $exporter = activity_exporter_registry::get_exporter($cm->modname);
+        $data = $exporter instanceof activity_exporter_with_options
+            ? $exporter->export_with_options($cm, ['includeanswers' => $includeanswers])
+            : $exporter->export($cm);
 
         return [
             'cmid' => (int) $cm->id,

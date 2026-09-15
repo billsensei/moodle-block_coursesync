@@ -37,13 +37,42 @@ namespace block_coursesync\local;
  */
 class sanitizer {
     /**
-     * Cleans a plain-text field (activity names).
+     * Maximum size, in bytes, of one embedded file pulled from a remote
+     * site and written directly into local storage (book chapters,
+     * resource, wiki attachments, glossary entries). A cap here, on top of
+     * core's usual upload-time checks, because these files never go
+     * through a normal upload path at all - file_save_draft_area_files()'s
+     * own maxbytes enforcement never runs on them, they're written
+     * straight from a remote site's response via create_file_from_string().
+     * Without this, a malicious or compromised source site could return an
+     * arbitrarily large file and exhaust this site's storage/memory on
+     * every sync. 20MB comfortably covers a legitimate embedded image/PDF;
+     * an oversized file is skipped the same way a malformed one already is
+     * (see each handler's store_files()/store_chapter_files()).
+     */
+    public const MAX_EMBEDDED_FILE_BYTES = 20 * 1024 * 1024;
+
+    /**
+     * Cleans a plain-text field (activity names, and other short text
+     * columns that pass their own $maxlength).
+     *
+     * $maxlength is opt-in (default null = no truncation, the original
+     * behaviour) rather than a single hard-coded default, because this
+     * method backs fields with genuinely different column widths across
+     * this plugin's various *_add_instance()/insert_record() targets - a
+     * caller that knows its target column's width (e.g. feedback_item.label
+     * is char(255), unlike most *.name columns' char(1333)) should pass it,
+     * to truncate gracefully instead of letting an oversized remote value
+     * throw a DB exception on insert.
      *
      * @param mixed $value
+     * @param int|null $maxlength
      * @return string
      */
-    public static function text($value): string {
-        return clean_param((string) $value, PARAM_TEXT);
+    public static function text($value, ?int $maxlength = null): string {
+        $cleaned = clean_param((string) $value, PARAM_TEXT);
+
+        return $maxlength !== null ? \core_text::substr($cleaned, 0, $maxlength) : $cleaned;
     }
 
     /**
@@ -141,5 +170,38 @@ class sanitizer {
         $value = self::integer($value, FORMAT_HTML);
 
         return in_array($value, $known, true) ? $value : FORMAT_HTML;
+    }
+
+    /**
+     * Cleans a short field whose exact punctuation is load-bearing - e.g.
+     * mod_feedback's feedback_item.presentation/options/dependvalue, which
+     * pack a subtype flag and a list of option labels together using fixed
+     * separator strings (see feedback_activity_exporter's docblock) that a
+     * generic tag-stripping clean would corrupt: PARAM_TEXT's strip_tags()
+     * call, given a lone unbalanced run of '<' characters like the
+     * horizontal-layout suffix "<<<<<1", deletes from that '<' to the end
+     * of the string (PHP's strip_tags() treats an unterminated '<' as an
+     * open tag extending to the end of input), silently truncating the
+     * value rather than raising anything - actually verified against
+     * PARAM_TEXT's implementation (lib/classes/param.php), not assumed.
+     *
+     * PARAM_RAW_TRIMMED only fixes encoding and trims - no tag-stripping,
+     * so the separator syntax survives intact. Safe here specifically
+     * because nothing in mod_feedback ever renders this field as raw HTML
+     * (noclean/FORMAT_HTML) - every call site parses it into option
+     * labels first and displays each through format_string(), which
+     * applies its own output-time escaping - the same defence intro/name
+     * fields ALSO get, just with storage-time cleaning layered on top of
+     * it too since those genuinely are rendered as raw HTML. A stray
+     * length cap still guards against an unbounded remote payload.
+     *
+     * @param mixed $value
+     * @param int $maxlength
+     * @return string
+     */
+    public static function structured($value, int $maxlength = 1333): string {
+        $cleaned = clean_param((string) $value, PARAM_RAW_TRIMMED);
+
+        return \core_text::substr($cleaned, 0, $maxlength);
     }
 }

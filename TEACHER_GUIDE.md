@@ -120,9 +120,12 @@ collapsed - click on one to expand it.
 As of this version: **Page, URL, Label, File (Resource), Forum** (settings
 only - not its discussions or posts), **Assignment** (settings only - no
 student submissions, grades, or feedback ever leave the source site),
-**H5P** (including its content package), **Quiz** (including its
-questions - see below), and **Wiki** (including its pages and any
-image/audio/video/other file used in them - see below). Other types are
+**H5P** (including its content package), **Glossary** (including its
+approved entries, attachments, and categories), **Quiz** (including its
+questions - see below), **Wiki** (including its pages and any
+image/audio/video/other file used in them - see below),
+**Choice/Feedback** (see below), and **Book** (including every chapter
+and any image or other file embedded in one). Other types are
 detected and shown in the preview so you know they exist, but aren't
 pulled yet.
 
@@ -161,6 +164,41 @@ doesn't already exist there). If the wiki is set to **individual** mode,
 the wiki itself and its settings are still created, but nobody's personal
 pages are pulled - the same way a synced assignment never brings across
 student submissions.
+
+## Syncing a Choice or Feedback
+
+A Choice's options (the things people can pick between) and a Feedback's
+questions come across along with the activity's own settings - always.
+**Nobody's individual answer, and who gave it, is ever synced** - the same
+submissions-stay-on-the-source rule as Assignment.
+
+If you want more than that, tick **"Include response summaries for Choice
+and Feedback"** in this block's own settings (edit the block, it's under
+"Sync options"). With it on, a synced Choice or Feedback also gets a
+short, clearly-labelled note added to its description: how many people
+responded in total, and - for the Choice itself, or a Feedback
+multiple-choice question - how many picked each option. This is a
+one-time, read-only summary of the source site's data as it stood at sync
+time, not a live count and not real responses - a student can't "un-answer"
+something recorded there, because nothing was actually answered on this
+site. For a free-text Feedback question (short answer / long answer), the
+summary only ever shows how many people answered - never any of what they
+wrote, even without a name attached.
+
+This setting applies to every Choice/Feedback this block instance syncs,
+and takes effect on your very next "Sync now" - no need to re-save the
+connection or wait for anything else.
+
+## Syncing a book
+
+Every chapter comes across in order, with its content and any image or
+other file embedded in it. This includes a chapter you've currently marked
+**hidden** from students - it's still your own written content, just not
+shown right now, so it's synced the same as any other chapter, hidden
+state and all.
+
+Chapter **tags** aren't synced - this plugin doesn't sync tags for any
+activity type yet.
 
 ## Good to know
 

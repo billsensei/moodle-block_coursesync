@@ -34,6 +34,9 @@ class stub_remote_client extends remote_client {
     /** @var array<int, array> cmid => the payload get_activity_content() should return for it. */
     protected array $contentbyid;
 
+    /** @var array<int, bool> cmid => the $includeanswers this stub was actually called with - for tests asserting sync_runner threads it through. */
+    public array $includeanswerscalls = [];
+
     /**
      * Stores the canned responses this stub should hand back.
      *
@@ -69,9 +72,12 @@ class stub_remote_client extends remote_client {
      * Returns the canned content payload configured for this cmid, or a not-found error.
      *
      * @param int $cmid
+     * @param bool $includeanswers Recorded in includeanswerscalls, not otherwise acted on by this stub.
      * @return array{success: bool, errorcode: string, technical: ?string, data: ?array}
      */
-    public function get_activity_content(int $cmid): array {
+    public function get_activity_content(int $cmid, bool $includeanswers = false): array {
+        $this->includeanswerscalls[$cmid] = $includeanswers;
+
         if (!isset($this->contentbyid[$cmid])) {
             return [
                 'success' => false,

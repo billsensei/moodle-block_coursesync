@@ -34,7 +34,7 @@ class page_activity_exporter implements activity_exporter {
         global $DB;
 
         $page = $DB->get_record('page', ['id' => $cm->instance], '*', MUST_EXIST);
-        $displayoptions = @unserialize($page->displayoptions ?? '') ?: [];
+        $displayoptions = @unserialize($page->displayoptions ?? '', ['allowed_classes' => false]) ?: [];
 
         return [
             'name' => $page->name,

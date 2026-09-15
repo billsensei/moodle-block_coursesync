@@ -64,17 +64,27 @@ class sync_runner {
     /** @var string Course ID or shortname on the remote (source) site. */
     protected string $remotecourse;
 
+    /** @var bool Phase 12: request anonymised aggregate response data for types that support it - see pull_and_create(). */
+    protected bool $includeanswers;
+
     /**
      * Creates a runner for one destination course, mapped to one remote course.
      *
      * @param remote_client $client
      * @param int $destinationcourseid
      * @param string $remotecourse
+     * @param bool $includeanswers See activity_exporter_with_options's docblock.
      */
-    public function __construct(remote_client $client, int $destinationcourseid, string $remotecourse) {
+    public function __construct(
+        remote_client $client,
+        int $destinationcourseid,
+        string $remotecourse,
+        bool $includeanswers = false
+    ) {
         $this->client = $client;
         $this->destinationcourseid = $destinationcourseid;
         $this->remotecourse = $remotecourse;
+        $this->includeanswers = $includeanswers;
     }
 
     /**
@@ -260,7 +270,7 @@ class sync_runner {
      * @return string|null Null on success, an error message on failure.
      */
     protected function pull_and_create(array $activity, string $idnumber): ?string {
-        $contentresult = $this->client->get_activity_content((int) $activity['cmid']);
+        $contentresult = $this->client->get_activity_content((int) $activity['cmid'], $this->includeanswers);
         if (!$contentresult['success']) {
             return $contentresult['technical'] ?? $contentresult['errorcode'];
         }

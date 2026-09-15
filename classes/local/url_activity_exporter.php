@@ -40,7 +40,7 @@ class url_activity_exporter implements activity_exporter {
         global $DB;
 
         $url = $DB->get_record('url', ['id' => $cm->instance], '*', MUST_EXIST);
-        $displayoptions = @unserialize($url->displayoptions ?? '') ?: [];
+        $displayoptions = @unserialize($url->displayoptions ?? '', ['allowed_classes' => false]) ?: [];
 
         return [
             'name' => $url->name,

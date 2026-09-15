@@ -320,6 +320,44 @@ final class sync_conflict_test extends \advanced_testcase {
     }
 
     /**
+     * Phase 12: sync_runner's own $includeanswers constructor argument must
+     * reach remote_client::get_activity_content() on every pull, not just
+     * get read and dropped somewhere along the way - stub_remote_client
+     * records exactly what it was called with, for this to check.
+     */
+    public function test_includeanswers_is_passed_through_to_get_activity_content(): void {
+        $course = $this->getDataGenerator()->create_course();
+
+        $client = new stub_remote_client(
+            [['cmid' => 444, 'modname' => 'page', 'name' => 'Remote page', 'idnumber' => '', 'timemodified' => 1000]],
+            [444 => $this->page_payload()]
+        );
+
+        $result = (new sync_runner($client, $course->id, 'irrelevant', true))->run(0);
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(1, $result['created']);
+        $this->assertSame(true, $client->includeanswerscalls[444] ?? null);
+    }
+
+    /**
+     * The default (no fourth constructor argument, matching every call site
+     * before Phase 12) must still behave exactly as before: false.
+     */
+    public function test_includeanswers_defaults_to_false(): void {
+        $course = $this->getDataGenerator()->create_course();
+
+        $client = new stub_remote_client(
+            [['cmid' => 445, 'modname' => 'page', 'name' => 'Remote page', 'idnumber' => '', 'timemodified' => 1000]],
+            [445 => $this->page_payload()]
+        );
+
+        (new sync_runner($client, $course->id, 'irrelevant'))->run(0);
+
+        $this->assertSame(false, $client->includeanswerscalls[445] ?? null);
+    }
+
+    /**
      * A minimal, valid page_activity_exporter-shaped payload for the tests above.
      *
      * @return array

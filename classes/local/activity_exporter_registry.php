@@ -37,6 +37,9 @@ class activity_exporter_registry {
         'quiz' => quiz_activity_exporter::class,
         'glossary' => glossary_activity_exporter::class,
         'wiki' => wiki_activity_exporter::class,
+        'choice' => choice_activity_exporter::class,
+        'feedback' => feedback_activity_exporter::class,
+        'book' => book_activity_exporter::class,
     ];
 
     /**

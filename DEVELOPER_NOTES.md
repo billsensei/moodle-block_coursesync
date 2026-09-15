@@ -1,7 +1,7 @@
 # Course Sync: developer notes
 
 Architecture summary and extension guide for anyone maintaining or building
-on block_coursesync (v0.11, Phase 11). This complements the docblocks
+on block_coursesync (v0.13, Phase 13). This complements the docblocks
 in the code itself, which is where the authoritative, up-to-date detail
 lives - this file is a map, not a duplicate.
 
@@ -67,7 +67,8 @@ block_coursesync.php              Block lifecycle: config save (incl. token
                                    encryption + connection test), sync_now()
                                    orchestration, footer links.
 edit_form.php                     Settings form: wizard, connection fields,
-                                   course mapping fields.
+                                   course mapping fields, and (Phase 12) the
+                                   config_includeanswers sync option.
 sync.php / history.php            Thin controllers: sesskey + capability
                                    checks, then delegate to the block class.
 
@@ -99,12 +100,24 @@ classes/local/
                                     new type (see below).
   activity_exporter.php            Source-side interface: build one activity
   activity_exporter_registry.php   type's payload. Same registry pattern.
+  activity_exporter_with_options.php Optional sub-interface (Phase 12): lets
+                                    an exporter accept extra options driven
+                                    by the pulling block instance's own
+                                    config, without touching every other
+                                    exporter's plain export() signature -
+                                    see its docblock and "Choice and
+                                    Feedback: aggregate answers, never
+                                    individual ones" below.
   <modname>_activity_handler.php   One pair per supported type: page, url,
   <modname>_activity_exporter.php  label, resource, forum (Phase 5); assign,
                                     h5pactivity (Phase 9); quiz (Phase 10 -
                                     see "Quiz and its questions" below);
                                     glossary (added after); wiki (Phase 11 -
-                                    see "Wiki and its subwikis" below).
+                                    see "Wiki and its subwikis" below);
+                                    choice, feedback (Phase 12 - see "Choice
+                                    and Feedback: aggregate answers, never
+                                    individual ones" below); book (Phase 13 -
+                                    see "Book and its chapters" below).
   activity_lookup.php              Change detection (Phase 3): activities
                                     modified after a given time, per course.
   question_handler.php             The same activity_exporter/
@@ -162,7 +175,18 @@ pattern for questions), then glossary (added after - see those classes for a
 worked example of a type whose real content is a *list* of child records
 (entries), each with its own files, plus a second, flatter list (categories)
 entries reference by position - not a sub-plugin and not one embedded
-payload like quiz's questions, a third shape this extension point supports).
+payload like quiz's questions, a third shape this extension point supports),
+then wiki (Phase 11 - see "Wiki and its subwikis" below), then choice/
+feedback (Phase 12 - see "Choice and Feedback: aggregate answers, never
+individual ones" below; the first types whose exporter also implements
+`activity_exporter_with_options`, for content driven by the pulling block
+instance's own config rather than anything on the source activity itself),
+then book (Phase 13 - see "Book and its chapters" below; a plain ordered
+list of child records like glossary's entries, but writing files straight
+into each new child's own itemid with no draft-area round trip, since
+`@@PLUGINFILE@@` needs none - a fourth variant on "one record's content
+embeds files" alongside glossary's draft-area-mediated entries, wiki's
+per-subwiki filename lookup, and resource's itemid-0 flat area).
 To add support for activity type `<modname>`:
 
 ### 1. Write the exporter (source side)
@@ -540,14 +564,148 @@ index) isn't exported either - it's rebuilt automatically as a side effect
 of `wiki_save_page()` when each page is recreated, so there's nothing to
 carry over.
 
-## Testing (Phase 8, extended Phase 9-11)
+## Choice and Feedback: aggregate answers, never individual ones (Phase 12)
+
+Choice and Feedback both split the same way every other type in this
+plugin does: settings + structure (`choice_options` / `feedback_item`) are
+always synced, same "the activity's whole point is its structure" reasoning
+as glossary's entries or quiz's questions. `choice_answers` and
+`feedback_completed`/`feedback_value` - WHO answered WHAT - are personal
+content, the same submissions-stay-on-the-source cut as assign/forum/wiki's
+individual subwikis, so nothing in `choice_activity_exporter` or
+`feedback_activity_exporter` reads them unless the pulling block instance's
+`config_includeanswers` checkbox (edit_form.php) is on for this sync.
+
+**Even with it on, only anonymised aggregate counts ever cross sites** -
+never an individual's answer, and never anything that could stand in for
+one. This isn't just an extra-cautious privacy choice on top of one that
+was already optional: this plugin has **no cross-site user-id mapping
+anywhere** (group subwikis are matched by name only - see "Wiki and its
+subwikis" above), so there's no destination user a per-user answer row
+could even be correctly attributed to in the first place. A closed-set
+answer (Choice's options; a Feedback multiple-choice question, decoded via
+mod_feedback's own `FEEDBACK_MULTICHOICE_*` separator constants - see
+`feedback_activity_exporter::export_multichoice_optioncounts()`) gets a
+per-option tally. A free-text Feedback answer (textfield/textarea) gets a
+response COUNT ONLY, never the text itself, even unattributed - an
+anonymous echo of what someone actually wrote is still their content, not
+a safe aggregate the way a tally of pre-defined options is. `numeric` gets
+an average/min/max. `multichoicerated`'s own value format (a weight/text
+pair per option, decoded differently from plain `multichoice`, and not
+independently verified here) deliberately falls back to a response count
+only, rather than risk a subtly-wrong per-option/rating breakdown.
+
+**Small-n suppression**: a per-option breakdown is only included at all when
+the source has at least `activity_exporter_with_options::MIN_RESPONDENTS_FOR_BREAKDOWN`
+(5) distinct respondents (choice) / responses to that item (feedback) -
+below that, only the bare total travels. This isn't extra caution layered
+on an already-safe aggregate: at n=1 a "breakdown" of one option holding
+the only response, or a numeric average/min/max, reconstructs that one
+respondent's exact answer just as precisely as naming them would, which is
+exactly what this whole feature is documented as never doing above. The
+destination side (`choice_activity_handler::build_intro()`) shows an
+explicit "not shown, too few responses" note rather than silently omitting
+the section or - worse - rendering fabricated zeros for every option, which
+`export_answer_summary()` deliberately returns `null` (not `[]`) to avoid.
+
+**How the summary reaches the destination**: `activity_exporter_with_options`
+(a sub-interface of `activity_exporter`, implemented only by these two
+types) carries the `includeanswers` flag from
+`block_coursesync_get_activity_content`'s own parameter through to the
+exporter - every other type's plain `export()` is untouched by this, see
+that interface's docblock for why a separate interface rather than a new
+`export()` parameter. On the destination,
+`choice_activity_handler`/`feedback_activity_handler` render the summary as
+a clearly-labelled, read-only block APPENDED TO THE ACTIVITY'S OWN INTRO -
+never written into `choice_answers`/`feedback_completed`/`feedback_value`
+themselves. Inserting synthetic rows there would have to be attributed to
+some userid (there's no correct one to use - see above) and would
+misrepresent real submissions to the activity's own reporting/analysis
+screens; the intro is the only place "here's what people answered on the
+source site, as of this sync" can live without either problem.
+
+**feedback_item's own structure**: unlike quiz's qtype plugins, mod_feedback
+has no separate per-item-type handler registry of its own for this plugin to
+go through - every item is copied close to a plain field-for-field row copy
+(`feedback_activity_exporter::export_items()`), inserted directly into
+`feedback_item` on the destination the same way core's OWN restore code does
+(`mod/feedback/backup/moodle2/restore_feedback_stepslib.php`'s
+`process_feedback_item()` - not a novel pattern). `dependitem` (one item's
+visibility depending on another's answer) is exported as a position in the
+same list (`dependitemindex`), the same position-not-id pattern as
+glossary's `categoryindexes`, resolved to a real id only after every item
+has its new one (`feedback_activity_handler::create_items()`'s second pass)
+- mirroring restore's own `after_execute()` step for the same field.
+`presentation`/`options`/`dependvalue` are cleaned with
+`sanitizer::structured()`, NOT `sanitizer::text()`/`html()` - see that
+method's docblock for why a generic tag-stripping clean would corrupt
+these fields' load-bearing separator syntax.
+
+**What v1 of this doesn't do**: item-level embedded files (component
+`mod_feedback`, filearea `item` - used by label-type Feedback items to embed
+images) aren't exported - a future phase could add this the same way
+glossary's entry files are handled. `feedback_template` (site-level reusable
+templates) isn't either - a site-specific concept the destination may not
+have matching ones for.
+
+## Book and its chapters (Phase 13)
+
+Book is a plain ordered list of child records (`book_chapters`), same shape
+as glossary's entries - the activity's whole point is its chapters, so
+they're always synced, hidden ones included: a hidden chapter is still the
+teacher's own authored content, just temporarily not shown to students, not
+someone else's unpublished draft (unlike a glossary entry awaiting
+moderation) - see `book_activity_exporter`'s docblock.
+
+**No `@@PLUGINFILE@@` rewriting is needed**, for a different reason than
+wiki's (whole-subwiki filename lookup) or glossary's (draft-area-mediated,
+handled inside `glossary_edit_entry()`): `@@PLUGINFILE@@/<path>` is an
+itemid-AGNOSTIC placeholder - `file_rewrite_pluginfile_urls()`
+(lib/filelib.php) only ever consults the CURRENT context/component/
+filearea/itemid handed to it at render time, nothing encoded in the stored
+text itself. So the exact same `content` string that resolved correctly
+against the source chapter's itemid keeps resolving correctly against the
+destination chapter's own (different) itemid, as long as a same-named file
+actually exists in ITS OWN `chapter` filearea -
+`book_activity_handler::store_chapter_files()` writes directly into
+`[context, mod_book, chapter, <new chapter id>]`, no draft area at all,
+same shape as `resource_activity_handler::store_files()`'s itemid-0 flat
+area, just keyed per-chapter instead of once per activity. This is also
+the same pattern core's OWN restore code uses
+(`mod/book/backup/moodle2/restore_book_stepslib.php`'s
+`process_book_chapter()` does a direct `insert_record`, then
+`add_related_files()` for the chapter files - not a novel pattern, see
+`feedback_activity_handler`'s docblock for the same restore-precedent
+reasoning applied to a different type).
+
+`book_preload_chapters()` (core's own "fix the structure" helper, called
+after any real chapter add/edit too) is run once after every chapter is
+created - it renumbers `pagenum` into a clean 1..N sequence and cascades
+`hidden` onto every subchapter of a hidden chapter, persisting either
+change itself. The source's own `pagenum`/`importsrc` are never carried
+over - the destination gets a fresh compact sequence and an empty
+`importsrc` either way.
+
+**Not synced**: chapter tags (`core_tag_tag`, set via
+`core_tag_tag::set_item_tags()` in mod/book/edit.php) - this plugin
+doesn't sync tags for any activity type yet.
+
+## Testing (Phase 8, extended Phase 9-13)
 
 - **PHPUnit** (`tests/`): change detection (`activity_lookup_test.php`),
-  every non-quiz, non-wiki handler including glossary's entries/categories/files
+  every non-quiz, non-wiki, non-choice, non-feedback, non-book handler
+  including glossary's entries/categories/files
   (`activity_handlers_test.php`), a real glossary's full round trip through
   JSON (`glossary_roundtrip_test.php`), a real wiki's course-wide and group
   subwikis, pages, and attached files through the same JSON round trip
-  (`wiki_roundtrip_test.php`), quiz itself and every v1 question
+  (`wiki_roundtrip_test.php`), a real choice's options and its
+  includeanswers-off/-on aggregate summary
+  (`choice_roundtrip_test.php`), a real feedback's items (including a
+  dependitem chain and a multichoice question's decoded option counts)
+  through the same round trip (`feedback_roundtrip_test.php`), a real
+  book's chapters (including a hidden one and an embedded image) through
+  the same round trip (`book_roundtrip_test.php`), quiz itself
+  and every v1 question
   type (`quiz_activity_test.php`, `question_handlers_test.php`), the
   fixed-question and random-slot-pool round trips including multianswer/Cloze
   (`quiz_roundtrip_test.php`), conflict-flagging, same-name-and-type
@@ -597,7 +755,7 @@ carry over.
 ## What v1 deliberately doesn't do
 
 See `REMOTE_SETUP.md`'s "What this plugin does *not* do" section - still
-accurate as of Phase 11. In short: no automated remote-site configuration,
+accurate as of Phase 13. In short: no automated remote-site configuration,
 only the registered activity types are pulled (others are detected
 but skipped, not treated as failures), and a flagged conflict has no
 in-block resolution UI - a teacher resolves it manually and syncs again.
@@ -609,4 +767,10 @@ question types listed in "Quiz and its questions" above - see that section
 for exactly what's cut and why. Wiki sync pulls every course-wide/group
 page and its embedded files, but never an individual student's own
 personal wiki pages, and never page revision history - see "Wiki and its
-subwikis" above.
+subwikis" above. Choice/Feedback sync each activity's own structure
+always, and - opt-in, per block instance - an anonymised aggregate
+response summary, but never an individual answer or who gave it, and
+never a free-text answer's own content even anonymised - see "Choice and
+Feedback: aggregate answers, never individual ones" above. Book sync pulls
+every chapter, hidden ones included, and any embedded file, but never
+chapter tags - see "Book and its chapters" above.
