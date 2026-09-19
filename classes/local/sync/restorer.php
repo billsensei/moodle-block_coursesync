@@ -78,7 +78,7 @@ class restorer {
             $this->discard_tempdir($tempdirname);
         }
 
-        $this->place_in_section($newcmid, $item->sectionnum);
+        (new section_placement($this->course))->place($newcmid, $item->sectionnum);
 
         return $newcmid;
     }
@@ -173,34 +173,5 @@ class restorer {
         }
 
         fulldelete(make_backup_temp_directory('', false) . '/' . $tempdirname);
-    }
-
-    /**
-     * Moves a freshly restored activity into the section it occupies remotely.
-     *
-     * Where the local course has no such section the activity is left where the
-     * restore put it, rather than inventing sections in someone else's course.
-     *
-     * @param int $cmid The new local course module id.
-     * @param int $sectionnum Section number on the remote site.
-     */
-    private function place_in_section(int $cmid, int $sectionnum): void {
-        global $CFG, $DB;
-        require_once($CFG->dirroot . '/course/lib.php');
-
-        $section = $DB->get_record('course_sections', [
-            'course' => $this->course->id,
-            'section' => $sectionnum,
-        ]);
-        if (!$section) {
-            return;
-        }
-
-        $cm = get_coursemodule_from_id('', $cmid, $this->course->id, false, IGNORE_MISSING);
-        if (!$cm || (int) $cm->section === (int) $section->id) {
-            return;
-        }
-
-        moveto_module($cm, $section);
     }
 }

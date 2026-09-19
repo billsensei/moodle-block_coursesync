@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'block_coursesync';
-$plugin->version   = 2026091907;
+$plugin->version   = 2026091908;
 $plugin->requires  = 2025100600; // Moodle 5.1.0.
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = 'v0.8.0 (Phase 6: choose what to sync, and settle any conflict either way)';
+$plugin->release   = 'v0.8.1 (Phase 6: pulled activities land in the section they came from)';

@@ -120,8 +120,8 @@ service it exposes grants no write access.
    behind "duplicate activity"), parks the `.mbz` in a file area, and returns
    where to fetch it. The local site downloads it through
    `webservice/pluginfile.php` and restores it with
-   `backup::TARGET_CURRENT_ADDING`, then moves it to the section it occupies
-   remotely if that section exists locally.
+   `backup::TARGET_CURRENT_ADDING`, then moves it into the section it occupies
+   remotely (see below).
 
 Each activity is attempted independently: a network error, a permission
 problem on the remote, or a restore failure is logged against that one
@@ -131,6 +131,29 @@ actually succeeds, so a failed run leaves the last known-good state intact.
 Runs go through an ad-hoc task (`\block_coursesync\task\sync_course`) because
 backup and restore of several activities is far too slow to hold a page open.
 `engine::run()` is equally callable synchronously, which is what the tests do.
+
+### Where a pulled activity lands
+
+A restore of a single activity drops it wherever the backup's own section
+data lands, which is rarely right for the course being pulled into. So every
+pulled activity is moved into the section number it occupies on the remote
+site: what was in week 7 there is in week 7 here.
+
+A course being pulled into is often shorter than the one it pulls from, so
+the sections up to that number are created — the same thing Moodle does when
+restoring a course into a shorter one. Two limits apply. The site's own
+`$CFG->maxsections` is respected: beyond it the activity is left where the
+restore put it rather than growing a course past what the site allows. And
+module types that Moodle never shows on the course page, such as the
+question bank, stay in the general section, because moving those anywhere
+else is an error.
+
+An activity inside a subsection is a special case. A subsection owns a course
+section of its own, delegated to that module, and its section number means
+nothing to a course with no such subsection. The remote site therefore
+reports such an activity against the ordinary section the subsection sits in,
+so the copy lands in the right part of the course even though the subsection
+itself is not recreated.
 
 ### Change signals
 
