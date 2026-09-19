@@ -94,7 +94,11 @@ class resolver {
      * @return string A translated message describing what happened.
      */
     private static function pull_remote(int $blockinstanceid, int $remotecmid, int $userid): string {
-        $result = engine::pull_one($blockinstanceid, $remotecmid, $userid);
+        // Choosing the remote version means replacing whatever stands in its
+        // way, including an activity this block did not create: that is the
+        // whole point of the decision, and the page asks for it to be
+        // confirmed before getting here.
+        $result = engine::pull_one($blockinstanceid, $remotecmid, $userid, true);
 
         if ($result->errors) {
             return get_string('resolve:failed', 'block_coursesync');
@@ -170,6 +174,27 @@ class resolver {
         self::log($blockinstanceid, $userid, audit_log::OUTCOME_DEFERRED, $item, null);
 
         return get_string('resolve:deferred', 'block_coursesync');
+    }
+
+    /**
+     * Whether taking the remote version here would delete an activity this block did not create.
+     *
+     * Read from what the run recorded rather than by asking the remote site,
+     * because this is called while drawing a page. It is the question of
+     * whether to warn and confirm, not the decision itself: the activity in
+     * the way is looked for again when the replacement actually happens.
+     *
+     * @param int $blockinstanceid Block instance id.
+     * @param int $remotecmid The conflicted remote course module.
+     * @return bool
+     */
+    public static function replaces_foreign_activity(int $blockinstanceid, int $remotecmid): bool {
+        $ledger = pull_ledger::for_block($blockinstanceid);
+        $entry = $ledger[$remotecmid] ?? null;
+
+        return $entry
+            && $entry->status === pull_ledger::STATUS_CONFLICT
+            && (string) $entry->conflictreason === plan_item::CONFLICT_NAME_COLLISION;
     }
 
     /**

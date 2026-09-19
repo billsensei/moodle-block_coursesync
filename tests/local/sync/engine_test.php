@@ -339,4 +339,54 @@ final class engine_test extends \advanced_testcase {
         $this->assertSame(0, $result->errors);
         $this->assertSame([11], array_keys($this->log_rows($blockid)));
     }
+
+    /**
+     * Taking the remote version aims at the activity standing in the way, and only deletes it
+     * once the replacement has actually arrived.
+     */
+    public function test_a_failed_overwrite_leaves_the_activity_in_the_way_alone(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $blockid = $this->create_configured_block();
+        $inway = $this->getDataGenerator()->create_module(
+            'page',
+            ['course' => $this->course->id, 'name' => 'Week 1 reading']
+        );
+
+        // A collision: the course already has something of that name, and the
+        // ledger deliberately holds no local cmid for it.
+        $this->use_fake_transport([
+            'block_coursesync_list_activities' => $this->remote_listing([
+                ['cmid' => 21, 'name' => 'Week 1 reading', 'signal' => '3000'],
+            ]),
+        ]);
+        engine::run($blockid, (int) get_admin()->id);
+        $this->assertNull($this->ledger_row($blockid, 21)->localcmid);
+
+        // Now someone chooses the remote version. The remote will not package
+        // it, so the transfer fails.
+        $result = engine::pull_one($blockid, 21, (int) get_admin()->id, true);
+        $this->assertDebuggingCalled();
+
+        $this->assertSame(1, $result->errors);
+        $this->assertSame(0, $result->new);
+        $this->assertSame(0, $result->updated);
+
+        // Nothing arrived, so the activity that was in the way is still there:
+        // the old copy is only ever dropped after its replacement exists.
+        $this->assertTrue($this->module_exists((int) $inway->cmid));
+    }
+
+    /**
+     * Whether a course module is still in the course.
+     *
+     * @param int $cmid Course module id.
+     * @return bool
+     */
+    private function module_exists(int $cmid): bool {
+        global $DB;
+
+        return $DB->record_exists('course_modules', ['id' => $cmid]);
+    }
 }

@@ -30,6 +30,7 @@ use block_coursesync\output\conflicts_page;
 
 $blockid = required_param('id', PARAM_INT);
 $action = optional_param('action', '', PARAM_ALPHA);
+$confirmed = optional_param('confirm', 0, PARAM_BOOL);
 
 $block = block_helper::get_instance($blockid);
 $context = $block->context;
@@ -44,11 +45,23 @@ require_capability('block/coursesync:trigger', $context);
 
 $url = new moodle_url('/blocks/coursesync/conflicts.php', ['id' => $blockid]);
 
+$needsconfirmation = false;
+$remotecmid = 0;
+
 if ($action !== '') {
     require_sesskey();
 
     $remotecmid = required_param('remotecmid', PARAM_INT);
 
+    // Taking the remote version normally replaces a copy this block made, which
+    // it can put back at any time. Where it would instead delete an activity
+    // someone else created, it is asked about first.
+    $needsconfirmation = $action === resolver::ACTION_PULL_REMOTE
+        && !$confirmed
+        && resolver::replaces_foreign_activity($blockid, $remotecmid);
+}
+
+if ($action !== '' && !$needsconfirmation) {
     try {
         $message = resolver::resolve($blockid, $remotecmid, $action, (int) $USER->id);
         $notification = \core\output\notification::NOTIFY_SUCCESS;
@@ -73,6 +86,23 @@ $renderer = $PAGE->get_renderer('block_coursesync');
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('conflicts:title', 'block_coursesync'));
+
+if ($needsconfirmation) {
+    $continue = new \core\output\single_button(
+        new moodle_url($url, [
+            'action' => resolver::ACTION_PULL_REMOTE,
+            'remotecmid' => $remotecmid,
+            'confirm' => 1,
+            'sesskey' => sesskey(),
+        ]),
+        get_string('conflicts:pullremote', 'block_coursesync'),
+        'post'
+    );
+
+    echo $OUTPUT->confirm(get_string('conflicts:confirmreplace', 'block_coursesync'), $continue, $url);
+    echo $OUTPUT->footer();
+    die;
+}
 
 if (has_capability('block/coursesync:viewhistory', $context)) {
     echo html_writer::div(

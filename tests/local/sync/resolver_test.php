@@ -194,4 +194,37 @@ final class resolver_test extends \advanced_testcase {
             IGNORE_MULTIPLE
         );
     }
+
+    /**
+     * A conflict over this block's own copy is replaced without ceremony.
+     */
+    public function test_replacing_this_blocks_own_copy_needs_no_warning(): void {
+        $this->assertFalse(resolver::replaces_foreign_activity($this->blockid, 11));
+    }
+
+    /**
+     * A conflict where someone else's activity is in the way is flagged for confirmation.
+     */
+    public function test_replacing_someone_elses_activity_is_flagged(): void {
+        $this->getDataGenerator()->create_module(
+            'page',
+            ['course' => $this->course->id, 'name' => 'Week 1 reading']
+        );
+
+        $this->use_fake_transport([
+            'block_coursesync_list_activities' => $this->remote_listing([
+                ['cmid' => 21, 'name' => 'Week 1 reading', 'signal' => '3000'],
+            ]),
+        ]);
+        engine::run($this->blockid, (int) get_admin()->id);
+
+        $this->assertTrue(resolver::replaces_foreign_activity($this->blockid, 21));
+    }
+
+    /**
+     * Nothing is flagged for an activity that is not in conflict at all.
+     */
+    public function test_an_activity_not_in_conflict_is_not_flagged(): void {
+        $this->assertFalse(resolver::replaces_foreign_activity($this->blockid, 999));
+    }
 }

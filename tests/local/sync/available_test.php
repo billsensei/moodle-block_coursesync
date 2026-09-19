@@ -202,4 +202,36 @@ final class available_test extends \advanced_testcase {
         $this->assertFalse($context['hasitems']);
         $this->assertSame('', $context['error']);
     }
+
+    /**
+     * Activities this course has no copy of come before ones it already has.
+     */
+    public function test_activities_not_in_this_course_are_listed_first(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $blockid = $this->create_configured_block();
+        $page = $this->getDataGenerator()->create_module('page', ['course' => $this->course->id]);
+        $local = activity_signature::for_local_cmid((int) $page->cmid);
+
+        // The remote course lists the one this course already has first.
+        $this->record_previous_pull($blockid, 11, (int) $page->cmid, '1000', $local['signal']);
+        $this->use_fake_transport([
+            'block_coursesync_list_activities' => $this->remote_listing([
+                ['cmid' => 11, 'name' => 'Already here, changed', 'signal' => '2000'],
+                ['cmid' => 12, 'name' => 'Not here at all', 'signal' => '1000'],
+                ['cmid' => 13, 'name' => 'Also not here', 'signal' => '1000'],
+            ]),
+        ]);
+
+        $context = available::refresh($blockid, (int) get_admin()->id, $this->return_url());
+
+        $this->assertSame(
+            ['Not here at all', 'Also not here', 'Already here, changed'],
+            array_column($context['items'], 'name')
+        );
+
+        // Within the new ones, the remote course's own order is kept.
+        $this->assertSame([12, 13, 11], array_column($context['items'], 'remotecmid'));
+    }
 }

@@ -17,7 +17,11 @@
 {{!
     @template block_coursesync/conflicts
 
-    Activities where both sides changed, and the choices for each.
+    Activities that need a decision, and the choices for each.
+
+    Those this course has no copy of are listed first: an activity that never
+    arrived because something else was in its way, then the ones that are here
+    already and have diverged.
 
     Context variables required for this template:
     * hasconflicts bool - Whether anything needs review.
@@ -27,6 +31,10 @@
     * keeplocal string - Action value for keeping the local copy.
     * pullremote string - Action value for taking the remote copy.
     * defer string - Action value for deciding later.
+
+    Each conflict carries: remotecmid, name, modname, reason, haslocal,
+    localmodified, lastpulled, and willreplaceforeign - whether taking the
+    remote version would delete an activity this block did not create.
 
     Example context (json):
     {
@@ -45,7 +53,7 @@
                 "haslocal": true,
                 "localmodified": "This copy was changed on 19 September 2026",
                 "lastpulled": "18 September 2026",
-                "canpullremote": true
+                "willreplaceforeign": false
             }
         ]
     }
@@ -71,18 +79,16 @@
                         <button type="submit" name="action" value="{{keeplocal}}" class="btn btn-secondary btn-sm mr-2">
                             {{#str}}conflicts:keeplocal, block_coursesync{{/str}}
                         </button>
-                        {{#canpullremote}}
-                            <button type="submit" name="action" value="{{pullremote}}" class="btn btn-primary btn-sm mr-2">
-                                {{#str}}conflicts:pullremote, block_coursesync{{/str}}
-                            </button>
-                        {{/canpullremote}}
+                        <button type="submit" name="action" value="{{pullremote}}" class="btn btn-primary btn-sm mr-2">
+                            {{#str}}conflicts:pullremote, block_coursesync{{/str}}
+                        </button>
                         <button type="submit" name="action" value="{{defer}}" class="btn btn-link btn-sm">
                             {{#str}}conflicts:defer, block_coursesync{{/str}}
                         </button>
                     </form>
-                    {{^canpullremote}}
-                        <p class="small text-muted mt-2 mb-0">{{#str}}conflicts:cannotpull, block_coursesync{{/str}}</p>
-                    {{/canpullremote}}
+                    {{#willreplaceforeign}}
+                        <p class="small text-muted mt-2 mb-0">{{#str}}conflicts:willreplace, block_coursesync{{/str}}</p>
+                    {{/willreplaceforeign}}
                 </div>
             </div>
         {{/conflicts}}

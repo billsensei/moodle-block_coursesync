@@ -186,9 +186,16 @@ class engine {
      * @param int $blockinstanceid Block instance to sync.
      * @param int $remotecmid The remote course module to pull.
      * @param int $userid User the run acts as.
+     * @param bool $replacecollision Whether to also replace an activity this block did not create
+     *                               that stands in the way of this one.
      * @return run_result What the run did.
      */
-    public static function pull_one(int $blockinstanceid, int $remotecmid, int $userid): run_result {
+    public static function pull_one(
+        int $blockinstanceid,
+        int $remotecmid,
+        int $userid,
+        bool $replacecollision = false
+    ): run_result {
         $runid = uniqid('csr', false);
         $result = new run_result($runid);
         $log = new audit_log($runid, $blockinstanceid, $userid);
@@ -222,6 +229,14 @@ class engine {
         if ($localcmid && !activity_signature::for_local_cmid($localcmid)) {
             // The copy this would have replaced is gone, so this becomes a fresh pull.
             $localcmid = null;
+        }
+
+        if (!$localcmid && $replacecollision) {
+            // A collision is recorded without the cmid it collided with, so the
+            // activity standing in the way is looked for again here, in the
+            // course as it is now. If it has since been renamed or removed,
+            // nothing is replaced and this is simply a first pull.
+            $localcmid = self::colliding_activity($course, $ledger, $activity);
         }
 
         $item = new plan_item(
@@ -362,6 +377,22 @@ class engine {
         }
 
         return $signals;
+    }
+
+    /**
+     * Finds the activity this block did not create that stands in the way of a remote one.
+     *
+     * @param \stdClass $course The target course.
+     * @param \stdClass[] $ledger Ledger rows keyed by remote cmid.
+     * @param array $activity One row from block_coursesync_list_activities.
+     * @return int|null The local course module in the way, or null if there is none.
+     */
+    private static function colliding_activity(\stdClass $course, array $ledger, array $activity): ?int {
+        return planner::find_collision(
+            (string) ($activity['name'] ?? ''),
+            (string) ($activity['idnumber'] ?? ''),
+            ...self::foreign_activities($course, $ledger)
+        );
     }
 
     /**

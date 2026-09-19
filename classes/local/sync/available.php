@@ -126,6 +126,8 @@ class available {
             ];
         }
 
+        $items = self::absent_from_this_course_first($items);
+
         return [
             'checked' => $record !== null,
             'lastchecked' => isset($record['timechecked']) ? userdate((int) $record['timechecked']) : '',
@@ -139,6 +141,23 @@ class available {
             'returnurl' => $returnurl->out_as_local_url(false),
             'sesskey' => sesskey(),
         ];
+    }
+
+    /**
+     * Puts the activities this course has no copy of at the top of the list.
+     *
+     * What a teacher is usually looking for is the material that is not here
+     * yet; an activity that is already in the course and has only moved on
+     * remotely is a smaller matter, so it comes after. Within each group the
+     * remote course's own order is kept.
+     *
+     * @param array $items Items in the order the remote course listed them.
+     * @return array The same items, new ones first.
+     */
+    private static function absent_from_this_course_first(array $items): array {
+        usort($items, fn(array $a, array $b): int => ($b['isnew'] <=> $a['isnew']));
+
+        return $items;
     }
 
     /**

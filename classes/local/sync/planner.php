@@ -107,7 +107,7 @@ class planner {
 
         // Nothing here yet, either never pulled or the local copy has since been deleted.
         if (!$entry || !$localexists) {
-            $collision = $this->find_collision($name, $idnumber, $foreignnames, $foreignidnumbers);
+            $collision = self::find_collision($name, $idnumber, $foreignnames, $foreignidnumbers);
             if ($collision !== null) {
                 return $make(plan_item::ACTION_CONFLICT, $collision, plan_item::CONFLICT_NAME_COLLISION);
             }
@@ -134,13 +134,19 @@ class planner {
     /**
      * Finds a local activity this block does not manage that already claims the name or id number.
      *
+     * Public and static because the same rule has to be applied again later: a
+     * collision is recorded without the local cmid it found, so that a later
+     * run cannot mistake someone else's activity for a copy of the remote one.
+     * Anything that acts on a collision therefore has to ask this again, of the
+     * course as it stands at that moment.
+     *
      * @param string $name Remote activity name.
      * @param string $idnumber Remote activity id number, possibly empty.
      * @param array $foreignnames Local cmids keyed by normalised name.
      * @param array $foreignidnumbers Local cmids keyed by id number.
      * @return int|null The colliding local cmid, or null if there is none.
      */
-    private function find_collision(string $name, string $idnumber, array $foreignnames, array $foreignidnumbers): ?int {
+    public static function find_collision(string $name, string $idnumber, array $foreignnames, array $foreignidnumbers): ?int {
         if ($idnumber !== '' && isset($foreignidnumbers[$idnumber])) {
             return (int) $foreignidnumbers[$idnumber];
         }

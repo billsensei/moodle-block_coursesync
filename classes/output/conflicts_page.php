@@ -103,11 +103,29 @@ class conflicts_page implements \renderable, \templatable {
                 'lastpulled' => $row->timepulled
                     ? userdate((int) $row->timepulled)
                     : get_string('conflicts:neverpulled', 'block_coursesync'),
-                // Replacing is only meaningful where this block owns a local copy; a name
-                // collision points at someone else's activity, which must not be overwritten.
-                'canpullremote' => $row->conflictreason !== plan_item::CONFLICT_NAME_COLLISION,
+                // Taking the remote version is offered for every conflict. Where it would
+                // replace an activity this block did not create, it is offered with a
+                // warning and a confirmation, not quietly.
+                'willreplaceforeign' => (string) $row->conflictreason === plan_item::CONFLICT_NAME_COLLISION,
             ];
         }
+
+        return $this->absent_from_this_course_first($conflicts);
+    }
+
+    /**
+     * Puts the activities this course has no copy of at the top.
+     *
+     * A name collision is an activity that never arrived: something else is
+     * standing where it would go. Those are the ones a teacher is most likely
+     * to be looking for, so they come before the ones that are already here
+     * and have merely diverged.
+     *
+     * @param array $conflicts Conflicts in remote course module order.
+     * @return array The same conflicts, those with no local copy first.
+     */
+    private function absent_from_this_course_first(array $conflicts): array {
+        usort($conflicts, fn(array $a, array $b): int => ($a['haslocal'] <=> $b['haslocal']));
 
         return $conflicts;
     }

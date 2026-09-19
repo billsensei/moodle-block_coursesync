@@ -181,7 +181,9 @@ three things to do: **Check now**, **Sync now** and **View history**.
 **Check now** (needs `block/coursesync:trigger`) asks the remote course what
 it holds and lists what a sync would bring in — each activity marked *New*
 when this course has no copy of it, or *Changed* when the remote copy has
-moved on since it was pulled. It is a question, not an action: nothing is
+moved on since it was pulled. The new ones come first, since they are usually
+what a teacher is looking for; within each group the remote course's own
+order is kept. It is a question, not an action: nothing is
 transferred, nothing is written to the ledger or the history.
 
 Every activity in that list has a checkbox, ticked to begin with, and the
@@ -226,8 +228,10 @@ themselves.
 
 **Conflicts** (`conflicts.php`, needs `block/coursesync:trigger`, because
 resolving one changes course content) lists what the engine held back, with
-why it was held back and when each side last changed. Three choices per
-activity:
+why it was held back and when each side last changed. Activities this course
+has no copy of are listed first — one that never arrived because something
+else was in its way — then the ones that are here already and have diverged.
+Three choices per activity:
 
 | Choice | What happens |
 |---|---|
@@ -237,8 +241,18 @@ activity:
 
 All three are sesskey-protected POSTs, re-check the capability, and write
 their own entry to the audit log, so the history shows who decided what.
-"Take the remote version" is not offered for a name collision, because the
-activity it would replace is not one this block created.
+
+"Take the remote version" is offered for every conflict, including a name
+collision, where the activity it replaces is one this block did not create.
+That case is asked about first: the page says what will be deleted and takes
+a confirmation before doing anything. Two details make it safe to offer at
+all. The colliding activity is deliberately never recorded in the ledger — a
+later run must not mistake someone else's work for a copy of the remote one —
+so the activity in the way is looked for again, by the same rule, at the
+moment the replacement happens; if it has since been renamed or removed,
+nothing is deleted and the pull is simply a first pull. And the old activity
+is only dropped once its replacement exists, so a transfer that fails part
+way leaves the course exactly as it was.
 
 ## License
 

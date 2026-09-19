@@ -204,7 +204,11 @@ Two notes on the deliberate choices there:
   Authorisation is instead the backup capabilities, checked per module. Hidden
   activities additionally require `moodle/course:viewhiddenactivities`.
 - Resolving a conflict takes `:trigger`, not `:viewhistory`, because it changes
-  course content.
+  course content. Where taking the remote version would delete an activity
+  this block did not create, `conflicts.php` requires a separate confirmed
+  POST before calling the resolver at all, and the activity to be replaced is
+  identified again at that point rather than trusted from what an earlier run
+  recorded.
 - Checking what is available takes `:trigger`, not `:viewhistory`, although it
   changes nothing here: it makes this server send a request to another site
   with the stored token, which is the same power Sync now carries.

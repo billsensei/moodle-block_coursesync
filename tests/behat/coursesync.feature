@@ -174,6 +174,41 @@ Feature: Pulling activities from another site
     And I should see "Week 1 reading"
     And I should see "Take the remote version"
 
+  Scenario: An activity blocked by someone else's work can still be taken, once confirmed
+    Given the Course sync block is configured in course "TGT1"
+    And the following "activities" exist:
+      | activity | course | name           | intro           |
+      | page     | TGT1   | Week 1 reading | Written locally |
+    And the remote site offers the following activities:
+      | cmid | name           | signal |
+      | 11   | Week 1 reading | 1000   |
+    And a course sync has run in course "TGT1"
+    And I log in as "teacher1"
+    And I am on "Target course" course homepage
+    When I follow "Review conflicts (1)"
+    Then I should see "already exists in this course and was not created by this block"
+    And I should see "An activity this block did not create is in the way"
+    When I press "Take the remote version"
+    Then I should see "will delete that activity"
+    And I should see "This cannot be undone"
+
+  Scenario: Activities this course has no copy of are reviewed first
+    Given the Course sync block is configured in course "TGT1"
+    And the following "activities" exist:
+      | activity | course | name          | intro           |
+      | page     | TGT1   | Blocked by me | Written locally |
+    And course "TGT1" has already pulled "11" as "Week 1 reading" signal "1000"
+    And the local copy of "Week 1 reading" has been edited
+    And the remote site offers the following activities:
+      | cmid | name           | signal |
+      | 11   | Week 1 reading | 2000   |
+      | 21   | Blocked by me  | 1000   |
+    And a course sync has run in course "TGT1"
+    And I log in as "teacher1"
+    And I am on "Target course" course homepage
+    When I follow "Review conflicts (2)"
+    Then "Blocked by me" "text" should appear before "Week 1 reading" "text"
+
   Scenario: A student cannot reach the conflict review
     Given the Course sync block is configured in course "TGT1"
     And course "TGT1" has already pulled "11" as "Week 1 reading" signal "1000"
