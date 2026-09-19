@@ -1,0 +1,77 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template block_coursesync/history
+
+    A page of sync runs, each expandable to the activities it touched.
+
+    Context variables required for this template:
+    * hasruns bool - Whether there is any history to show.
+    * runs array - The runs on this page, newest first.
+
+    Example context (json):
+    {
+        "hasruns": true,
+        "runs": [
+            {
+                "time": "Saturday, 19 September 2026, 3:42 AM",
+                "user": "Admin User",
+                "summary": "1 pulled, 1 in conflict",
+                "items": [
+                    {
+                        "outcome": "new",
+                        "outcomelabel": "Pulled",
+                        "badge": "success",
+                        "modname": "page",
+                        "name": "Week 1 reading",
+                        "hasurl": true,
+                        "url": "https://example.com/mod/page/view.php?id=5",
+                        "message": "",
+                        "hasmessage": false
+                    }
+                ]
+            }
+        ]
+    }
+}}
+{{#hasruns}}
+    <div class="block_coursesync-history">
+        {{#runs}}
+            <details class="card mb-2">
+                <summary class="card-header">
+                    <strong>{{time}}</strong>
+                    {{#user}}<span class="text-muted"> &middot; {{user}}</span>{{/user}}
+                    <span class="d-block small text-muted">{{summary}}</span>
+                </summary>
+                <ul class="list-group list-group-flush">
+                    {{#items}}
+                        <li class="list-group-item">
+                            <span class="badge badge-{{badge}} bg-{{badge}} mr-2">{{outcomelabel}}</span>
+                            {{#hasurl}}<a href="{{url}}">{{name}}</a>{{/hasurl}}
+                            {{^hasurl}}{{name}}{{/hasurl}}
+                            {{#modname}}<span class="text-muted small"> ({{modname}})</span>{{/modname}}
+                            {{#hasmessage}}<div class="small text-muted">{{message}}</div>{{/hasmessage}}
+                        </li>
+                    {{/items}}
+                </ul>
+            </details>
+        {{/runs}}
+    </div>
+{{/hasruns}}
+{{^hasruns}}
+    <p class="text-muted">{{#str}}history:empty, block_coursesync{{/str}}</p>
+{{/hasruns}}

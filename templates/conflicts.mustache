@@ -1,0 +1,93 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template block_coursesync/conflicts
+
+    Activities where both sides changed, and the choices for each.
+
+    Context variables required for this template:
+    * hasconflicts bool - Whether anything needs review.
+    * conflicts array - The conflicted activities.
+    * actionurl string - Where each decision posts to.
+    * sesskey string - Session key for the decision forms.
+    * keeplocal string - Action value for keeping the local copy.
+    * pullremote string - Action value for taking the remote copy.
+    * defer string - Action value for deciding later.
+
+    Example context (json):
+    {
+        "hasconflicts": true,
+        "actionurl": "https://example.com/blocks/coursesync/conflicts.php?id=6",
+        "sesskey": "abc123",
+        "keeplocal": "keeplocal",
+        "pullremote": "pullremote",
+        "defer": "defer",
+        "conflicts": [
+            {
+                "remotecmid": 2,
+                "name": "Week 1 reading",
+                "modname": "page",
+                "reason": "The remote copy changed, and this course's copy was edited too.",
+                "haslocal": true,
+                "localmodified": "This copy was changed on 19 September 2026",
+                "lastpulled": "18 September 2026",
+                "canpullremote": true
+            }
+        ]
+    }
+}}
+{{#hasconflicts}}
+    <p>{{#str}}conflicts:intro, block_coursesync{{/str}}</p>
+    <div class="block_coursesync-conflicts">
+        {{#conflicts}}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h3 class="h5 card-title">
+                        {{name}}
+                        {{#modname}}<span class="text-muted small">({{modname}})</span>{{/modname}}
+                    </h3>
+                    <p class="card-text mb-1">{{reason}}</p>
+                    <ul class="list-unstyled small text-muted mb-3">
+                        <li>{{#str}}conflicts:lastpulled, block_coursesync{{/str}} {{lastpulled}}</li>
+                        {{#localmodified}}<li>{{localmodified}}</li>{{/localmodified}}
+                    </ul>
+                    <form method="post" action="{{actionurl}}" class="d-flex flex-wrap gap-2">
+                        <input type="hidden" name="sesskey" value="{{sesskey}}">
+                        <input type="hidden" name="remotecmid" value="{{remotecmid}}">
+                        <button type="submit" name="action" value="{{keeplocal}}" class="btn btn-secondary btn-sm mr-2">
+                            {{#str}}conflicts:keeplocal, block_coursesync{{/str}}
+                        </button>
+                        {{#canpullremote}}
+                            <button type="submit" name="action" value="{{pullremote}}" class="btn btn-primary btn-sm mr-2">
+                                {{#str}}conflicts:pullremote, block_coursesync{{/str}}
+                            </button>
+                        {{/canpullremote}}
+                        <button type="submit" name="action" value="{{defer}}" class="btn btn-link btn-sm">
+                            {{#str}}conflicts:defer, block_coursesync{{/str}}
+                        </button>
+                    </form>
+                    {{^canpullremote}}
+                        <p class="small text-muted mt-2 mb-0">{{#str}}conflicts:cannotpull, block_coursesync{{/str}}</p>
+                    {{/canpullremote}}
+                </div>
+            </div>
+        {{/conflicts}}
+    </div>
+{{/hasconflicts}}
+{{^hasconflicts}}
+    <p class="text-muted">{{#str}}conflicts:none, block_coursesync{{/str}}</p>
+{{/hasconflicts}}

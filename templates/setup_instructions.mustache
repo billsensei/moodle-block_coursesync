@@ -1,0 +1,55 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template block_coursesync/setup_instructions
+
+    What the administrator of the remote Moodle site needs to set up.
+
+    Context variables required for this template:
+    * intro string - Sentence introducing the checklist.
+    * note string - Trailing note about functions added in a later phase.
+    * steps array - Ordered steps, each with a title and one or more lines.
+
+    Example context (json):
+    {
+        "intro": "Send these steps to the administrator of the site you want to pull activities from.",
+        "note": "Phase 3 adds two more functions, so this service will need extending later.",
+        "steps": [
+            {
+                "title": "Enable web services",
+                "lines": [
+                    {"text": "Tick Enable web services in Site administration > Advanced features."},
+                    {"text": "Enable the REST protocol in Site administration > Plugins > Web services."}
+                ]
+            }
+        ]
+    }
+}}
+<div class="block_coursesync-setup">
+    <p>{{intro}}</p>
+    <ol class="block_coursesync-setup-steps">
+        {{#steps}}
+            <li class="mb-2">
+                <strong>{{title}}</strong>
+                {{#lines}}
+                    <div class="text-muted">{{text}}</div>
+                {{/lines}}
+            </li>
+        {{/steps}}
+    </ol>
+    <p><em>{{note}}</em></p>
+</div>

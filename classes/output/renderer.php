@@ -1,0 +1,60 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * Renderer for block_coursesync.
+ *
+ * @package    block_coursesync
+ * @copyright  2026 block_coursesync contributors
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+namespace block_coursesync\output;
+
+/**
+ * Renders this block's own views from templates.
+ */
+class renderer extends \plugin_renderer_base {
+    /**
+     * Renders the block body.
+     *
+     * @param block_content $renderable The block's state.
+     * @return string HTML.
+     */
+    public function render_block_content(block_content $renderable): string {
+        return $this->render_from_template('block_coursesync/block_content', $renderable->export_for_template($this));
+    }
+
+    /**
+     * Renders the pull history.
+     *
+     * @param history_page $renderable The runs to show.
+     * @return string HTML.
+     */
+    public function render_history_page(history_page $renderable): string {
+        return $this->render_from_template('block_coursesync/history', $renderable->export_for_template($this));
+    }
+
+    /**
+     * Renders the conflict review list.
+     *
+     * @param conflicts_page $renderable The conflicts awaiting a decision.
+     * @return string HTML.
+     */
+    public function render_conflicts_page(conflicts_page $renderable): string {
+        return $this->render_from_template('block_coursesync/conflicts', $renderable->export_for_template($this));
+    }
+}

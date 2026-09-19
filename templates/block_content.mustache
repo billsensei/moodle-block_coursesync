@@ -1,0 +1,140 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template block_coursesync/block_content
+
+    The body of the Course sync block on a course page.
+
+    Context variables required for this template:
+    * uniqid string - Unique id tying this markup to its JavaScript.
+    * blockid int - The block instance being shown.
+    * configured bool - Whether a verified connection exists.
+    * cansetup bool - Whether this user may finish the setup.
+    * hasremote bool - Whether the remote site and course are known.
+    * remotesitename string - Name of the remote site.
+    * remotecoursename string - Name of the remote course.
+    * summary string - Short description of how many activities are synced or in conflict.
+    * hasconflicts bool - Whether anything needs review.
+    * conflicts int - How many activities need review.
+    * canresolve bool - Whether this user may open the conflict review.
+    * conflictsurl string - Link to the conflict review.
+    * haslastrun bool - Whether a run has ever happened.
+    * lastrun string - When the last run finished.
+    * running bool - Whether a run is queued or in progress.
+    * cantrigger bool - Whether this user may start a run.
+    * syncurl string - Where the sync form posts to.
+    * returnurl string - Where to return after starting a run.
+    * sesskey string - Session key for the sync form.
+    * canviewhistory bool - Whether this user may see the history.
+    * historyurl string - Link to the history page.
+
+    Example context (json):
+    {
+        "uniqid": "block_coursesync_status_1",
+        "blockid": 6,
+        "configured": true,
+        "cansetup": true,
+        "hasremote": true,
+        "remotesitename": "Course Sync Site A",
+        "remotecoursename": "Source Biology 101",
+        "summary": "3 synced, 1 needs review",
+        "hasconflicts": true,
+        "conflicts": 1,
+        "canresolve": true,
+        "conflictsurl": "https://example.com/blocks/coursesync/conflicts.php?id=6",
+        "haslastrun": true,
+        "lastrun": "Saturday, 19 September 2026, 3:42 AM",
+        "running": false,
+        "cantrigger": true,
+        "syncurl": "https://example.com/blocks/coursesync/sync.php",
+        "returnurl": "/course/view.php?id=2",
+        "sesskey": "abc123",
+        "canviewhistory": true,
+        "historyurl": "https://example.com/blocks/coursesync/history.php?id=6"
+    }
+}}
+<div class="block_coursesync-status" data-region="block_coursesync/status" data-uniqid="{{uniqid}}">
+{{#configured}}
+    {{#hasremote}}
+        <dl class="mb-2">
+            <dt class="text-muted">{{#str}}status:from, block_coursesync{{/str}}</dt>
+            <dd class="mb-1">{{remotecoursename}}</dd>
+            <dd class="mb-0 text-muted small">{{remotesitename}}</dd>
+        </dl>
+    {{/hasremote}}
+
+    <p class="mb-1">{{summary}}</p>
+
+    {{#haslastrun}}
+        <p class="text-muted small mb-2">{{#str}}status:lastrun, block_coursesync{{/str}} {{lastrun}}</p>
+    {{/haslastrun}}
+    {{^haslastrun}}
+        <p class="text-muted small mb-2">{{#str}}status:neverrun, block_coursesync{{/str}}</p>
+    {{/haslastrun}}
+
+    {{#hasconflicts}}
+        <div class="alert alert-warning py-2 px-3 mb-2" role="alert">
+            {{#canresolve}}
+                <a href="{{conflictsurl}}">{{#str}}status:reviewconflicts, block_coursesync, {{conflicts}}{{/str}}</a>
+            {{/canresolve}}
+            {{^canresolve}}
+                {{#str}}status:conflictspending, block_coursesync, {{conflicts}}{{/str}}
+            {{/canresolve}}
+        </div>
+    {{/hasconflicts}}
+
+    {{#running}}
+        <p class="mb-2" data-region="running">
+            <span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span>
+            {{#str}}status:running, block_coursesync{{/str}}
+        </p>
+    {{/running}}
+
+    {{^running}}
+        {{#cantrigger}}
+            <form method="post" action="{{syncurl}}" class="mb-2">
+                <input type="hidden" name="sesskey" value="{{sesskey}}">
+                <input type="hidden" name="id" value="{{blockid}}">
+                <input type="hidden" name="returnurl" value="{{returnurl}}">
+                <button type="submit" class="btn btn-primary btn-sm">{{#str}}status:syncnow, block_coursesync{{/str}}</button>
+            </form>
+        {{/cantrigger}}
+    {{/running}}
+
+    {{#canviewhistory}}
+        <a href="{{historyurl}}" class="small">{{#str}}status:viewhistory, block_coursesync{{/str}}</a>
+    {{/canviewhistory}}
+{{/configured}}
+
+{{^configured}}
+    <div class="alert alert-info py-2 px-3 mb-0" role="alert">
+        {{#cansetup}}
+            {{#str}}status:finishsetup, block_coursesync{{/str}}
+        {{/cansetup}}
+        {{^cansetup}}
+            {{#str}}status:notconfigured, block_coursesync{{/str}}
+        {{/cansetup}}
+    </div>
+{{/configured}}
+</div>
+{{#running}}
+{{#js}}
+require(['block_coursesync/syncpoll'], function(SyncPoll) {
+    SyncPoll.init('{{uniqid}}', {{blockid}});
+});
+{{/js}}
+{{/running}}

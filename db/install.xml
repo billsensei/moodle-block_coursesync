@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="blocks/coursesync/db" VERSION="20260919" COMMENT="XMLDB file for the Course sync block"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="block_coursesync_pulls" COMMENT="Live ledger of what each block instance has pulled: one row per remote course module, recording where it landed locally and the change signals seen at the last successful pull.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The block instance this pull belongs to"/>
+        <FIELD NAME="remotecmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Course module id on the remote site"/>
+        <FIELD NAME="localcmid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Course module id the activity was restored into locally"/>
+        <FIELD NAME="remotesignal" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Remote change signal recorded at the last successful pull"/>
+        <FIELD NAME="remotesignalmethod" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="How the remote signal was derived: timemodified or hash"/>
+        <FIELD NAME="localsignal" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Change signal of the local copy immediately after the pull, used to detect later local edits"/>
+        <FIELD NAME="localsignalmethod" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="How the local signal was derived: timemodified or hash"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="synced" SEQUENCE="false" COMMENT="synced, conflict or skipped"/>
+        <FIELD NAME="conflictreason" TYPE="char" LENGTH="40" NOTNULL="false" SEQUENCE="false" COMMENT="Why the row is in conflict, when it is"/>
+        <FIELD NAME="timepulled" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="When this activity was last successfully pulled"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="When this ledger row last changed"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="blockinstanceid-remotecmid" UNIQUE="true" FIELDS="blockinstanceid, remotecmid"/>
+        <INDEX NAME="localcmid" UNIQUE="false" FIELDS="localcmid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="block_coursesync_log" COMMENT="Append-only audit trail: one row per activity processed in a sync run, grouped by run id.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="runid" TYPE="char" LENGTH="32" NOTNULL="true" SEQUENCE="false" COMMENT="Groups all rows written by a single sync run"/>
+        <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The block instance the run belongs to"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="User who triggered the run"/>
+        <FIELD NAME="remotecmid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Course module id on the remote site"/>
+        <FIELD NAME="localcmid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Local course module id, once one exists"/>
+        <FIELD NAME="modname" TYPE="char" LENGTH="32" NOTNULL="false" SEQUENCE="false" COMMENT="Activity module type"/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Activity name as it was on the remote site"/>
+        <FIELD NAME="outcome" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="new, updated, unchanged, conflict or error"/>
+        <FIELD NAME="message" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Detail for conflicts and errors"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="When this row was written"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="blockinstanceid-timecreated" UNIQUE="false" FIELDS="blockinstanceid, timecreated"/>
+        <INDEX NAME="runid" UNIQUE="false" FIELDS="runid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>
