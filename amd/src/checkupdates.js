@@ -28,6 +28,10 @@ import {getString} from 'core/str';
 const SELECTORS = {
     CHECK_BUTTON: '[data-action="check"]',
     AVAILABLE: '[data-region="available"]',
+    SYNC_ALL: '[data-region="syncall"]',
+    SELECT_ALL: '[data-action="select-all"]',
+    SELECT_NONE: '[data-action="select-none"]',
+    CHECKBOX: 'input[type="checkbox"][name="remotecmids[]"]',
 };
 
 /** @var {string} The template both this module and the block itself render the list with. */
@@ -49,14 +53,43 @@ const showMessage = (region, message) => {
 };
 
 /**
+ * Ticks or clears every activity in the list.
+ *
+ * @param {HTMLElement} region The list container.
+ * @param {boolean} checked Whether the activities should end up chosen.
+ */
+const setAll = (region, checked) => {
+    region.querySelectorAll(SELECTORS.CHECKBOX).forEach((checkbox) => {
+        checkbox.checked = checked;
+    });
+};
+
+/**
+ * Shows the whole-course Sync now only while there is no list to choose from.
+ *
+ * The list carries its own Sync now for the activities that are ticked, and two
+ * buttons of the same name doing different things would be a trap.
+ *
+ * @param {HTMLElement} status The block body.
+ * @param {boolean} haslist Whether a list of activities is on show.
+ */
+const toggleSyncAll = (status, haslist) => {
+    const syncall = status.querySelector(SELECTORS.SYNC_ALL);
+    if (syncall) {
+        syncall.hidden = haslist;
+    }
+};
+
+/**
  * Checks the remote course and redraws the list with what came back.
  *
  * @param {HTMLButtonElement} button The button that was pressed.
+ * @param {HTMLElement} status The block body.
  * @param {HTMLElement} region The list container.
  * @param {number} blockid The block instance being checked.
  * @returns {Promise<void>}
  */
-const check = async(button, region, blockid) => {
+const check = async(button, status, region, blockid) => {
     button.disabled = true;
     showMessage(region, await getString('available:checking', 'block_coursesync'));
 
@@ -65,6 +98,7 @@ const check = async(button, region, blockid) => {
         const {html, js} = await Templates.renderForPromise(TEMPLATE, context);
 
         Templates.replaceNodeContents(region, html, js);
+        toggleSyncAll(status, context.hasitems);
     } catch (error) {
         // Anything the check itself could not do comes back in the response and
         // is rendered with the list; reaching here means the request failed.
@@ -92,5 +126,15 @@ export const init = (uniqid, blockid) => {
         return;
     }
 
-    button.addEventListener('click', () => check(button, region, blockid));
+    button.addEventListener('click', () => check(button, status, region, blockid));
+
+    // Delegated, because the list inside this region is replaced wholesale
+    // every time a check is made.
+    region.addEventListener('click', (event) => {
+        if (event.target.closest(SELECTORS.SELECT_ALL)) {
+            setAll(region, true);
+        } else if (event.target.closest(SELECTORS.SELECT_NONE)) {
+            setAll(region, false);
+        }
+    });
 };

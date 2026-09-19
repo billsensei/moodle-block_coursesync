@@ -25,11 +25,15 @@
 require_once(__DIR__ . '/../../config.php');
 
 use block_coursesync\local\block_helper;
+use block_coursesync\local\sync\available;
 use block_coursesync\local\sync\engine;
 use block_coursesync\local\sync\status;
 
 $blockid = required_param('id', PARAM_INT);
 $returnurl = optional_param('returnurl', '', PARAM_LOCALURL);
+$action = optional_param('action', 'sync', PARAM_ALPHA);
+$fromlist = optional_param('selection', 0, PARAM_BOOL);
+$remotecmids = optional_param_array('remotecmids', [], PARAM_INT);
 
 require_sesskey();
 
@@ -44,6 +48,32 @@ require_capability('block/coursesync:trigger', $context);
 $return = $returnurl !== ''
     ? new moodle_url($returnurl)
     : new moodle_url('/course/view.php', ['id' => $course->id]);
+
+if ($action === 'cancel') {
+    // Backing out of the list leaves nothing behind: the check is dropped, so
+    // the block goes back to offering one rather than showing a choice that
+    // was declined.
+    available::invalidate($blockid);
+
+    redirect(
+        $return,
+        get_string('status:checkcancelled', 'block_coursesync'),
+        null,
+        \core\output\notification::NOTIFY_INFO
+    );
+}
+
+// An empty choice means "everything" to the engine, which is right for the
+// Sync now beside the block's own buttons and quite wrong for a list someone
+// has just cleared every box on.
+if ($fromlist && !$remotecmids) {
+    redirect(
+        $return,
+        get_string('status:nothingselected', 'block_coursesync'),
+        null,
+        \core\output\notification::NOTIFY_INFO
+    );
+}
 
 if (!status::is_configured($block->config ?? new stdClass())) {
     redirect(
@@ -63,7 +93,7 @@ if (engine::is_queued($blockid)) {
     );
 }
 
-engine::queue($blockid, (int) $USER->id);
+engine::queue($blockid, (int) $USER->id, $remotecmids);
 
 redirect(
     $return,

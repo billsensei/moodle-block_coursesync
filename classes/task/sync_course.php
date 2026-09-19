@@ -55,7 +55,9 @@ class sync_course extends \core\task\adhoc_task {
             return;
         }
 
-        $result = engine::run($blockinstanceid, $userid);
+        $remotecmids = array_map('intval', (array) ($data->remotecmids ?? []));
+
+        $result = engine::run($blockinstanceid, $userid, $remotecmids);
 
         mtrace(sprintf(
             'block_coursesync: run %s for block %d - %d new, %d updated, %d unchanged, %d conflicts, %d skipped, %d errors.',

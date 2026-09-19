@@ -302,4 +302,41 @@ final class engine_test extends \advanced_testcase {
         $this->assertSame(1, $result->errors);
         $this->assertSame([], $transport->get_requests());
     }
+
+    /**
+     * A run told which activities to bring in leaves the rest of the plan alone.
+     */
+    public function test_a_run_can_be_narrowed_to_chosen_activities(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $blockid = $this->create_configured_block();
+        $wanted = $this->getDataGenerator()->create_module('page', ['course' => $this->course->id]);
+        $ignored = $this->getDataGenerator()->create_module('page', ['course' => $this->course->id]);
+
+        foreach ([11 => $wanted, 12 => $ignored] as $remotecmid => $module) {
+            $this->record_previous_pull(
+                $blockid,
+                $remotecmid,
+                (int) $module->cmid,
+                '1000',
+                activity_signature::for_local_cmid((int) $module->cmid)['signal']
+            );
+        }
+
+        $this->use_fake_transport([
+            'block_coursesync_list_activities' => $this->remote_listing([
+                ['cmid' => 11, 'name' => 'Chosen', 'signal' => '1000'],
+                ['cmid' => 12, 'name' => 'Left out', 'signal' => '1000'],
+            ]),
+        ]);
+
+        $result = engine::run($blockid, (int) get_admin()->id, [11]);
+
+        // Both are in step with the remote course, but only the chosen one was
+        // looked at, so only it appears in this run's history.
+        $this->assertSame(1, $result->unchanged);
+        $this->assertSame(0, $result->errors);
+        $this->assertSame([11], array_keys($this->log_rows($blockid)));
+    }
 }

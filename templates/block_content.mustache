@@ -37,6 +37,8 @@
     * running bool - Whether a run is queued or in progress.
     * cantrigger bool - Whether this user may check for and start a run.
     * available object - What the last check found; see block_coursesync/available_list.
+      While it holds activities, that list carries its own Sync now for the chosen
+      ones and the whole-course Sync now below is hidden.
     * syncurl string - Where the sync form posts to.
     * returnurl string - Where to return after starting a run.
     * sesskey string - Session key for the sync form.
@@ -67,9 +69,13 @@
             "hasitems": true,
             "count": 1,
             "items": [
-                {"name": "Week 2 reading", "modname": "Page", "isnew": true, "actionlabel": "New"}
+                {"remotecmid": 11, "name": "Week 2 reading", "modname": "Page", "isnew": true, "actionlabel": "New"}
             ],
-            "error": ""
+            "error": "",
+            "blockid": 6,
+            "syncurl": "https://example.com/blocks/coursesync/sync.php",
+            "returnurl": "/course/view.php?id=2",
+            "sesskey": "abc123"
         },
         "syncurl": "https://example.com/blocks/coursesync/sync.php",
         "returnurl": "/course/view.php?id=2",
@@ -129,14 +135,16 @@
                 <button type="button" class="btn btn-secondary btn-sm" data-action="check">
                     {{#str}}status:checknow, block_coursesync{{/str}}
                 </button>
-                <form method="post" action="{{syncurl}}" class="m-0">
-                    <input type="hidden" name="sesskey" value="{{sesskey}}">
-                    <input type="hidden" name="id" value="{{blockid}}">
-                    <input type="hidden" name="returnurl" value="{{returnurl}}">
-                    <button type="submit" class="btn btn-primary btn-sm">
-                        {{#str}}status:syncnow, block_coursesync{{/str}}
-                    </button>
-                </form>
+                <div data-region="syncall" {{#available.hasitems}}hidden{{/available.hasitems}}>
+                    <form method="post" action="{{syncurl}}" class="m-0">
+                        <input type="hidden" name="sesskey" value="{{sesskey}}">
+                        <input type="hidden" name="id" value="{{blockid}}">
+                        <input type="hidden" name="returnurl" value="{{returnurl}}">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            {{#str}}status:syncnow, block_coursesync{{/str}}
+                        </button>
+                    </form>
+                </div>
             {{/cantrigger}}
         {{/running}}
 

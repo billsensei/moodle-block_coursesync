@@ -185,7 +185,7 @@ alone.
 | `block_coursesync_validate_course` (AJAX) | `validate_context`, `require_sesskey`, `:addinstance` + `:trigger` |
 | `block_coursesync_check_updates` (AJAX) | `validate_context`, `require_sesskey`, `:trigger` |
 | `block_coursesync_sync_status` (AJAX) | `validate_context`, `:viewhistory` |
-| `sync.php` | `require_sesskey`, `require_login($course)`, `:trigger` |
+| `sync.php` (sync and cancel) | `require_sesskey`, `require_login($course)`, `:trigger` |
 | `history.php` | `require_login($course)`, `:viewhistory` |
 | `conflicts.php` (view) | `require_login($course)`, `:trigger` |
 | `conflicts.php` (three actions) | as above, plus `require_sesskey` per action |
@@ -208,6 +208,11 @@ Two notes on the deliberate choices there:
 - Checking what is available takes `:trigger`, not `:viewhistory`, although it
   changes nothing here: it makes this server send a request to another site
   with the stored token, which is the same power Sync now carries.
+- The activities ticked in that list arrive as remote course module ids and
+  are treated as a filter, never as an instruction. A run re-reads the remote
+  course and plans it afresh; the ids only narrow that plan, so an id that was
+  tampered with, or that named something the plan would not have touched,
+  selects nothing. Every capability check a full run makes still runs.
 
 ### 3.1 Fixed: the conflict resolver trusted its caller
 

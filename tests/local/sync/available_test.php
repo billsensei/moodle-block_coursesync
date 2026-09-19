@@ -44,6 +44,15 @@ final class available_test extends \advanced_testcase {
     use sync_fixtures;
 
     /**
+     * Where a sync started from the list would return to.
+     *
+     * @return \moodle_url
+     */
+    private function return_url(): \moodle_url {
+        return new \moodle_url('/course/view.php', ['id' => $this->course->id]);
+    }
+
+    /**
      * Removes the scripted transport so it cannot leak into another test.
      */
     protected function tearDown(): void {
@@ -68,7 +77,7 @@ final class available_test extends \advanced_testcase {
             ]),
         ]);
 
-        $context = available::refresh($blockid, (int) get_admin()->id);
+        $context = available::refresh($blockid, (int) get_admin()->id, $this->return_url());
 
         $this->assertTrue($context['checked']);
         $this->assertTrue($context['hasitems']);
@@ -76,6 +85,13 @@ final class available_test extends \advanced_testcase {
         $this->assertSame('Week 1 reading', $context['items'][0]['name']);
         $this->assertTrue($context['items'][0]['isnew']);
         $this->assertSame(get_string('modulename', 'mod_page'), $context['items'][0]['modname']);
+
+        // Each entry has to say which remote activity its checkbox stands for,
+        // and the list has to know where to post the choice.
+        $this->assertSame(11, $context['items'][0]['remotecmid']);
+        $this->assertSame(12, $context['items'][1]['remotecmid']);
+        $this->assertSame($blockid, $context['blockid']);
+        $this->assertStringContainsString('/blocks/coursesync/sync.php', $context['syncurl']);
 
         // A check is a question, not an action: nothing may have been pulled,
         // recorded in the ledger, or written to the history.
@@ -101,7 +117,7 @@ final class available_test extends \advanced_testcase {
             ]),
         ]);
 
-        $context = available::refresh($blockid, (int) get_admin()->id);
+        $context = available::refresh($blockid, (int) get_admin()->id, $this->return_url());
 
         $this->assertSame(1, $context['count']);
         $this->assertFalse($context['items'][0]['isnew']);
@@ -136,7 +152,7 @@ final class available_test extends \advanced_testcase {
             ]),
         ]);
 
-        $context = available::refresh($blockid, (int) get_admin()->id);
+        $context = available::refresh($blockid, (int) get_admin()->id, $this->return_url());
 
         $this->assertTrue($context['checked']);
         $this->assertFalse($context['hasitems']);
@@ -164,12 +180,12 @@ final class available_test extends \advanced_testcase {
             ]),
         ]);
 
-        available::refresh($blockid, (int) get_admin()->id);
-        $this->assertTrue(available::context($blockid)['checked']);
+        available::refresh($blockid, (int) get_admin()->id, $this->return_url());
+        $this->assertTrue(available::context($blockid, $this->return_url())['checked']);
 
         engine::run($blockid, (int) get_admin()->id);
 
-        $this->assertFalse(available::context($blockid)['checked']);
+        $this->assertFalse(available::context($blockid, $this->return_url())['checked']);
     }
 
     /**
@@ -180,7 +196,7 @@ final class available_test extends \advanced_testcase {
 
         $blockid = $this->create_configured_block();
 
-        $context = available::context($blockid);
+        $context = available::context($blockid, $this->return_url());
 
         $this->assertFalse($context['checked']);
         $this->assertFalse($context['hasitems']);

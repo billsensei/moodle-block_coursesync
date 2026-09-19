@@ -44,10 +44,14 @@ class engine {
      *
      * @param int $blockinstanceid Block instance to sync.
      * @param int $userid User the run acts as.
+     * @param int[] $remotecmids The remote activities to bring in; empty means all of them.
      */
-    public static function queue(int $blockinstanceid, int $userid): void {
+    public static function queue(int $blockinstanceid, int $userid, array $remotecmids = []): void {
         $task = new sync_course();
-        $task->set_custom_data(['blockinstanceid' => $blockinstanceid]);
+        $task->set_custom_data([
+            'blockinstanceid' => $blockinstanceid,
+            'remotecmids' => array_values(array_map('intval', $remotecmids)),
+        ]);
         $task->set_userid($userid);
 
         \core\task\manager::queue_adhoc_task($task, true);
@@ -75,9 +79,10 @@ class engine {
      *
      * @param int $blockinstanceid Block instance to sync.
      * @param int $userid User the run acts as.
+     * @param int[] $remotecmids The remote activities to bring in; empty means all of them.
      * @return run_result What the run did.
      */
-    public static function run(int $blockinstanceid, int $userid): run_result {
+    public static function run(int $blockinstanceid, int $userid, array $remotecmids = []): run_result {
         $runid = uniqid('csr', false);
         $result = new run_result($runid);
         $log = new audit_log($runid, $blockinstanceid, $userid);
@@ -92,8 +97,12 @@ class engine {
         }
 
         $restorer = new restorer($client, $course, $userid);
+        $plan = self::chosen(
+            self::build_plan($blockinstanceid, $course, $remoteactivities),
+            $remotecmids
+        );
 
-        foreach (self::build_plan($blockinstanceid, $course, $remoteactivities) as $item) {
+        foreach ($plan as $item) {
             self::apply($item, $blockinstanceid, $restorer, $log, $result);
         }
 
@@ -142,6 +151,29 @@ class engine {
             self::local_signals($ledger),
             ...self::foreign_activities($course, $ledger)
         );
+    }
+
+    /**
+     * Narrows a plan to the activities a person picked out of it.
+     *
+     * An empty choice means the whole plan, which is what a run started
+     * without going through the list does. Anything picked that the plan does
+     * not mention is ignored: the remote course is read afresh on every run,
+     * so a choice made against an older reading of it cannot resurrect an
+     * activity that has since gone.
+     *
+     * @param plan_item[] $plan The whole plan.
+     * @param int[] $remotecmids The remote activities to keep, or none to keep all.
+     * @return plan_item[]
+     */
+    private static function chosen(array $plan, array $remotecmids): array {
+        if (!$remotecmids) {
+            return $plan;
+        }
+
+        $wanted = array_flip(array_map('intval', $remotecmids));
+
+        return array_values(array_filter($plan, fn(plan_item $item): bool => isset($wanted[$item->remotecmid])));
     }
 
     /**

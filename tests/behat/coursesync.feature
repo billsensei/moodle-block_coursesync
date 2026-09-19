@@ -51,6 +51,57 @@ Feature: Pulling activities from another site
     And I should see "Week 2 reading"
     And I should see "New"
     And I should see "0 synced"
+    And the field "Week 1 reading" matches value "1"
+    And I should see "Select all"
+    And I should see "Select none"
+    And I should see "Cancel"
+
+  @javascript
+  Scenario: Clearing every box and syncing does nothing at all
+    Given the Course sync block is configured in course "TGT1"
+    And the remote site offers the following activities:
+      | cmid | name           | signal |
+      | 11   | Week 1 reading | 1000   |
+    And I log in as "teacher1"
+    And I am on "Target course" course homepage
+    And I press "Check now"
+    And I should see "Ready to sync (1)"
+    When I press "Select none"
+    Then the field "Week 1 reading" matches value ""
+    When I press "Sync now"
+    Then I should see "No activities were ticked, so nothing was synced"
+    And I should see "Not synced yet"
+
+  @javascript
+  Scenario: Select all puts back what was cleared
+    Given the Course sync block is configured in course "TGT1"
+    And the remote site offers the following activities:
+      | cmid | name           | signal |
+      | 11   | Week 1 reading | 1000   |
+      | 12   | Week 2 reading | 1000   |
+    And I log in as "teacher1"
+    And I am on "Target course" course homepage
+    And I press "Check now"
+    And I press "Select none"
+    When I press "Select all"
+    Then the field "Week 1 reading" matches value "1"
+    And the field "Week 2 reading" matches value "1"
+
+  @javascript
+  Scenario: Cancelling clears the list and leaves the course page as it was
+    Given the Course sync block is configured in course "TGT1"
+    And the remote site offers the following activities:
+      | cmid | name           | signal |
+      | 11   | Week 1 reading | 1000   |
+    And I log in as "teacher1"
+    And I am on "Target course" course homepage
+    And I press "Check now"
+    And I should see "Ready to sync (1)"
+    When I press "Cancel"
+    Then I should see "That list has been cleared"
+    And I should see "Use Check now to see what this course could pull in"
+    And I should not see "Ready to sync"
+    And I should see "Not synced yet"
 
   Scenario: A student is not shown the block at all
     Given the Course sync block is configured in course "TGT1"

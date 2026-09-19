@@ -92,7 +92,7 @@ class block_content implements \renderable, \templatable {
             // What the last check found, if there has been one. Only whoever
             // can act on the list is shown it, and nothing here goes near the
             // remote site: a course page must not wait on another server.
-            'available' => $cantrigger ? available::context($this->blockinstanceid) : [],
+            'available' => $cantrigger ? available::context($this->blockinstanceid, $this->returnurl) : [],
             'syncurl' => (new \moodle_url('/blocks/coursesync/sync.php'))->out(false),
             'returnurl' => $this->returnurl->out_as_local_url(false),
             'sesskey' => sesskey(),

@@ -10,7 +10,8 @@ the Moodle Web Services REST API.
 1–4 built the feature set, and Phase 5 added the test suite, an offline seam
 so no test needs a second live Moodle, a wider CI matrix, and a written
 [security review](SECURITY.md). Phase 6 adds **Check now**, so a teacher can
-see what a sync would bring in before starting one.
+see what a sync would bring in before starting one, and choose which of it to
+take.
 
 Still `MATURITY_ALPHA`: it has been exercised across two real sites by hand
 and by the suite below, not in production.
@@ -32,8 +33,8 @@ and by the suite below, not in production.
    coverage against a scripted remote, a wider CI matrix, and a security
    review written up in [SECURITY.md](SECURITY.md).
 6. **Phase 6 — Check before syncing** (this phase): a "Check now" button
-   listing the activities a run would bring in, so a sync is never a leap in
-   the dark.
+   listing the activities a run would bring in, each one selectable, so a
+   sync is never a leap in the dark and never has to be all or nothing.
 
 ## Requirements
 
@@ -183,6 +184,22 @@ when this course has no copy of it, or *Changed* when the remote copy has
 moved on since it was pulled. It is a question, not an action: nothing is
 transferred, nothing is written to the ledger or the history.
 
+Every activity in that list has a checkbox, ticked to begin with, and the
+list carries four buttons of its own:
+
+| Button | What happens |
+|---|---|
+| Select all | Ticks every activity. |
+| Select none | Clears every activity. |
+| Sync now | Queues a run carrying over only the ticked activities. |
+| Cancel | Drops the list and returns to the course page, having synced nothing. |
+
+While that list is on show, the whole-course **Sync now** below it is hidden,
+so there are never two buttons of that name meaning different things: the
+list's own button is the one that acts, and it acts on what is ticked. With
+nothing ticked, it reports that and starts no run rather than falling back to
+syncing everything.
+
 It reads the remote course and plans against it through exactly the same code
 a run uses, so what it lists is what Sync now would carry out. Activities a
 run would leave alone are left out: ones already in step, ones held back for
@@ -195,7 +212,8 @@ Anything that changes what a run would do — a run itself, a resolved
 conflict, or the connection being pointed somewhere else — throws it away
 rather than showing something that is no longer true.
 
-**Sync now** is shown to anyone with `block/coursesync:trigger`. It queues the
+**Sync now** (the one beside Check now, for the whole course) is shown to
+anyone with `block/coursesync:trigger`. It queues the
 ad-hoc task rather than holding the page open, and the block then reports
 "Sync in progress" and polls until the run finishes, at which point the page
 refreshes itself. Nothing is lost if the browser is closed: the run carries

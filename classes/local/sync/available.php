@@ -42,10 +42,11 @@ class available {
      *
      * @param int $blockinstanceid Block instance to check.
      * @param int $userid User the check acts as.
+     * @param \moodle_url $returnurl Where the sync form should send the user back to.
      * @return array Template context describing what was found.
      * @throws \moodle_exception If the block is unconfigured, the user may not check, or the remote site fails.
      */
-    public static function refresh(int $blockinstanceid, int $userid): array {
+    public static function refresh(int $blockinstanceid, int $userid, \moodle_url $returnurl): array {
         $items = [];
 
         foreach (engine::preview($blockinstanceid, $userid) as $item) {
@@ -67,19 +68,20 @@ class available {
         $record = ['timechecked' => time(), 'items' => $items];
         self::cache()->set($blockinstanceid, $record);
 
-        return self::describe($record);
+        return self::describe($record, $blockinstanceid, $returnurl);
     }
 
     /**
      * Describes the last check, without going near the remote site.
      *
      * @param int $blockinstanceid Block instance id.
+     * @param \moodle_url $returnurl Where the sync form should send the user back to.
      * @return array Template context; its "checked" flag is false if no check has been kept.
      */
-    public static function context(int $blockinstanceid): array {
+    public static function context(int $blockinstanceid, \moodle_url $returnurl): array {
         $record = self::cache()->get($blockinstanceid);
 
-        return self::describe(is_array($record) ? $record : null);
+        return self::describe(is_array($record) ? $record : null, $blockinstanceid, $returnurl);
     }
 
     /**
@@ -94,17 +96,29 @@ class available {
     /**
      * Turns a stored check, or the absence of one, into something a template can render.
      *
+     * The form the list sits in is described here too, because the list and
+     * its buttons are rendered together both by the block and by the Check now
+     * button, and they have to post to the same place either way.
+     *
      * @param array|null $record A stored check, or null if there is none.
+     * @param int $blockinstanceid Block instance the list belongs to.
+     * @param \moodle_url $returnurl Where the sync form should send the user back to.
      * @param string $error A message to show instead of a fresh answer.
      * @return array Template context for block_coursesync/available_list.
      */
-    public static function describe(?array $record, string $error = ''): array {
+    private static function describe(
+        ?array $record,
+        int $blockinstanceid,
+        \moodle_url $returnurl,
+        string $error = ''
+    ): array {
         $items = [];
 
         foreach ($record['items'] ?? [] as $item) {
             $isnew = ($item['action'] ?? '') === plan_item::ACTION_NEW;
 
             $items[] = [
+                'remotecmid' => (int) ($item['remotecmid'] ?? 0),
                 'name' => (string) ($item['name'] ?? ''),
                 'modname' => self::module_name((string) ($item['modname'] ?? '')),
                 'isnew' => $isnew,
@@ -119,6 +133,11 @@ class available {
             'count' => count($items),
             'items' => $items,
             'error' => $error,
+
+            'blockid' => $blockinstanceid,
+            'syncurl' => (new \moodle_url('/blocks/coursesync/sync.php'))->out(false),
+            'returnurl' => $returnurl->out_as_local_url(false),
+            'sesskey' => sesskey(),
         ];
     }
 

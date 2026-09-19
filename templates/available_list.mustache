@@ -17,7 +17,7 @@
 {{!
     @template block_coursesync/available_list
 
-    What the last check found waiting on the remote site.
+    What the last check found waiting on the remote site, and which of it to bring in.
 
     Rendered both by the block on a course page and by the Check now button,
     which replaces this markup with a freshly rendered copy of it.
@@ -27,8 +27,12 @@
     * lastchecked string - When that check was made.
     * hasitems bool - Whether anything is waiting to be synced.
     * count int - How many activities a sync would bring in.
-    * items array - The activities, each with name, modname, isnew and actionlabel.
+    * items array - The activities, each with remotecmid, name, modname, isnew and actionlabel.
     * error string - Why the last check could not be made, or empty.
+    * blockid int - The block instance the list belongs to.
+    * syncurl string - Where the selection is posted to.
+    * returnurl string - Where a sync started from the list returns to.
+    * sesskey string - Session key for the selection form.
 
     Example context (json):
     {
@@ -37,10 +41,14 @@
         "hasitems": true,
         "count": 2,
         "items": [
-            {"name": "Week 2 reading", "modname": "Page", "isnew": true, "actionlabel": "New"},
-            {"name": "Week 1 quiz", "modname": "Quiz", "isnew": false, "actionlabel": "Changed"}
+            {"remotecmid": 11, "name": "Week 2 reading", "modname": "Page", "isnew": true, "actionlabel": "New"},
+            {"remotecmid": 12, "name": "Week 1 quiz", "modname": "Quiz", "isnew": false, "actionlabel": "Changed"}
         ],
-        "error": ""
+        "error": "",
+        "blockid": 6,
+        "syncurl": "https://example.com/blocks/coursesync/sync.php",
+        "returnurl": "/course/view.php?id=2",
+        "sesskey": "abc123"
     }
 }}
 {{#error}}
@@ -49,23 +57,53 @@
 
 {{#checked}}
     {{#hasitems}}
-        <h6 class="mb-1">{{#str}}available:heading, block_coursesync, {{count}}{{/str}}</h6>
-        <ul class="list-unstyled mb-1">
-            {{#items}}
-                <li class="mb-1">
-                    <span class="badge {{#isnew}}text-bg-success{{/isnew}}{{^isnew}}text-bg-info{{/isnew}} me-1">
-                        {{actionlabel}}
-                    </span>
-                    {{name}}
-                    {{#modname}}<span class="text-muted small">({{modname}})</span>{{/modname}}
-                </li>
-            {{/items}}
-        </ul>
+        <form method="post" action="{{syncurl}}" data-region="selection">
+            <input type="hidden" name="sesskey" value="{{sesskey}}">
+            <input type="hidden" name="id" value="{{blockid}}">
+            <input type="hidden" name="returnurl" value="{{returnurl}}">
+            <input type="hidden" name="selection" value="1">
+
+            <h6 class="mb-1" id="{{uniqid}}-heading">{{#str}}available:heading, block_coursesync, {{count}}{{/str}}</h6>
+
+            <div class="mb-2" role="group" aria-labelledby="{{uniqid}}-heading">
+                {{#items}}
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" name="remotecmids[]"
+                            value="{{remotecmid}}" id="{{uniqid}}-activity-{{remotecmid}}"
+                            aria-describedby="{{uniqid}}-about-{{remotecmid}}" checked>
+                        <label class="form-check-label" for="{{uniqid}}-activity-{{remotecmid}}">{{name}}</label>
+                        <span class="d-block small" id="{{uniqid}}-about-{{remotecmid}}">
+                            <span class="badge {{#isnew}}text-bg-success{{/isnew}}{{^isnew}}text-bg-info{{/isnew}}">
+                                {{actionlabel}}
+                            </span>
+                            {{#modname}}<span class="text-muted">{{modname}}</span>{{/modname}}
+                        </span>
+                    </div>
+                {{/items}}
+            </div>
+
+            <p class="text-muted small mb-2">{{#str}}available:lastchecked, block_coursesync, {{lastchecked}}{{/str}}</p>
+
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-action="select-all">
+                    {{#str}}status:selectall, block_coursesync{{/str}}
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" data-action="select-none">
+                    {{#str}}status:selectnone, block_coursesync{{/str}}
+                </button>
+                <button type="submit" name="action" value="sync" class="btn btn-primary btn-sm">
+                    {{#str}}status:syncnow, block_coursesync{{/str}}
+                </button>
+                <button type="submit" name="action" value="cancel" class="btn btn-secondary btn-sm">
+                    {{#str}}status:cancel, block_coursesync{{/str}}
+                </button>
+            </div>
+        </form>
     {{/hasitems}}
     {{^hasitems}}
         <p class="text-muted small mb-1">{{#str}}available:none, block_coursesync{{/str}}</p>
+        <p class="text-muted small mb-2">{{#str}}available:lastchecked, block_coursesync, {{lastchecked}}{{/str}}</p>
     {{/hasitems}}
-    <p class="text-muted small mb-2">{{#str}}available:lastchecked, block_coursesync, {{lastchecked}}{{/str}}</p>
 {{/checked}}
 
 {{^checked}}
