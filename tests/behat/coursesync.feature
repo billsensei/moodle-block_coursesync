@@ -31,15 +31,34 @@ Feature: Pulling activities from another site
     Then I should see "Source Biology"
     And I should see "Remote Example"
     And I should see "Not synced yet"
+    And I should see "Use Check now to see what this course could pull in"
+    And I should see "Check now"
     And I should see "Sync now"
-    And I should see "View sync history"
+    And I should see "View history"
+
+  @javascript
+  Scenario: Checking lists what a sync would bring in, without bringing any of it in
+    Given the Course sync block is configured in course "TGT1"
+    And the remote site offers the following activities:
+      | cmid | name           | signal |
+      | 11   | Week 1 reading | 1000   |
+      | 12   | Week 2 reading | 1000   |
+    And I log in as "teacher1"
+    And I am on "Target course" course homepage
+    When I press "Check now"
+    Then I should see "Ready to sync (2)"
+    And I should see "Week 1 reading"
+    And I should see "Week 2 reading"
+    And I should see "New"
+    And I should see "0 synced"
 
   Scenario: A student is not shown the block at all
     Given the Course sync block is configured in course "TGT1"
     When I log in as "student1"
     And I am on "Target course" course homepage
     Then I should not see "Sync now"
-    And I should not see "View sync history"
+    And I should not see "Check now"
+    And I should not see "View history"
 
   Scenario: The history lists what a run did
     Given the Course sync block is configured in course "TGT1"
@@ -50,7 +69,7 @@ Feature: Pulling activities from another site
     And a course sync has run in course "TGT1"
     When I log in as "teacher1"
     And I am on "Target course" course homepage
-    And I follow "View sync history"
+    And I follow "View history"
     Then I should see "Sync history"
     And I should see "Week 1 reading"
     And I should see "Unchanged"

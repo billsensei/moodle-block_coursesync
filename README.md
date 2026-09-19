@@ -6,10 +6,11 @@ the Moodle Web Services REST API.
 
 ## Status
 
-**Phase 5 of 5 — tests, CI and security review.** All five phases are in.
-The feature set is what Phases 1–4 built; Phase 5 added the test suite, an
-offline seam so no test needs a second live Moodle, a wider CI matrix, and a
-written [security review](SECURITY.md).
+**Phase 6 — checking before syncing.** The first five phases are in: Phases
+1–4 built the feature set, and Phase 5 added the test suite, an offline seam
+so no test needs a second live Moodle, a wider CI matrix, and a written
+[security review](SECURITY.md). Phase 6 adds **Check now**, so a teacher can
+see what a sync would bring in before starting one.
 
 Still `MATURITY_ALPHA`: it has been exercised across two real sites by hand
 and by the suite below, not in production.
@@ -27,9 +28,12 @@ and by the suite below, not in production.
    conflict handling, driven by an ad-hoc task.
 4. **Phase 4 — UI** (done): block content, the manual "sync now" trigger, the
    pull history, and conflict resolution.
-5. **Phase 5 — Tests, CI and security** (this phase): PHPUnit and Behat
+5. **Phase 5 — Tests, CI and security** (done): PHPUnit and Behat
    coverage against a scripted remote, a wider CI matrix, and a security
    review written up in [SECURITY.md](SECURITY.md).
+6. **Phase 6 — Check before syncing** (this phase): a "Check now" button
+   listing the activities a run would bring in, so a sync is never a leap in
+   the dark.
 
 ## Requirements
 
@@ -170,7 +174,26 @@ grades or submissions attached to the old copy go with it.
 ## Using it
 
 The block shows the course it pulls from, how many activities are in step,
-how many need review, and when the last run finished.
+how many need review, and when the last run finished. Below that it offers
+three things to do: **Check now**, **Sync now** and **View history**.
+
+**Check now** (needs `block/coursesync:trigger`) asks the remote course what
+it holds and lists what a sync would bring in — each activity marked *New*
+when this course has no copy of it, or *Changed* when the remote copy has
+moved on since it was pulled. It is a question, not an action: nothing is
+transferred, nothing is written to the ledger or the history.
+
+It reads the remote course and plans against it through exactly the same code
+a run uses, so what it lists is what Sync now would carry out. Activities a
+run would leave alone are left out: ones already in step, ones held back for
+review (the conflicts alert covers those), and ones whose module type cannot
+be backed up.
+
+The answer is kept in a cache keyed by block instance, so the list survives a
+page reload without every course page render calling out to another site.
+Anything that changes what a run would do — a run itself, a resolved
+conflict, or the connection being pointed somewhere else — throws it away
+rather than showing something that is no longer true.
 
 **Sync now** is shown to anyone with `block/coursesync:trigger`. It queues the
 ad-hoc task rather than holding the page open, and the block then reports
@@ -178,7 +201,7 @@ ad-hoc task rather than holding the page open, and the block then reports
 refreshes itself. Nothing is lost if the browser is closed: the run carries
 on, and the next page load shows the result.
 
-**Sync history** (`history.php`, needs `block/coursesync:viewhistory`) lists
+**View history** (`history.php`, needs `block/coursesync:viewhistory`) lists
 runs newest first, ten per page, each expanding to the activities that run
 touched and what happened to them. Activities that still exist link to
 themselves.

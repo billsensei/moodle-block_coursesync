@@ -26,6 +26,7 @@ use block_coursesync\local\block_helper;
 use block_coursesync\local\connection;
 use block_coursesync\local\remote_client;
 use block_coursesync\local\sync\audit_log;
+use block_coursesync\local\sync\available;
 use block_coursesync\local\sync\pull_ledger;
 use block_coursesync\local\token_store;
 use block_coursesync\local\url_validator;
@@ -119,6 +120,7 @@ class block_coursesync extends block_base {
 
         pull_ledger::delete_for_block($blockinstanceid);
         audit_log::delete_for_block($blockinstanceid);
+        available::invalidate($blockinstanceid);
 
         return true;
     }
@@ -158,6 +160,10 @@ class block_coursesync extends block_base {
         }
 
         $this->verify_connection($config);
+
+        // The connection may now point somewhere else entirely, so anything the
+        // last check said about what is waiting no longer describes this block.
+        available::invalidate((int) $this->instance->id);
 
         parent::instance_config_save($config, $nolongerused);
     }

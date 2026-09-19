@@ -173,7 +173,7 @@ that — so revocation is a manual, remote-side operation.
 
 ## 3. Access control
 
-Every entry point added in Phases 2–4 was checked. Nothing relies on the
+Every entry point added in Phases 2–6 was checked. Nothing relies on the
 block's visibility, on the block being on the page, or on a page-level check
 alone.
 
@@ -183,6 +183,7 @@ alone.
 | `edit_form` (`check_access_for_dynamic_submission`) | `:addinstance` **and** `:trigger` in the block context |
 | `block_coursesync_test_connection` (AJAX) | `validate_context`, `require_sesskey`, `:addinstance` + `:trigger` |
 | `block_coursesync_validate_course` (AJAX) | `validate_context`, `require_sesskey`, `:addinstance` + `:trigger` |
+| `block_coursesync_check_updates` (AJAX) | `validate_context`, `require_sesskey`, `:trigger` |
 | `block_coursesync_sync_status` (AJAX) | `validate_context`, `:viewhistory` |
 | `sync.php` | `require_sesskey`, `require_login($course)`, `:trigger` |
 | `history.php` | `require_login($course)`, `:viewhistory` |
@@ -204,6 +205,9 @@ Two notes on the deliberate choices there:
   activities additionally require `moodle/course:viewhiddenactivities`.
 - Resolving a conflict takes `:trigger`, not `:viewhistory`, because it changes
   course content.
+- Checking what is available takes `:trigger`, not `:viewhistory`, although it
+  changes nothing here: it makes this server send a request to another site
+  with the stored token, which is the same power Sync now carries.
 
 ### 3.1 Fixed: the conflict resolver trusted its caller
 

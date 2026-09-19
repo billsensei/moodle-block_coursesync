@@ -54,6 +54,15 @@ $functions = [
         'capabilities' => 'block/coursesync:trigger',
     ],
 
+    'block_coursesync_check_updates' => [
+        'classname' => 'block_coursesync\external\check_updates',
+        'methodname' => 'execute',
+        'description' => 'List the activities a sync would bring into this course, without bringing any of them in.',
+        'type' => 'read',
+        'ajax' => true,
+        'capabilities' => 'block/coursesync:trigger',
+    ],
+
     'block_coursesync_sync_status' => [
         'classname' => 'block_coursesync\external\sync_status',
         'methodname' => 'execute',

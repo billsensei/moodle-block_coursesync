@@ -72,11 +72,17 @@ class resolver {
         $block = block_helper::get_instance($blockinstanceid);
         require_capability('block/coursesync:trigger', $block->context, $userid);
 
-        return match ($action) {
+        $message = match ($action) {
             self::ACTION_PULL_REMOTE => self::pull_remote($blockinstanceid, $remotecmid, $userid),
             self::ACTION_KEEP_LOCAL => self::keep_local($blockinstanceid, $remotecmid, $userid),
             default => self::defer($blockinstanceid, $remotecmid, $userid),
         };
+
+        // A settled conflict changes what the next run would do, so any list of
+        // what is waiting to be synced is now out of date.
+        available::invalidate($blockinstanceid);
+
+        return $message;
     }
 
     /**

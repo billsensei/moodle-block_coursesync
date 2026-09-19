@@ -24,6 +24,13 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+$string['available:changed'] = 'Changed';
+$string['available:checking'] = 'Checking the remote course...';
+$string['available:heading'] = 'Ready to sync ({$a})';
+$string['available:lastchecked'] = 'Checked {$a}';
+$string['available:new'] = 'New';
+$string['available:none'] = 'Nothing new on the remote course.';
+$string['available:notchecked'] = 'Use Check now to see what this course could pull in.';
 $string['conflicts:cannotpull'] = 'The remote version cannot be taken automatically here, because the activity it would replace was not created by this block. Rename or remove the local activity first, then run a sync.';
 $string['conflicts:defer'] = 'Decide later';
 $string['conflicts:intro'] = 'These activities changed on the remote site, but this course’s copies are not in the state this block left them in. Nothing has been overwritten. Choose what should happen to each.';
@@ -136,6 +143,7 @@ $string['setup:serviceaccount:line1'] = 'Create an ordinary user account for thi
 $string['setup:serviceaccount:line2'] = 'It never signs in interactively; it exists so the access below can be scoped to it and withdrawn in one place.';
 $string['setupheader'] = 'Setting up the remote site';
 $string['status:alreadyrunning'] = 'A sync is already running for this block.';
+$string['status:checknow'] = 'Check now';
 $string['status:conflictspending'] = 'Activities needing review: {$a}';
 $string['status:finishsetup'] = 'Finish setting this block up before syncing: use Configure on the block to point it at a course on another site.';
 $string['status:from'] = 'Pulling from';
@@ -147,7 +155,7 @@ $string['status:running'] = 'Sync in progress…';
 $string['status:summary'] = '{$a->synced} synced, {$a->conflicts} needing review';
 $string['status:syncnow'] = 'Sync now';
 $string['status:syncstarted'] = 'Sync started. It runs in the background; this page will update when it finishes.';
-$string['status:viewhistory'] = 'View sync history';
+$string['status:viewhistory'] = 'View history';
 $string['task:cleanupbackups'] = 'Remove uncollected Course sync activity backups';
 $string['task:synccourse'] = 'Pull activities for a Course sync block';
 $string['testconnection'] = 'Test connection';

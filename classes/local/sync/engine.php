@@ -91,21 +91,57 @@ class engine {
             return $result;
         }
 
+        $restorer = new restorer($client, $course, $userid);
+
+        foreach (self::build_plan($blockinstanceid, $course, $remoteactivities) as $item) {
+            self::apply($item, $blockinstanceid, $restorer, $log, $result);
+        }
+
+        // Whatever the last check said this run would do, it has now been done.
+        available::invalidate($blockinstanceid);
+
+        return $result;
+    }
+
+    /**
+     * Works out what a run would do, without doing any of it.
+     *
+     * This is the same reading of the remote course and the same planner a run
+     * uses, so what it reports is what pressing Sync now would actually carry
+     * out, as of the moment it was asked.
+     *
+     * @param int $blockinstanceid Block instance to examine.
+     * @param int $userid User the check acts as.
+     * @return plan_item[]
+     * @throws \moodle_exception If the block is not configured, the user may not do this, or the remote call fails.
+     */
+    public static function preview(int $blockinstanceid, int $userid): array {
+        [$block, $course, $client] = self::prepare_context($blockinstanceid, $userid);
+
+        return self::build_plan(
+            $blockinstanceid,
+            $course,
+            $client->list_activities((int) $block->config->remotecourseid)
+        );
+    }
+
+    /**
+     * Decides what should happen to each remote activity.
+     *
+     * @param int $blockinstanceid Block instance id.
+     * @param \stdClass $course The target course.
+     * @param array $remoteactivities Rows from block_coursesync_list_activities.
+     * @return plan_item[]
+     */
+    private static function build_plan(int $blockinstanceid, \stdClass $course, array $remoteactivities): array {
         $ledger = pull_ledger::for_block($blockinstanceid);
-        $plan = (new planner())->plan(
+
+        return (new planner())->plan(
             $remoteactivities,
             $ledger,
             self::local_signals($ledger),
             ...self::foreign_activities($course, $ledger)
         );
-
-        $restorer = new restorer($client, $course, $userid);
-
-        foreach ($plan as $item) {
-            self::apply($item, $blockinstanceid, $restorer, $log, $result);
-        }
-
-        return $result;
     }
 
     /**
@@ -168,6 +204,8 @@ class engine {
         );
 
         self::apply($item, $blockinstanceid, new restorer($client, $course, $userid), $log, $result);
+
+        available::invalidate($blockinstanceid);
 
         return $result;
     }

@@ -1,0 +1,73 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template block_coursesync/available_list
+
+    What the last check found waiting on the remote site.
+
+    Rendered both by the block on a course page and by the Check now button,
+    which replaces this markup with a freshly rendered copy of it.
+
+    Context variables required for this template:
+    * checked bool - Whether a check has been made and kept.
+    * lastchecked string - When that check was made.
+    * hasitems bool - Whether anything is waiting to be synced.
+    * count int - How many activities a sync would bring in.
+    * items array - The activities, each with name, modname, isnew and actionlabel.
+    * error string - Why the last check could not be made, or empty.
+
+    Example context (json):
+    {
+        "checked": true,
+        "lastchecked": "Saturday, 19 September 2026, 3:42 AM",
+        "hasitems": true,
+        "count": 2,
+        "items": [
+            {"name": "Week 2 reading", "modname": "Page", "isnew": true, "actionlabel": "New"},
+            {"name": "Week 1 quiz", "modname": "Quiz", "isnew": false, "actionlabel": "Changed"}
+        ],
+        "error": ""
+    }
+}}
+{{#error}}
+    <div class="alert alert-danger py-2 px-3 mb-2" role="alert">{{error}}</div>
+{{/error}}
+
+{{#checked}}
+    {{#hasitems}}
+        <h6 class="mb-1">{{#str}}available:heading, block_coursesync, {{count}}{{/str}}</h6>
+        <ul class="list-unstyled mb-1">
+            {{#items}}
+                <li class="mb-1">
+                    <span class="badge {{#isnew}}text-bg-success{{/isnew}}{{^isnew}}text-bg-info{{/isnew}} me-1">
+                        {{actionlabel}}
+                    </span>
+                    {{name}}
+                    {{#modname}}<span class="text-muted small">({{modname}})</span>{{/modname}}
+                </li>
+            {{/items}}
+        </ul>
+    {{/hasitems}}
+    {{^hasitems}}
+        <p class="text-muted small mb-1">{{#str}}available:none, block_coursesync{{/str}}</p>
+    {{/hasitems}}
+    <p class="text-muted small mb-2">{{#str}}available:lastchecked, block_coursesync, {{lastchecked}}{{/str}}</p>
+{{/checked}}
+
+{{^checked}}
+    <p class="text-muted small mb-2">{{#str}}available:notchecked, block_coursesync{{/str}}</p>
+{{/checked}}

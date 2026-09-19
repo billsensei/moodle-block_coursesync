@@ -35,7 +35,8 @@
     * haslastrun bool - Whether a run has ever happened.
     * lastrun string - When the last run finished.
     * running bool - Whether a run is queued or in progress.
-    * cantrigger bool - Whether this user may start a run.
+    * cantrigger bool - Whether this user may check for and start a run.
+    * available object - What the last check found; see block_coursesync/available_list.
     * syncurl string - Where the sync form posts to.
     * returnurl string - Where to return after starting a run.
     * sesskey string - Session key for the sync form.
@@ -60,6 +61,16 @@
         "lastrun": "Saturday, 19 September 2026, 3:42 AM",
         "running": false,
         "cantrigger": true,
+        "available": {
+            "checked": true,
+            "lastchecked": "Saturday, 19 September 2026, 4:10 AM",
+            "hasitems": true,
+            "count": 1,
+            "items": [
+                {"name": "Week 2 reading", "modname": "Page", "isnew": true, "actionlabel": "New"}
+            ],
+            "error": ""
+        },
         "syncurl": "https://example.com/blocks/coursesync/sync.php",
         "returnurl": "/course/view.php?id=2",
         "sesskey": "abc123",
@@ -97,27 +108,44 @@
         </div>
     {{/hasconflicts}}
 
+    {{#cantrigger}}
+        <div data-region="available" aria-live="polite">
+            {{#available}}
+                {{> block_coursesync/available_list }}
+            {{/available}}
+        </div>
+    {{/cantrigger}}
+
     {{#running}}
         <p class="mb-2" data-region="running">
-            <span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span>
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
             {{#str}}status:running, block_coursesync{{/str}}
         </p>
     {{/running}}
 
-    {{^running}}
-        {{#cantrigger}}
-            <form method="post" action="{{syncurl}}" class="mb-2">
-                <input type="hidden" name="sesskey" value="{{sesskey}}">
-                <input type="hidden" name="id" value="{{blockid}}">
-                <input type="hidden" name="returnurl" value="{{returnurl}}">
-                <button type="submit" class="btn btn-primary btn-sm">{{#str}}status:syncnow, block_coursesync{{/str}}</button>
-            </form>
-        {{/cantrigger}}
-    {{/running}}
+    <div class="d-flex flex-wrap gap-2">
+        {{^running}}
+            {{#cantrigger}}
+                <button type="button" class="btn btn-secondary btn-sm" data-action="check">
+                    {{#str}}status:checknow, block_coursesync{{/str}}
+                </button>
+                <form method="post" action="{{syncurl}}" class="m-0">
+                    <input type="hidden" name="sesskey" value="{{sesskey}}">
+                    <input type="hidden" name="id" value="{{blockid}}">
+                    <input type="hidden" name="returnurl" value="{{returnurl}}">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        {{#str}}status:syncnow, block_coursesync{{/str}}
+                    </button>
+                </form>
+            {{/cantrigger}}
+        {{/running}}
 
-    {{#canviewhistory}}
-        <a href="{{historyurl}}" class="small">{{#str}}status:viewhistory, block_coursesync{{/str}}</a>
-    {{/canviewhistory}}
+        {{#canviewhistory}}
+            <a href="{{historyurl}}" class="btn btn-secondary btn-sm">
+                {{#str}}status:viewhistory, block_coursesync{{/str}}
+            </a>
+        {{/canviewhistory}}
+    </div>
 {{/configured}}
 
 {{^configured}}
@@ -131,6 +159,15 @@
     </div>
 {{/configured}}
 </div>
+{{#configured}}
+{{#cantrigger}}
+{{#js}}
+require(['block_coursesync/checkupdates'], function(CheckUpdates) {
+    CheckUpdates.init('{{uniqid}}', {{blockid}});
+});
+{{/js}}
+{{/cantrigger}}
+{{/configured}}
 {{#running}}
 {{#js}}
 require(['block_coursesync/syncpoll'], function(SyncPoll) {

@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details.
+ * Cache definitions for block_coursesync.
  *
  * @package    block_coursesync
  * @copyright  2026 block_coursesync contributors
@@ -24,8 +24,16 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'block_coursesync';
-$plugin->version   = 2026091905;
-$plugin->requires  = 2025100600; // Moodle 5.1.0.
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = 'v0.6.0 (Phase 6: check what is available before syncing)';
+$definitions = [
+    // What the last "Check now" found for a block instance, keyed by block
+    // instance id. This only exists so the list survives a page reload rather
+    // than every render of a course page calling out to the remote site. It is
+    // never what a sync acts on: a run always re-reads the remote course, and
+    // anything that changes the ledger throws this away.
+    'available' => [
+        'mode' => \core_cache\store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'staticacceleration' => true,
+        'staticaccelerationsize' => 2,
+    ],
+];
