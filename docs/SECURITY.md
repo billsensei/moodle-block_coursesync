@@ -1,0 +1,314 @@
+# Security notes
+
+> Part of the Course Sync documentation set:
+> [INSTALL.md](INSTALL.md) · [REMOTE_SETUP.md](REMOTE_SETUP.md) · [TEACHER_GUIDE.md](TEACHER_GUIDE.md) · [DEVELOPER.md](DEVELOPER.md) · **SECURITY.md**
+
+
+Written during the phase 7 hardening pass. This records what is protected, how,
+and which decisions were deliberate — so a later change does not quietly undo
+one of them.
+
+## Endpoint audit
+
+Every entry point the plugin adds, and what guards it.
+
+### Pages
+
+| Page | Login | Capability | Sesskey | Changes state? |
+| --- | --- | --- | --- | --- |
+| `setup.php` (view) | yes | `block/coursesync:sync` | — | no |
+| `setup.php` (form submissions) | yes | `block/coursesync:sync` | moodleform | yes |
+| `setup.php?test=1` | yes | `block/coursesync:sync` | `require_sesskey()` | yes |
+| `preview.php` | yes | `block/coursesync:sync` | — | no |
+| `sync.php` (confirm page) | yes | `block/coursesync:sync` | — | no |
+| `sync.php?confirm=1` | yes | `block/coursesync:sync` | `require_sesskey()` | yes |
+| `history.php` | yes | `block/coursesync:sync` | — | no |
+| Block configuration form | yes | `moodle/block:edit` (Moodle) **plus** `block/coursesync:sync` for the remote check | moodleform | yes |
+
+Every page also confirms that the block instance it was given actually belongs to
+the course it was given, so an instance id from another course cannot be passed
+in.
+
+Read-only pages do not carry a sesskey, which follows Moodle's convention for
+report pages. `preview.php` is the one to think about, because viewing it makes
+an outbound request to the other site — but it writes nothing, and the request it
+makes is a read the caller is already entitled to perform.
+
+**`confirm_sesskey()` returns a boolean; it does not throw.** Guarding an action
+with `if (... && confirm_sesskey())` means a bad key silently does nothing.
+Phase 7 replaced one such guard in `setup.php` with `require_sesskey()`.
+
+### Web service functions
+
+All five check `block/coursesync:sync` in the relevant context and call
+`validate_context()`. Sesskey does not apply: these are token-authenticated.
+
+| Function | Capability checked in |
+| --- | --- |
+| `block_coursesync_ping` | system context |
+| `block_coursesync_get_course` | the course's context |
+| `block_coursesync_get_modified_activities` | the course's context |
+| `block_coursesync_get_activity` | the course's context |
+| `block_coursesync_get_activity_file` | the course's context |
+
+The capability is checked **before** `validate_context()` so a missing sync
+permission is reported as that, rather than as the "course not accessible" that
+`require_login()` raises.
+
+`get_activity_file` additionally refuses any file area the activity's own handler
+has not declared in `get_file_areas()`. Without that it would be a way to read
+any file in any activity.
+
+#### Why the course context, and not the activity's
+
+`get_activity` and `get_activity_file` validate the **course** context, not the
+context of the activity being read. That is deliberate, and it was a change: they
+originally validated the activity's own context.
+
+`validate_context()` on a module context calls `require_login($course, false,
+$cm)`, which also requires the account to be allowed to *view that particular
+activity*. The capability for that differs by activity type. An unenrolled sync
+account holding only `moodle/course:view` can read a page, a book or a folder,
+but not an assignment, a quiz or a wiki. The effect was that
+`get_modified_activities` offered all ten types and `get_activity` then refused
+three of them with a message about course enrolment that had nothing to do with
+the real cause — and the list of extra capabilities to grant would have grown
+with every type added.
+
+What authorises these calls is `block/coursesync:sync` on the course. That is a
+capability an administrator grants to a purpose-made account, on a service that
+ships disabled and with `restrictedusers => 1`. The account is being trusted to
+copy the course's activities elsewhere; being able to read them is that same
+trust, not a wider one.
+
+What this does mean:
+
+- An account with `block/coursesync:sync` on a course can read every activity in
+  it, including ones hidden from students or restricted by access conditions.
+  Do not grant this capability to a role that should not see the whole course.
+- It does **not** widen anything else. The capability is still required, the
+  service is still restricted to named users, `get_activity_file` still refuses
+  undeclared file areas, and the module context is still what files are read
+  from, so nothing outside the named activity is reachable.
+
+`get_activity_test::test_a_sync_account_can_read_every_supported_type()` builds
+an account with exactly the two documented capabilities and reads one of every
+supported type; `test_an_account_without_the_sync_permission_is_refused()` is the
+other half.
+
+## Outgoing requests
+
+A destination site makes server-side requests to whatever address is stored, so
+an address an attacker chooses is an attacker asking this server to make requests
+for them.
+
+Three layers:
+
+1. **When the address is saved** — `remote_url::validate()` refuses non-HTTP(S)
+   schemes, plain `http`, credentials in the URL, and any host that resolves into
+   a loopback, link-local, private or carrier-grade-NAT range.
+2. **Immediately before every request** — `remote_url::check_before_request()`
+   resolves and checks again, inside `remote_client::call()`. This is the layer
+   that matters: a host can resolve differently after it was saved, and no
+   save-time check can prevent that.
+3. **Moodle's own** — `\core\http_client` runs `curl_security_helper` on every
+   request, governed by the site's *cURL blocked hosts* and *cURL allowed ports*
+   settings.
+
+A host that does not resolve **is accepted at save time**. Refusing would make
+saving a setting depend on DNS being up, and would buy nothing, because layer 2
+checks again when it counts.
+
+### The development override
+
+```php
+// config.php
+$CFG->block_coursesync_allowprivateurls = true;
+```
+
+Relaxes the private-address rules in layers 1 and 2, and nothing else — `http`,
+bad schemes and embedded credentials are still refused.
+
+It is a config.php flag rather than an administration setting on purpose:
+switching off a protection against the server being used to reach its own network
+should need access to the server, not a checkbox that comes with any compromised
+administrator account.
+
+**Do not set it on a production site.**
+
+## The token
+
+| Question | Answer |
+| --- | --- |
+| At rest | Encrypted with `\core\encryption` (libsodium), key outside the database |
+| In the UI | Entered into a `password` element, never set as form data, never rendered back. Only the last four characters are kept in the clear, as a hint |
+| In logs | Never logged. `remote_client::redact()` strips anything token-shaped from transport error messages before they reach `debugging()` |
+| In backtraces | Moodle's `format_backtrace()` prints `line N of file: call to Class::method()` with no arguments, so a token passed as a parameter does not appear. The plugin never calls `getTraceAsString()` |
+| In transit | POST body over HTTPS with certificate verification; never in a URL |
+
+## Remote content is untrusted
+
+Everything from the other site is treated as hostile input, whoever owns that
+site today.
+
+`activity_payload::from_response()` is the single place a payload is built, and
+cleans every field there so nothing downstream has to remember to:
+
+| Field | Cleaned as |
+| --- | --- |
+| `name`, `idnumber` | `PARAM_TEXT` |
+| `modname` | `PARAM_PLUGIN`, then matched against the handler registry |
+| `cmid`, `sectionnum`, `timemodified` | `PARAM_INT`, floored at zero |
+| `intro`, and any HTML setting | `clean_text()` for the declared format |
+| `introformat` | restricted to the formats this site implements |
+| file `filename` / `filepath` / `filearea` | `PARAM_FILE` / `PARAM_PATH` / `PARAM_AREA`; a file that does not survive cleaning is dropped |
+| setting names | `PARAM_ALPHANUMEXT` |
+
+Handlers use the cleaned accessors for anything that reaches a sensitive place:
+
+- `setting_url()` for `mod_url`'s external address — `PARAM_URL` rejects
+  `javascript:` and `data:`, which would otherwise be script running on this site
+  chosen by the other one. A URL that does not survive is refused rather than
+  stored.
+- `setting_html()` for `mod_page`'s body and `mod_assign`'s extra instructions.
+- `forum_handler::clean_type()` keeps the forum type to one this site implements,
+  and `wiki_handler`, `quiz_handler` and `assign_handler` do the same for wiki
+  mode and format, quiz navigation, overdue handling and question behaviour, and
+  the assignment reopen method. Anything unrecognised falls back to a safe
+  default rather than reaching the database.
+- `wiki_handler::clean_first_page_title()` uses `PARAM_TEXT`: the title becomes a
+  page title on this site.
+
+### Content that is code, not content
+
+Two fields are refused outright rather than cleaned, because there is no cleaning
+that makes them safe.
+
+**mod_data's `csstemplate` and `jstemplate`.** These are served by `css.php` and
+`js.php` verbatim, as `text/css` and `application/javascript`, and mod_data loads
+them into every page of the activity. A block of script is not markup with script
+in it that can be stripped out - it *is* script. Accepting them from another site
+would hand that site the ability to run code in a reader's browser on this one,
+which is the single thing the rest of this document is about preventing. They are
+dropped, and `syncdatacodetemplates` tells the teacher so.
+
+**mod_lesson's password.** Not refused for injection reasons but for the same
+reason a quiz's is not carried: it is a shared secret of the other site, and not
+sending it keeps it out of requests, logs and responses on both. The difference
+from the quiz is that a lesson with `usepassword` on and an empty password lets
+anybody through, so the setting is turned off with it and
+`synclessonnopassword` says so.
+
+`more_handlers_test::test_data_code_templates_are_refused()` and
+`test_lesson_password_is_not_carried()` pin both.
+
+### Cleaning depends on what a field is for
+
+`mod_feedback`'s `presentation` column is the case that shows why a single rule
+does not work. What it holds depends on the question type:
+
+- For a **label** it is a block of HTML written in an editor, and mod_feedback
+  renders it with `'noclean' => true`. Nothing downstream will clean it, so it
+  must be cleaned here.
+- For a **multiple choice** it is the options packed into one string, separated
+  by `|` after a marker such as `r>>>>>`. Running that through `clean_text()`
+  turns the marker into `r&gt;&gt;...` and the question stops working.
+
+So the label's is cleaned as HTML and the rest are put through `PARAM_NOTAGS`,
+which removes markup without touching the separators; their contents reach the
+page through `format_string()`, which escapes. Both halves are pinned by tests,
+because getting either one wrong is silent: the first is a hole, the second is a
+broken question.
+
+The same reasoning applies to `mod_data`'s field parameters, which hold things
+like a menu's options one per line. Those use `PARAM_NOTAGS` too.
+
+### Child records
+
+An activity that is not a single row — a book with chapters, an assignment with
+its submission and feedback plugin settings — carries those as child records.
+They are cleaned in `activity_payload::clean_children()` the same way settings
+are: the record type and every field name through `PARAM_ALPHANUMEXT`, values
+kept raw for the handler to interpret. Handlers then clean what they read:
+`book_handler` puts chapter titles through `PARAM_TEXT` and chapter content
+through `clean_html()`.
+
+Several handlers write child records into their module's tables directly, which
+is what those modules' own restore steps do. Each filters first: a feedback
+question's type must be one mod_feedback has, a database field's type must be an
+installed `datafield` plugin, a workshop's grading strategy must be an installed
+`workshopform` plugin, and a lesson page's type must be one mod_lesson can
+display. A record naming something this site does not have is dropped rather than
+stored where nothing would read it back.
+
+`assign_handler::restore_plugin_config()` is the one that writes remote values
+into a table directly, which is what mod_assign's own restore does and is needed
+because a subplugin's form field names and its stored setting names are unrelated.
+It is filtered three ways before anything is written: the subtype must be one of
+the two an assignment has, the plugin name must survive `PARAM_PLUGIN`, and the
+plugin must actually be installed here. A row for a plugin this site does not
+have is dropped rather than left in the table to come alive later.
+
+### File areas addressed by a child record
+
+`mod_book` stores each chapter's files under that chapter's id, so it cannot name
+its item ids in advance. It declares `['filearea' => 'chapter', 'anyitemid' =>
+true]`, which tells `get_activity_file` to authorise by area name alone.
+
+This is the one place the file rule is looser, so it is worth being precise about
+what it does and does not allow. It allows any item id **within that one declared
+area of that one activity**, which is exactly the set of files that belong to the
+book's chapters. It does not allow any other area of the same activity, and it
+changes nothing for handlers that name an item id — both are pinned by
+`book_files_test`. On the way in, `book_handler::map_file_itemid()` translates the
+source's chapter id into the one created here, and a file whose chapter did not
+arrive is dropped rather than filed against whichever local chapter happens to
+hold that number.
+
+`mod_lesson` does the same for three areas at once - `page_contents` keyed by
+page, `page_answers` and `page_responses` keyed by answer - alongside `mediafile`,
+which does name its item id. Its `map_file_itemid()` therefore dispatches on the
+area, and returns null for any area it does not recognise rather than guessing.
+
+### References between records
+
+An activity that is more than one row usually has those rows pointing at each
+other by id, and an id means nothing on another site. Four of these handlers have
+to translate such references: a feedback question's dependency on another
+question, a database's sort field, a rubric level's criterion, and a lesson's
+page chain and answer jumps.
+
+They all use the same mechanism on `activity_handler` - `remember_id()`,
+`local_id()`, `mapped_id()` - and the same shape: create the records first,
+remembering each pairing, then fix the references, because a reference can point
+forward as easily as backward.
+
+This is correctness rather than security, with one exception worth stating: a
+reference that failed to translate must not be left pointing at a raw number from
+the other site, because that number will quietly match some unrelated local
+record. Every one of these resolves an unknown reference to a safe value -
+nothing, or the next page - rather than passing it through. A lesson jump is the
+sharpest case, since a wrong one sends a student somewhere the teacher did not
+intend.
+
+Values from `ping`, `get_course` and `get_modified_activities` are cleaned in
+`remote_client` where they arrive.
+
+**Output escaping:** core's notification template renders its message with
+`{{{ message }}}`, which is **not** escaped. Any message built from remote data
+must escape it — `ping_result::get_message()` and `course_result::get_message()`
+do. Table cells use `s()`.
+
+## Known limitations
+
+- Embedded files inside text fields are not transferred; content referring to
+  `@@PLUGINFILE@@` arrives with links that do not resolve. The sync says so.
+- Hidden activities on the source are reported to the destination, and are read
+  and copied. The capability check is the gate, not per-activity visibility — see
+  "Why the course context, and not the activity's" above. The copy keeps the
+  source's visibility, so a hidden activity arrives hidden.
+- A quiz's password and IP restriction are deliberately never exported, so they
+  do not exist in a request, a log or a response on either site. The copy is
+  created without them and the teacher sets their own.
+- A source site is trusted not to send an enormous file. `file_sync::MAX_CHUNKS`
+  caps a single file at 1 GB.

@@ -1,0 +1,95 @@
+# Pilot checklist
+
+> Part of the Course Sync documentation set:
+> [INSTALL.md](INSTALL.md) · [REMOTE_SETUP.md](REMOTE_SETUP.md) · [TEACHER_GUIDE.md](TEACHER_GUIDE.md) · [DEVELOPER.md](DEVELOPER.md) · [SECURITY.md](SECURITY.md)
+
+A short list for the first run between two real client sites. Everything here is
+covered in more detail in the guides above; this is the order to do it in and the
+things worth checking before teachers touch it.
+
+## Before the pilot
+
+**On both sites**
+
+- [ ] Moodle 5.1 or later, PHP 8.2 or later
+- [ ] Plugin installed and the upgrade run
+- [ ] Both sites on the **same plugin version** — the destination reports a
+      mismatch it cannot work with
+
+**On the source site**
+
+- [ ] Web services enabled, REST protocol enabled
+- [ ] Course Sync service enabled, **Authorised users only** ticked,
+      **Can download files** left off
+- [ ] A dedicated sync account, not a person's login
+- [ ] That account holds `block/coursesync:sync`, `webservice/rest:use` and
+      `moodle/course:view`
+- [ ] Token created and handed over by a route that is not email in plain text
+- [ ] Decide the scope: system-level permission means any course can be pulled
+      from. Assign in specific courses to limit it
+
+**On the destination site**
+
+- [ ] Reachable over HTTPS with a certificate the destination will accept
+- [ ] The source's port is in **cURL allowed ports** if it is not 443
+- [ ] The source's address is not covered by **cURL blocked hosts**
+- [ ] `$CFG->block_coursesync_allowprivateurls` is **not** set unless the source
+      genuinely sits on a private network
+- [ ] `<dataroot>/secret/key/` is readable by the web server user — see below
+
+## The encryption key
+
+The token is encrypted with a key created on first use, owned by whichever
+account created it. If a CLI script running as `root` gets there first, the web
+server cannot read it and every sync fails with *"The saved token could not be
+read"*.
+
+- [ ] Check `ls -la <dataroot>/secret/key/`
+- [ ] Include that directory in backups, or accept that tokens must be re-entered
+      after a restore
+
+## First run
+
+- [ ] Add the block to one real course, not a scratch one — the point is to see
+      it behave against real content
+- [ ] Run the wizard and confirm the test reports the source site's name
+- [ ] Use **See what has changed** before the first **Sync now**
+- [ ] Check the results table: copied, flagged, skipped, failed
+- [ ] Open the synced activities and compare them with the source
+
+## What to tell teachers up front
+
+- Only seventeen activity types are copied: Page, URL, Label, File, Folder, Book,
+  Forum, Wiki, Assignment, Quiz, Choice, Glossary, Feedback, Database, Workshop,
+  Lesson, H5P. Everything
+  else is listed as skipped
+- Forum, Wiki and Assignment **settings** come across; discussions, wiki pages
+  and student submissions do not
+- A copied **Quiz has no questions** — question banks are per-site. Tell pilot
+  teachers this before they open one, not after
+- A copied **Database has no custom CSS or JavaScript**, and a copied **Lesson
+  has no password**. Both are deliberate and both are reported on the results
+  page; see `SECURITY.md`
+- Images embedded inside a page do not come across yet; files attached to a File
+  activity do
+- Nothing is ever overwritten. Anything in the way is flagged
+- Nothing happens automatically — a sync only runs when someone asks for it
+
+## Known limitations to set expectations on
+
+| Limitation | Effect on a pilot |
+| --- | --- |
+| Embedded files in text are not transferred | Pages with inline images arrive with those images missing, and say so |
+| Activities cannot be updated, only created | A changed source activity is flagged for manual work |
+| Deletions are not detected | An activity removed from the source simply stops being offered |
+| Hidden activities are reported | Teachers see the names of hidden activities on the source |
+| Third-party activity types with no `timemodified` | Edits to them are not detected, only their creation |
+
+## After the pilot
+
+- [ ] Read the sync history with the teacher — it is the record of what happened
+- [ ] Note which activity types were skipped most; that is the next priority list
+- [ ] Ask quiz users whether an empty quiz with correct settings is useful to
+      them, or whether question banks need solving first
+- [ ] Revoke the token if the pilot is paused
+      (*Server → Web services → Manage tokens* on the source)

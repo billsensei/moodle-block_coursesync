@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="blocks/coursesync/db" VERSION="20260920" COMMENT="XMLDB file for the Course Sync block"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="block_coursesync_connection" COMMENT="One row per configured block instance: where the remote site is, the encrypted token used to reach it, and the outcome of the last connection test.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The block instance this connection belongs to."/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Denormalised course id of the block instance, for reporting."/>
+        <FIELD NAME="remoteurl" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="" SEQUENCE="false" COMMENT="Base URL of the remote source site, always https."/>
+        <FIELD NAME="token" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Web service token for the remote site, encrypted with core\encryption. Never stored in plain text."/>
+        <FIELD NAME="tokenhint" TYPE="char" LENGTH="8" NOTNULL="false" SEQUENCE="false" COMMENT="Last few characters of the token, shown in the UI so an admin can tell which token is stored."/>
+        <FIELD NAME="remotesitename" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Site name reported by the remote site at the last successful ping."/>
+        <FIELD NAME="remoterelease" TYPE="char" LENGTH="50" NOTNULL="false" SEQUENCE="false" COMMENT="Moodle release reported by the remote site at the last successful ping."/>
+        <FIELD NAME="remotecourseref" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="What the administrator typed to identify the remote course: either a numeric id or a shortname."/>
+        <FIELD NAME="remotecourseid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Numeric course id on the remote site, resolved from remotecourseref when the mapping was saved."/>
+        <FIELD NAME="remotecourseshortname" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Shortname of the mapped remote course, for display."/>
+        <FIELD NAME="remotecoursename" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Full name of the mapped remote course, for display."/>
+        <FIELD NAME="setupstage" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="url" SEQUENCE="false" COMMENT="How far through the setup wizard this connection has got: url, token or tested."/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="new" SEQUENCE="false" COMMENT="Outcome of the last connection test: new, ok or error."/>
+        <FIELD NAME="lasterror" TYPE="char" LENGTH="64" NOTNULL="false" SEQUENCE="false" COMMENT="Error identifier from the last failed test, used to look up a translated message."/>
+        <FIELD NAME="lastcheck" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Time of the last connection test."/>
+        <FIELD NAME="lastsync" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="When activities were last actually pulled from the remote course. Null means never. Phase 3 only reads this; it is written from phase 4 onwards, once there is a real sync to record."/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="blockinstanceid" UNIQUE="true" FIELDS="blockinstanceid"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="block_coursesync_run" COMMENT="One row per sync run: when it happened, who started it, what it pulled, and what it flagged for review.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The block instance the run belongs to."/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The destination course."/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The user who started the run."/>
+        <FIELD NAME="timestarted" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timefinished" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="ok" SEQUENCE="false" COMMENT="ok when everything asked for was pulled, review when something was flagged, failed when the run could not finish."/>
+        <FIELD NAME="errorkey" TYPE="char" LENGTH="64" NOTNULL="false" SEQUENCE="false" COMMENT="Why a failed run failed, as a language string identifier."/>
+        <FIELD NAME="since" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The point in time the run asked the source about."/>
+        <FIELD NAME="lastsyncmoved" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Whether the run moved the last synced marker forward."/>
+        <FIELD NAME="pulledcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="conflictcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="skippedcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="failedcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="pulled" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON list of the activities created by this run."/>
+        <FIELD NAME="conflicts" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON list of the activities flagged for manual review."/>
+        <FIELD NAME="others" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON list of everything else the run considered: skipped and failed activities."/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="blockinstanceid-timestarted" UNIQUE="false" FIELDS="blockinstanceid, timestarted"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>
