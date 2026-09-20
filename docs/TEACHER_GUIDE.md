@@ -84,8 +84,28 @@ That is setup finished. The block now shows what it is connected to.
 
 ## Running a sync
 
-Choose **Sync now** in the block. You are asked to confirm, and told which kinds
-of activity will be copied.
+Choose **Sync now** in the block. Course Sync asks the other site what it has and
+shows you a list of **what is in that course but not in yours**, one row each,
+all ticked.
+
+Untick anything you do not want and choose **Copy the ticked activities**.
+
+Three things are worth knowing about that list:
+
+- **Anything already in your course is not on it.** Course Sync never copies the
+  same activity twice, so listing those would only be offering something it
+  would then refuse. A line underneath says how many were left out for this
+  reason, so a short list is explained rather than puzzling.
+- **Whatever you untick comes back next time.** Leaving something out is not the
+  same as saying no forever: the next sync offers it again. Nothing is marked as
+  dealt with unless it was actually copied.
+- **Activities Course Sync cannot copy are named but not offered**, so you know
+  they exist and need moving by hand.
+
+If something in your course already carries the identity of an activity on the
+other site but Course Sync did not put it there, you get a warning naming it.
+Nothing will be changed or copied over it — but it is worth a look, because it
+usually means two things have ended up with the same ID number.
 
 Course Sync currently copies seventeen kinds:
 

@@ -321,6 +321,47 @@ through the sync account.
    the scale's *name* alongside its id, match by name at the other end, and fall
    back honestly when there is no match.
 
+## Choosing what to sync
+
+`sync.php` asks `syncer::list_candidates()` before it offers anything. That runs
+the same change detection a sync starts with, then sorts what comes back into
+four groups using the same question a run asks - does anything in this course
+carry that activity's identity:
+
+| Group | Shown as | Why |
+| --- | --- | --- |
+| `new` | A ticked checkbox | Not here yet and this plugin handles it |
+| `present` | A count | Pulled here by an earlier run |
+| `collisions` | A warning, named | Something carries the identity that this plugin did not put there |
+| `unsupported` | Named, not selectable | No handler for the type |
+
+`list_candidates()` writes nothing, so the page can be reloaded freely.
+
+The chosen ids come back as `cmids[]` and are passed to `syncer::run()` as
+`$only`. A selection can only ever **narrow** a run: `run()` walks what the
+source reported and skips anything not in the chosen set, so an id that was
+never offered names nothing. That is the whole validation, and it is enough,
+because the set being filtered is the source's own answer for the mapped course.
+
+### Deselection and the last synced marker
+
+Leaving something out has to hold `lastsync`, or "not this one" would quietly
+mean "not ever" - the marker would move past it and it would never be offered
+again.
+
+That rule needs care, because it is easy to hold the marker for something that
+was never a choice at all. Two cases must **not** count as deselected:
+
+- a type nothing handles, which can never be ticked;
+- something already in this course, which is never offered.
+
+Both were bugs during development, and the second is the worse one: it holds the
+marker permanently, because every later run re-detects the same already-present
+activities and would keep finding them "deselected". `syncer::run()` therefore
+decides between `syncskippedtype`, `syncskippedpresent` and
+`syncskippeddeselected`, and only the last of those reaches
+`sync_result::has_deselected()`.
+
 ## Identity and conflicts
 
 A copied activity is stamped `idnumber = coursesync-<remote course module id>`.
@@ -332,6 +373,20 @@ overwritten and never duplicated.
 
 `history::was_pulled_here()` then decides which kind of conflict it is by looking
 for a past run that recorded creating that exact remote/local pair.
+
+### What the candidate list changed about conflicts
+
+Conflicts used to be how a teacher learned an activity was already here: the run
+created nothing and reported it afterwards. Now the list filters those out
+before anything is offered, so in ordinary use a conflict no longer happens -
+the situation is prevented rather than reported.
+
+The conflict path is still there and still matters. It catches a race between
+listing and submitting, and it is what `handle_one()` falls back on when `run()`
+is called without a selection. What would have been silently lost is the
+`conflictlocalactivity` case - something carrying the identity that this plugin
+did not put there - which is why `list_candidates()` separates `collisions` from
+`present` and the page warns about them.
 
 ### Why conflicts do not hold `lastsync`
 

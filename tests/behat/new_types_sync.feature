@@ -47,7 +47,7 @@ Feature: Syncing books, folders, assignments, quizzes and wikis
     And I should see "Wiki"
     And I should see "H5P"
 
-    When I press "Continue"
+    When I press "Copy the ticked activities"
     Then I should see "copied"
     And I should see "Course handbook"
     And I should see "Week 1 handouts"
@@ -82,7 +82,7 @@ Feature: Syncing books, folders, assignments, quizzes and wikis
     And I set the field "Remote course ID or shortname" to "SRC"
     And I press "Save the course"
     And I am on the "DEST" "block_coursesync > Sync" page
-    And I press "Continue"
+    And I press "Copy the ticked activities"
     Then I should see "Course handbook"
 
     # Opening the copy shows the first chapter, and both are in the contents.

@@ -33,6 +33,7 @@ $instanceid = required_param('instanceid', PARAM_INT);
 $courseid = required_param('courseid', PARAM_INT);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
 $full = optional_param('full', 0, PARAM_BOOL);
+$chosen = optional_param_array('cmids', [], PARAM_INT);
 
 $course = get_course($courseid);
 require_login($course);
@@ -83,9 +84,20 @@ if (!connection::is_mapped($record)) {
 }
 
 if (!$confirm) {
-    // Creating activities is not something to do by following a link, so the
-    // run is behind a confirmation with a sesskey.
+    // Nothing is created by following a link. This page asks the other site what
+    // it has, shows what is not here yet, and lets the teacher choose; the form
+    // below carries a sesskey.
     $lastsync = connection::get_last_sync($instanceid);
+    $candidates = syncer::list_candidates($instanceid, $course->id, (bool) $full);
+
+    if (!$candidates->success) {
+        echo $OUTPUT->notification(get_string($candidates->errorkey, 'block_coursesync'), 'error', false);
+        echo html_writer::link($courseurl, get_string('syncbacktocourse', 'block_coursesync'), [
+            'class' => 'btn btn-primary',
+        ]);
+        echo $OUTPUT->footer();
+        die;
+    }
 
     echo html_writer::tag('p', get_string('syncconfirm', 'block_coursesync', (object) [
         'course' => s($record->remotecoursename),
@@ -95,22 +107,135 @@ if (!$confirm) {
         ? get_string('syncconfirmnever', 'block_coursesync')
         : get_string('syncconfirmsince', 'block_coursesync', userdate($lastsync)));
 
-    echo $OUTPUT->confirm(
-        get_string('syncconfirmquestion', 'block_coursesync'),
-        new moodle_url($pageurl, ['confirm' => 1, 'sesskey' => sesskey()]),
-        $courseurl
-    );
+    if (!$candidates->has_any()) {
+        echo $OUTPUT->notification(
+            $candidates->present_count() > 0
+                ? get_string('syncnothingnew', 'block_coursesync', $candidates->present_count())
+                : get_string('syncnothingatall', 'block_coursesync'),
+            'success',
+            false
+        );
+    } else {
+        echo html_writer::start_tag('form', [
+            'method' => 'post',
+            'action' => $pageurl->out(false),
+            'id' => 'coursesync-choose',
+        ]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'full', 'value' => (int) $full]);
+
+        echo $OUTPUT->heading(get_string('syncchooseheading', 'block_coursesync'), 3);
+        echo html_writer::tag('p', get_string('syncchooseintro', 'block_coursesync'), ['class' => 'text-muted']);
+
+        $rows = '';
+
+        foreach ($candidates->new as $activity) {
+            $id = 'coursesync-cm-' . (int) $activity->cmid;
+
+            // Everything is ticked to begin with: copying all of it is the
+            // usual answer, and unticking is the exception.
+            $checkbox = html_writer::empty_tag('input', [
+                'type' => 'checkbox',
+                'name' => 'cmids[]',
+                'value' => (int) $activity->cmid,
+                'id' => $id,
+                'checked' => 'checked',
+                'class' => 'form-check-input',
+            ]);
+
+            $rows .= html_writer::tag(
+                'tr',
+                html_writer::tag('td', $checkbox)
+                . html_writer::tag('td', html_writer::tag('label', s($activity->name), ['for' => $id]))
+                . html_writer::tag('td', s($activity->get_type_name()))
+                . html_writer::tag('td', userdate($activity->timemodified))
+            );
+        }
+
+        $head = html_writer::tag(
+            'tr',
+            html_writer::tag('th', get_string('syncchoosecolumn', 'block_coursesync'), ['scope' => 'col'])
+            . html_writer::tag('th', get_string('previewcolname', 'block_coursesync'), ['scope' => 'col'])
+            . html_writer::tag('th', get_string('previewcoltype', 'block_coursesync'), ['scope' => 'col'])
+            . html_writer::tag('th', get_string('previewcolmodified', 'block_coursesync'), ['scope' => 'col'])
+        );
+
+        echo html_writer::tag(
+            'table',
+            html_writer::tag('caption', get_string('syncchoosecaption', 'block_coursesync'), ['class' => 'sr-only'])
+            . html_writer::tag('thead', $head)
+            . html_writer::tag('tbody', $rows),
+            ['class' => 'table table-striped']
+        );
+
+        echo html_writer::tag(
+            'div',
+            html_writer::empty_tag('input', [
+                'type' => 'submit',
+                'value' => get_string('syncchoosesubmit', 'block_coursesync'),
+                'class' => 'btn btn-primary me-2',
+            ])
+            . html_writer::link($courseurl, get_string('cancel'), ['class' => 'btn btn-secondary']),
+            ['class' => 'mb-4']
+        );
+
+        echo html_writer::end_tag('form');
+    }
+
+    // Why the list is shorter than the other course.
+    if ($candidates->present_count() > 0 && $candidates->has_any()) {
+        echo html_writer::tag(
+            'p',
+            get_string('syncalreadyhere', 'block_coursesync', $candidates->present_count()),
+            ['class' => 'text-muted small']
+        );
+    }
+
+    // The one thing on this page that wants a person's attention: something in
+    // this course already carries a synced activity's identity, and Course Sync
+    // did not put it there. It is not offered, and it is not quietly counted
+    // among the ordinary already-here ones either.
+    if ($candidates->needs_review()) {
+        $names = [];
+
+        foreach ($candidates->collisions as $activity) {
+            $names[] = s($activity->name) . ' (' . s($activity->get_type_name()) . ')';
+        }
+
+        echo $OUTPUT->notification(get_string('synccollisions', 'block_coursesync', (object) [
+            'count' => count($names),
+            'list' => implode(', ', $names),
+        ]), 'warning', false);
+    }
+
+    // Types this plugin cannot copy are named rather than silently missing, so
+    // a teacher knows to move them by hand.
+    if ($candidates->unsupported !== []) {
+        $names = [];
+
+        foreach ($candidates->unsupported as $activity) {
+            $names[] = s($activity->name) . ' (' . s($activity->get_type_name()) . ')';
+        }
+
+        echo html_writer::tag('p', get_string('syncunsupportedhere', 'block_coursesync', (object) [
+            'count' => count($names),
+            'list' => implode(', ', $names),
+        ]), ['class' => 'text-muted small']);
+    }
 
     // A conflict that has been dealt with by hand would otherwise never be
     // offered again, because the last synced marker has moved past it.
-    echo html_writer::tag('p', html_writer::link(
-        new moodle_url($pageurl, ['confirm' => 1, 'full' => 1, 'sesskey' => sesskey()]),
-        get_string('syncfullrecheck', 'block_coursesync')
-    ) . ' ' . html_writer::tag(
-        'span',
-        get_string('syncfullrecheckhint', 'block_coursesync'),
-        ['class' => 'text-muted small']
-    ), ['class' => 'mt-4']);
+    if (!$full) {
+        echo html_writer::tag('p', html_writer::link(
+            new moodle_url($pageurl, ['full' => 1]),
+            get_string('syncfullrecheck', 'block_coursesync')
+        ) . ' ' . html_writer::tag(
+            'span',
+            get_string('syncfullrecheckhint', 'block_coursesync'),
+            ['class' => 'text-muted small']
+        ), ['class' => 'mt-4']);
+    }
 
     echo $OUTPUT->footer();
     die;
@@ -118,7 +243,9 @@ if (!$confirm) {
 
 require_sesskey();
 
-$result = syncer::run($instanceid, $course->id, $full);
+// Only what was ticked. An empty selection is a decision, not a request to copy
+// everything, so it is passed through as the empty set rather than as null.
+$result = syncer::run($instanceid, $course->id, (bool) $full, null, $chosen);
 
 if (!$result->success) {
     echo $OUTPUT->notification($result->get_message(), 'error', false);

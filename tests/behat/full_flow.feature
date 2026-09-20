@@ -57,7 +57,7 @@ Feature: The whole teacher-facing Course Sync flow
 
     # Sync, and see what it did.
     When I am on the "DEST" "block_coursesync > Sync" page
-    And I press "Continue"
+    And I press "Copy the ticked activities"
     Then I should see "copied"
     And I should see "Week 1 Notes"
     And I should see "Unit introduction"
@@ -87,11 +87,12 @@ Feature: The whole teacher-facing Course Sync flow
     And I set the field "Remote course ID or shortname" to "SRC"
     And I press "Save the course"
     And I am on the "DEST" "block_coursesync > Sync" page
-    And I press "Continue"
+    And I press "Copy the ticked activities"
     Then I should see "copied"
 
-    # A second run over the same ground finds everything already here.
+    # A second pass over the same ground has nothing left to offer, because
+    # what is already here is not listed.
     When I am on the "DEST" "block_coursesync > Sync" page
     And I follow "Check everything again"
-    Then I should see "flagged"
-    And I should see "Nothing in this course was changed or overwritten"
+    Then I should see "Everything in the other course is already here"
+    And I should not see "Copy the ticked activities"

@@ -20,14 +20,22 @@ Every entry point the plugin adds, and what guards it.
 | `setup.php` (form submissions) | yes | `block/coursesync:sync` | moodleform | yes |
 | `setup.php?test=1` | yes | `block/coursesync:sync` | `require_sesskey()` | yes |
 | `preview.php` | yes | `block/coursesync:sync` | — | no |
-| `sync.php` (confirm page) | yes | `block/coursesync:sync` | — | no |
-| `sync.php?confirm=1` | yes | `block/coursesync:sync` | `require_sesskey()` | yes |
+| `sync.php` (the list of what could be copied) | yes | `block/coursesync:sync` | — | no |
+| `sync.php?confirm=1` (the chosen activities) | yes | `block/coursesync:sync` | `require_sesskey()` | yes |
 | `history.php` | yes | `block/coursesync:sync` | — | no |
 | Block configuration form | yes | `moodle/block:edit` (Moodle) **plus** `block/coursesync:sync` for the remote check | moodleform | yes |
 
 Every page also confirms that the block instance it was given actually belongs to
 the course it was given, so an instance id from another course cannot be passed
 in.
+
+The list page makes an outbound request to the other site but writes nothing, so
+it carries no sesskey; the form on it does. The chosen activity ids arrive as
+`cmids[]` and are filtered against what the source reported for the mapped
+course, so a selection can only narrow a run and never widen it. An id that was
+not in that answer names nothing, and one that was - but was not offered, because
+it is already here or of an unhandled type - still goes through the same
+already-here and unsupported checks it always did.
 
 Read-only pages do not carry a sesskey, which follows Moodle's convention for
 report pages. `preview.php` is the one to think about, because viewing it makes

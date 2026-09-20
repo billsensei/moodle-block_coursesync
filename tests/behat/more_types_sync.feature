@@ -47,7 +47,7 @@ Feature: Syncing choices, glossaries, feedback, databases, workshops and lessons
     And I should see "Workshop"
     And I should see "Lesson"
 
-    When I press "Continue"
+    When I press "Copy the ticked activities"
     Then I should see "copied"
     And I should see "Pick a workshop"
     And I should see "Key terms"
@@ -80,7 +80,7 @@ Feature: Syncing choices, glossaries, feedback, databases, workshops and lessons
     And I set the field "Remote course ID or shortname" to "SRC"
     And I press "Save the course"
     And I am on the "DEST" "block_coursesync > Sync" page
-    And I press "Continue"
+    And I press "Copy the ticked activities"
     Then I should see "Pick a workshop"
 
     When I am on "Destination Course" course homepage

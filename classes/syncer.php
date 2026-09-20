@@ -61,19 +61,101 @@ class syncer {
     }
 
     /**
+     * What a sync would offer to copy, without copying any of it.
+     *
+     * This is the same change detection a run starts with, sorted into what is
+     * new here, what is already here, and what this plugin cannot handle. It
+     * writes nothing, so a teacher can look at it as often as they like.
+     *
+     * Deciding "already here" is the same question a run asks - does anything in
+     * this course carry that activity's identity - so the list and the run agree
+     * about what is on offer.
+     *
+     * @param int $blockinstanceid
+     * @param int $courseid the destination course
+     * @param bool $full look at every activity rather than only what has changed
+     * @param http_client|null $client injected only by tests
+     * @return sync_candidates
+     */
+    public static function list_candidates(
+        int $blockinstanceid,
+        int $courseid,
+        bool $full = false,
+        ?http_client $client = null
+    ): sync_candidates {
+        $record = connection::get($blockinstanceid);
+
+        if (!connection::is_mapped($record)) {
+            return sync_candidates::failure('errornotmapped');
+        }
+
+        $token = connection::get_token($blockinstanceid);
+
+        if ($token === null) {
+            return sync_candidates::failure('errortokenunreadable');
+        }
+
+        $since = $full ? 0 : (connection::get_last_sync($blockinstanceid) ?? 0);
+
+        $found = remote_client::get_modified_activities(
+            $record->remoteurl,
+            $token,
+            (int) $record->remotecourseid,
+            $since,
+            $client
+        );
+
+        if (!$found->success) {
+            return sync_candidates::failure($found->errorkey);
+        }
+
+        $candidates = new sync_candidates();
+        $candidates->since = $since;
+
+        foreach ($found->activities as $activity) {
+            $existing = self::find_existing($courseid, $activity->cmid);
+
+            if ($existing > 0) {
+                // Whether this plugin put it there decides which it is. One is
+                // ordinary housekeeping; the other is something a person should
+                // look at, and was worth flagging before this list existed.
+                if (history::was_pulled_here($blockinstanceid, $activity->cmid, $existing)) {
+                    $candidates->present[] = $activity;
+                } else {
+                    $candidates->collisions[] = $activity;
+                }
+
+                continue;
+            }
+
+            if (!handler_registry::supports($activity->modname)) {
+                $candidates->unsupported[] = $activity;
+
+                continue;
+            }
+
+            $candidates->new[] = $activity;
+        }
+
+        return $candidates;
+    }
+
+    /**
      * Run a sync for one block instance.
      *
      * @param int $blockinstanceid
      * @param int $courseid the destination course
      * @param bool $full look at every activity rather than only what has changed
      * @param http_client|null $client injected only by tests
+     * @param int[]|null $only remote course module ids the teacher chose; null means everything
      * @return sync_result
      */
     public static function run(
         int $blockinstanceid,
         int $courseid,
         bool $full = false,
-        ?http_client $client = null
+        ?http_client $client = null,
+        ?array $only = null
     ): sync_result {
         global $USER;
 
@@ -132,13 +214,53 @@ class syncer {
         $result = new sync_result();
         $result->since = $since;
 
+        // A chosen set is held to what was actually offered. An id that was not
+        // on the list was not offered, so it is not acted on however it arrived
+        // in the request.
+        $chosen = $only === null ? null : array_map('intval', $only);
+
         foreach ($found->activities as $activity) {
+            // Asked before the chosen set, and deliberately. Something this
+            // plugin cannot handle was never on offer, so saying the teacher
+            // chose to leave it out would be untrue - and worse, it would hold
+            // the last synced marker back forever waiting for a choice that can
+            // never be made.
+            if (!handler_registry::supports($activity->modname)) {
+                $result->add_skipped(
+                    $activity->name,
+                    $activity->modname,
+                    $activity->cmid,
+                    'syncskippedtype'
+                );
+
+                continue;
+            }
+
+            if ($chosen !== null && !in_array((int) $activity->cmid, $chosen, true)) {
+                // Same reasoning again: something already in this course is not
+                // on the list either, so it was not a choice the teacher made.
+                // Calling it one would hold the marker back for good - it can
+                // never be ticked, because it is never offered.
+                $alreadyhere = self::find_existing($course->id, $activity->cmid) > 0;
+
+                $result->add_skipped(
+                    $activity->name,
+                    $activity->modname,
+                    $activity->cmid,
+                    $alreadyhere ? 'syncskippedpresent' : 'syncskippeddeselected'
+                );
+
+                continue;
+            }
+
             self::handle_one($course, $blockinstanceid, $record, $token, $activity, $result, $client);
         }
 
         // The marker moves only when the run is trustworthy. Moving it after a
-        // partial failure would hide the activities that did not make it.
-        if ($result->is_clean()) {
+        // partial failure would hide the activities that did not make it, and
+        // moving it past something the teacher deliberately left out would mean
+        // never being offered it again.
+        if ($result->is_clean() && !$result->has_deselected()) {
             connection::set_last_sync($blockinstanceid, $runstarted);
             $result->lastsyncupdated = true;
         }

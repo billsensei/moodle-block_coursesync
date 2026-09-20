@@ -174,6 +174,25 @@ class sync_result {
     }
 
     /**
+     * Did the teacher leave anything out of this run?
+     *
+     * This is what stops the last synced marker moving past an activity that
+     * was deliberately not copied. Without it, choosing "not this one" would
+     * mean never being offered it again, which is not what not-this-one means.
+     *
+     * @return bool
+     */
+    public function has_deselected(): bool {
+        foreach ($this->items as $item) {
+            if (($item['detail'] ?? null) === 'syncskippeddeselected') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Did everything the run attempted actually work?
      *
      * Conflicts do not count against this. A conflict is a decision the run

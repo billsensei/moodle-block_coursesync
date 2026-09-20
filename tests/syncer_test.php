@@ -158,6 +158,8 @@ final class syncer_test extends advanced_testcase {
             'errorwronghandler',
             'erroractivitynotfound',
             'errornopackage',
+            'syncskippeddeselected',
+            'syncskippedpresent',
         ];
 
         foreach ($reasons as $reason) {
