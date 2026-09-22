@@ -88,6 +88,7 @@ final class qbank_handler_test extends advanced_testcase {
         $match = $qgen->create_question('match', null, ['category' => $child->id]);
         $essay = $qgen->create_question('essay', null, ['category' => $child->id]);
         $numerical = $qgen->create_question('numerical', null, ['category' => $child->id]);
+        $multianswer = $qgen->create_question('multianswer', 'twosubq', ['category' => $child->id]);
 
         $qgen->create_question_tag(['questionid' => $multichoice->id, 'tag' => 'week1']);
 
@@ -148,15 +149,15 @@ final class qbank_handler_test extends advanced_testcase {
         ));
         $this->assertSame((int) $newparent->id, (int) $newchild->parent);
 
-        // Six supported types plus the superseded question's current
-        // version plus the one with an image: eight questions in total.
+        // Seven supported types plus the superseded question's current
+        // version plus the one with an image: nine questions in total.
         // The unsupported "description" question and the first version of
         // the superseded one are not among them.
         $questionids = \question_bank::get_finder()->get_questions_from_categories(
             [$newparent->id, $newchild->id],
             ''
         );
-        $this->assertCount(8, $questionids);
+        $this->assertCount(9, $questionids);
 
         $names = $DB->get_fieldset_select(
             'question',
@@ -200,6 +201,9 @@ final class qbank_handler_test extends advanced_testcase {
 
         $newnumerical = $this->find_copy($DB, $newchild->id, $numerical->name);
         $this->assert_numerical_shape($DB, $newnumerical);
+
+        $newmultianswer = $this->find_copy($DB, $newchild->id, $multianswer->name);
+        $this->assert_multianswer_shape($DB, $newmultianswer);
 
         // The tag travelled.
         $newtags = \core_tag_tag::get_item_tags_array('core_question', 'question', $newmultichoice->id);
@@ -353,5 +357,49 @@ final class qbank_handler_test extends advanced_testcase {
         foreach (array_keys($answers) as $answerid) {
             $this->assertTrue($db->record_exists('question_numerical', ['answer' => $answerid]));
         }
+    }
+
+    /**
+     * Multianswer (cloze) keeps its {#N} placeholders in its own
+     * questiontext, and each embedded sub-question - which is a real,
+     * separately saved question of its own type - keeps its correct
+     * answer. There is nothing multianswer-specific in this handler at
+     * all: qtype_multianswer::save_question_options() does the whole job
+     * itself, given the already-fully-parsed data qformat_xml::readquestions()
+     * hands it, exactly the same as any other type's save_question_options()
+     * call.
+     */
+    protected function assert_multianswer_shape(\moodle_database $db, \stdClass $question): void {
+        $this->assertSame('multianswer', $question->qtype);
+        $this->assertStringContainsString('{#1}', $question->questiontext);
+        $this->assertStringContainsString('{#2}', $question->questiontext);
+
+        $sequence = $db->get_field('question_multianswer', 'sequence', ['question' => $question->id], MUST_EXIST);
+        $subids = explode(',', $sequence);
+        $this->assertCount(2, $subids);
+
+        $subtypes = $db->get_fieldset_select(
+            'question',
+            'qtype',
+            'id ' . $db->get_in_or_equal($subids)[0],
+            $subids
+        );
+        sort($subtypes);
+        $this->assertSame(['multichoice', 'shortanswer'], $subtypes);
+
+        [$insql, $inparams] = $db->get_in_or_equal($subids);
+        $shortanswerid = $db->get_field_select('question', 'id', "id {$insql} AND qtype = 'shortanswer'", $inparams, MUST_EXIST);
+
+        $answers = $db->get_records('question_answers', ['question' => $shortanswerid]);
+        $correct = null;
+
+        foreach ($answers as $answer) {
+            if ($answer->answer === 'Owl') {
+                $correct = $answer;
+            }
+        }
+
+        $this->assertNotNull($correct, 'the correct sub-answer should have survived');
+        $this->assertSame(1.0, (float) $correct->fraction);
     }
 }

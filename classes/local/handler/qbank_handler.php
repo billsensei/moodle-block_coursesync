@@ -52,13 +52,18 @@ use block_coursesync\activity_payload;
  *    that now does check something extra, and for a different reason - see
  *    that class and SECURITY.md.
  *
- * Only six question types are rebuilt - multiple choice, true/false, short
- * answer, matching, essay, numerical - because those cover most real
- * question banks and each one's shape has actually been checked against
- * this handler. A question of any other type is left out and counted; see
- * notes(). Only the current ready version of each question is copied - no
- * drafts, no hidden versions, no history - matching how every other type in
- * this plugin carries current state rather than a log of changes.
+ * Only seven question types are rebuilt - multiple choice, true/false,
+ * short answer, matching, essay, numerical, multianswer (cloze) - because
+ * those cover most real question banks and each one's shape has actually
+ * been checked against this handler. Multianswer needs nothing special
+ * here despite its embedded sub-questions: qformat_xml's own reader
+ * already resolves them from the parent's questiontext before
+ * save_question() ever sees it, and qtype_multianswer::save_question_options()
+ * saves them itself, the same one call this handler already makes for
+ * every other type. A question of any other type is left out and counted;
+ * see notes(). Only the current ready version of each question is copied -
+ * no drafts, no hidden versions, no history - matching how every other
+ * type in this plugin carries current state rather than a log of changes.
  *
  * The category/question export and rebuild logic lives in
  * question_bank_sync_trait, shared with quiz_handler - a quiz's slots can

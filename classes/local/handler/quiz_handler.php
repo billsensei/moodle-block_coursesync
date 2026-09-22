@@ -27,7 +27,7 @@ use mod_quiz\question\display_options;
  * fixed question (question_references), or a random draw from a category
  * (question_set_references). The categories and questions themselves are
  * rebuilt using the same code qbank_handler uses (question_bank_sync_trait) -
- * six supported types, current ready version only, question content
+ * seven supported types, current ready version only, question content
  * travelling as a qformat_xml fragment - but they land in the destination
  * course's own shared System Bank rather than a dedicated activity, exactly
  * where Moodle itself puts a question a teacher adds straight to a quiz with
@@ -39,7 +39,7 @@ use mod_quiz\question\display_options;
  * notes(). The former is already counted by the shared trait's
  * unsupported-type note; the latter gets its own, since it is not
  * explained by anything already reported. Only current-ready versions of
- * the six supported types are ever attempted; that is qbank_handler's own
+ * the seven supported types are ever attempted; that is qbank_handler's own
  * limit, inherited here rather than restated differently.
  *
  * Building a random slot is the one place in this plugin that checks a

@@ -197,6 +197,66 @@ final class quiz_handler_test extends advanced_testcase {
     }
 
     /**
+     * A fixed slot naming a multianswer (cloze) question - a real question
+     * this quiz actually holds, not one of the fabricated shapes above -
+     * arrives with its embedded sub-questions intact, since it is just
+     * another entry in SUPPORTED_QTYPES to the shared trait; nothing here
+     * is multianswer-specific.
+     */
+    public function test_quiz_with_a_cloze_fixed_slot(): void {
+        global $CFG, $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $quiz = $this->getDataGenerator()->get_plugin_generator('mod_quiz')->create_instance([
+            'course' => $source->id,
+            'name' => 'Cloze quiz',
+        ]);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $cat = $qgen->create_question_category();
+        $cloze = $qgen->create_question('multianswer', 'twosubq', ['category' => $cat->id]);
+        \quiz_add_quiz_question($cloze->id, $quiz, 0, 3.0);
+
+        [$cm, $payload, $handler] = $this->round_trip($quiz->cmid, $target);
+
+        $newquiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
+        $newslots = $DB->get_records('quiz_slots', ['quizid' => $newquiz->id]);
+        $this->assertCount(1, $newslots);
+
+        $notes = $handler->notes($payload);
+        $this->assertContains('syncqbanknoattempts', $notes);
+        foreach ($notes as $note) {
+            $this->assertFalse(
+                is_array($note) && $note[0] === 'syncqbankunsupportedcount',
+                'cloze is supported, so it must not be counted as an unsupported type'
+            );
+        }
+
+        $newslot = reset($newslots);
+        $qref = $DB->get_record('question_references', [
+            'itemid' => $newslot->id, 'component' => 'mod_quiz', 'questionarea' => 'slot',
+        ], '*', MUST_EXIST);
+        $newquestion = $DB->get_record_sql(
+            'SELECT q.* FROM {question} q JOIN {question_versions} qv ON qv.questionid = q.id
+              WHERE qv.questionbankentryid = ?',
+            [$qref->questionbankentryid],
+            MUST_EXIST
+        );
+        $this->assertSame('multianswer', $newquestion->qtype);
+        $this->assertSame(3.0, (float) $newslot->maxmark);
+
+        $sequence = $DB->get_field('question_multianswer', 'sequence', ['question' => $newquestion->id], MUST_EXIST);
+        $this->assertCount(2, explode(',', $sequence));
+    }
+
+    /**
      * The same source question, used by two different quizzes, is only
      * copied once into the shared System Bank - both quizzes reference the
      * one local question.
