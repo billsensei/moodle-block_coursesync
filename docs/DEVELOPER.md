@@ -431,6 +431,36 @@ Failures *do* hold the marker, so a genuine failure is retried.
 The cost is that a conflict resolved by hand is not re-offered by an ordinary
 sync. That is what the **Check everything again** option (`since = 0`) is for.
 
+### Deleting a synced activity, so it can be synced back
+
+`find_existing()` also excludes a `course_modules` row flagged
+`deletioninprogress = 1`. Moodle's standard "Delete" action in the course
+editor is asynchronous by default
+(`course_delete_module($cmid, true)`, called from
+`stateactions::cm_delete()`): it only sets that flag and moves the module out
+of its section, then queues an adhoc task to do the real deletion -
+`quiz_delete_instance()`, `question_delete_activity()`, and the rest -
+whenever cron next processes it. The teacher already sees the activity gone
+from the course at that point, so `find_existing()` treats it as gone too,
+rather than making "delete it, then sync it back" depend on the site's cron
+schedule. A **Check everything again** afterwards correctly re-offers it.
+
+This means, briefly, two `course_modules` rows can carry the same idnumber
+at once: the flagged one, still waiting on its adhoc task, and the freshly
+synced one. That is harmless - `course_modules.idnumber` has no database
+uniqueness constraint, only an application-level one enforced by the course
+edit form (see `idnumber-course` in `install.xml`, deliberately
+`UNIQUE="false"`) - and for `quiz_handler`/`qbank_handler` specifically it is
+also why the flagged module's own question bank content is never at risk:
+a quiz's questions live in the shared System Bank, untouched by its own
+module being flagged for deletion, and `question_bank_sync_trait`'s
+idnumber-reuse logic finds and reuses that same content on the resync
+rather than duplicating it - proven together in
+`quiz_handler_test::test_deleting_and_resyncing_a_quiz_reuses_its_bank_content()`.
+A qbank's own categories and questions live in its own module context, so a
+second sync before cron catches up simply creates its own independent copy
+under a fresh context, with no collision either way.
+
 ## Change detection
 
 `course_modules` has no modification time of its own — only `added`. The time

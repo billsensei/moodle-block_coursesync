@@ -67,6 +67,30 @@ final class syncer_test extends advanced_testcase {
     }
 
     /**
+     * A module only flagged deletioninprogress = 1 - the state the
+     * standard "Delete" action leaves behind while its adhoc task is still
+     * waiting to run - is treated the same as already gone, so a teacher
+     * does not have to wait for cron before syncing the activity back.
+     */
+    public function test_find_existing_ignores_a_module_pending_async_deletion(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course();
+
+        $page = $this->getDataGenerator()->create_module('page', ['course' => $course->id]);
+        $DB->set_field('course_modules', 'idnumber', syncer::build_idnumber(42), ['id' => $page->cmid]);
+
+        $this->assertSame((int) $page->cmid, syncer::find_existing($course->id, 42));
+
+        $DB->set_field('course_modules', 'deletioninprogress', 1, ['id' => $page->cmid]);
+
+        $this->assertSame(0, syncer::find_existing($course->id, 42));
+    }
+
+    /**
      * A run that created everything it tried to is clean.
      */
     public function test_result_is_clean_when_nothing_failed(): void {

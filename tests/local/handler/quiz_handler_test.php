@@ -19,6 +19,7 @@ namespace block_coursesync\local\handler;
 use advanced_testcase;
 use block_coursesync\activity_payload;
 use block_coursesync\external\get_activity;
+use block_coursesync\syncer;
 use core_question\local\bank\question_bank_helper;
 use PHPUnit\Framework\Attributes\CoversClass;
 
@@ -257,6 +258,95 @@ final class quiz_handler_test extends advanced_testcase {
             );
             $this->assertSame((int) $entryid, (int) $referenced->questionbankentryid);
         }
+    }
+
+    /**
+     * Two halves of "delete a synced quiz, then sync it back", proven
+     * together: syncer::find_existing() - unit-tested on its own in
+     * syncer_test.php - really would let a repeat sync through once the old
+     * module is gone (properly deleted, or only flagged
+     * deletioninprogress = 1), and create_from_remote_data() - exercised
+     * directly here rather than through the HTTP-mocked syncer::run() a
+     * full quiz payload is impractical to build for - reuses the
+     * already-synced question rather than duplicating it when it is asked
+     * for the same quiz a second and third time.
+     */
+    public function test_deleting_and_resyncing_a_quiz_reuses_its_bank_content(): void {
+        global $CFG, $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        require_once($CFG->dirroot . '/course/lib.php');
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $quizgen = $this->getDataGenerator()->get_plugin_generator('mod_quiz');
+        $quiz = $quizgen->create_instance(['course' => $source->id, 'name' => 'Repeatable quiz']);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $cat = $qgen->create_question_category();
+        $question = $qgen->create_question('shortanswer', null, ['category' => $cat->id]);
+        \quiz_add_quiz_question($question->id, $quiz, 0, 1.0);
+
+        $remoteidnumber = 'coursesync-1';
+        [$firstcm] = $this->round_trip($quiz->cmid, $target, $remoteidnumber);
+
+        $entryid = (int) $DB->get_field_sql(
+            'SELECT qbe.id
+               FROM {question_bank_entries} qbe
+               JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
+               JOIN {question} q ON q.id = qv.questionid
+              WHERE q.name = ? AND qbe.idnumber IS NOT NULL',
+            [$question->name],
+            MUST_EXIST
+        );
+
+        // A teacher's "Delete" only flags the row deletioninprogress = 1
+        // and leaves the real cleanup to an adhoc task - not actually gone
+        // yet, but syncer::find_existing() must already treat it as gone,
+        // same as the syncer_test.php unit test proves in isolation.
+        $DB->set_field('course_modules', 'deletioninprogress', 1, ['id' => $firstcm->id]);
+        $this->assertSame(0, syncer::find_existing($target->id, 1));
+
+        [$secondcm] = $this->round_trip($quiz->cmid, $target, $remoteidnumber);
+        $this->assertNotSame((int) $firstcm->id, (int) $secondcm->id, 'a real new course module, not the flagged one');
+
+        // Still only one synced copy of the question - the resync reused it.
+        $this->assertSame(1, $DB->count_records('question_bank_entries', ['id' => $entryid]));
+
+        $newquizid = $DB->get_field('quiz', 'id', ['id' => $secondcm->instance], MUST_EXIST);
+        $referenced = $DB->get_record_sql(
+            'SELECT qr.questionbankentryid
+               FROM {question_references} qr
+               JOIN {quiz_slots} slot ON slot.id = qr.itemid
+              WHERE slot.quizid = ? AND qr.component = ? AND qr.questionarea = ?',
+            [$newquizid, 'mod_quiz', 'slot'],
+            MUST_EXIST
+        );
+        $this->assertSame($entryid, (int) $referenced->questionbankentryid);
+
+        // Now the properly-completed case: the flagged module actually
+        // gone, not just marked - find_existing() must still say so, and a
+        // second resync must still reuse rather than duplicate.
+        \course_delete_module($secondcm->id, false);
+        $this->assertSame(0, syncer::find_existing($target->id, 1));
+
+        [$thirdcm] = $this->round_trip($quiz->cmid, $target, $remoteidnumber);
+        $this->assertSame(1, $DB->count_records('question_bank_entries', ['id' => $entryid]));
+
+        $newestquizid = $DB->get_field('quiz', 'id', ['id' => $thirdcm->instance], MUST_EXIST);
+        $referenced = $DB->get_record_sql(
+            'SELECT qr.questionbankentryid
+               FROM {question_references} qr
+               JOIN {quiz_slots} slot ON slot.id = qr.itemid
+              WHERE slot.quizid = ? AND qr.component = ? AND qr.questionarea = ?',
+            [$newestquizid, 'mod_quiz', 'slot'],
+            MUST_EXIST
+        );
+        $this->assertSame($entryid, (int) $referenced->questionbankentryid);
     }
 
     /**

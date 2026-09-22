@@ -47,6 +47,16 @@ class syncer {
     /**
      * Has this remote activity already been pulled into this course?
      *
+     * A module a teacher just deleted through the course editor is not
+     * actually gone yet - the standard "Delete" action is asynchronous by
+     * default (course_delete_module($cmid, true)): it flags the row
+     * deletioninprogress = 1 and queues an adhoc task to do the real work,
+     * which can sit unprocessed for a long time depending on the site's cron
+     * schedule. The teacher already sees it gone from the course, so a row
+     * only waiting on that task is treated the same way here - as gone -
+     * rather than making "delete it, then sync it back" depend on when cron
+     * next runs.
+     *
      * @param int $courseid the destination course
      * @param int $remotecmid course module id on the source site
      * @return int the local course module id, or 0 if it is not here
@@ -57,6 +67,7 @@ class syncer {
         return (int) $DB->get_field('course_modules', 'id', [
             'course' => $courseid,
             'idnumber' => self::build_idnumber($remotecmid),
+            'deletioninprogress' => 0,
         ], IGNORE_MISSING);
     }
 
