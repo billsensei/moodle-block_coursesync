@@ -28,12 +28,12 @@ Feature: Sync now
   Scenario: An unconfigured block does not offer to sync
     Given I am on the "Course 1" course page logged in as "teacher1"
     Then I should see "Course Sync — not yet configured" in the "Course Sync" "block"
-    And I should not see "Sync now" in the "Course Sync" "block"
+    And I should not see "Check now" in the "Course Sync" "block"
 
   Scenario: A student is offered nothing
     Given I am on the "Course 1" course page logged in as "student1"
-    Then I should not see "Sync now" in the "Course Sync" "block"
-    And I should not see "See what has changed" in the "Course Sync" "block"
+    Then I should not see "Check now" in the "Course Sync" "block"
+    And I should not see "See changes" in the "Course Sync" "block"
 
   Scenario: A teacher chooses what to copy, and what is left out comes back
     Given this site is set up as a Course Sync source

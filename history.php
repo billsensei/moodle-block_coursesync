@@ -25,6 +25,7 @@
 require_once(__DIR__ . '/../../config.php');
 
 use block_coursesync\history;
+use block_coursesync\sync_result;
 use core\output\html_writer;
 
 $instanceid = required_param('instanceid', PARAM_INT);
@@ -74,7 +75,7 @@ if ($runs === []) {
         }
 
         foreach ($item['notes'] ?? [] as $note) {
-            $detail = trim($detail . ' ' . get_string($note, 'block_coursesync'));
+            $detail = trim($detail . ' ' . sync_result::describe_note($note));
         }
 
         return html_writer::tag(

@@ -27,6 +27,7 @@ require_once(__DIR__ . '/../../config.php');
 use block_coursesync\activity;
 use block_coursesync\connection;
 use block_coursesync\local\handler\handler_registry;
+use block_coursesync\sync_result;
 use block_coursesync\syncer;
 use core\output\html_writer;
 
@@ -149,6 +150,25 @@ if (!$confirm) {
             echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
             echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
             echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'full', 'value' => (int) $full]);
+
+            // Only the enabled (new) checkboxes respond to these; the ones
+            // shown for reference are never touched. See amd/src/choose.js.
+            echo html_writer::tag(
+                'div',
+                html_writer::tag('button', get_string('syncselectall', 'block_coursesync'), [
+                    'type' => 'button',
+                    'data-action' => 'coursesync-select-all',
+                    'class' => 'btn btn-link btn-sm p-0 me-3',
+                ])
+                . html_writer::tag('button', get_string('syncselectnone', 'block_coursesync'), [
+                    'type' => 'button',
+                    'data-action' => 'coursesync-select-none',
+                    'class' => 'btn btn-link btn-sm p-0',
+                ]),
+                ['class' => 'mb-2']
+            );
+
+            $PAGE->requires->js_call_amd('block_coursesync/choose', 'init');
         }
 
         $statuslabels = [
@@ -310,7 +330,7 @@ if ($result->items !== []) {
         }
 
         foreach ($item['notes'] as $note) {
-            $parts[] = get_string($note, 'block_coursesync');
+            $parts[] = sync_result::describe_note($note);
         }
 
         $detail = implode(' ', $parts);

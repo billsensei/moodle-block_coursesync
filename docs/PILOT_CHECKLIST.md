@@ -53,20 +53,25 @@ read"*.
 - [ ] Add the block to one real course, not a scratch one — the point is to see
       it behave against real content
 - [ ] Run the wizard and confirm the test reports the source site's name
-- [ ] Use **See what has changed** before the first **Sync now**
+- [ ] Use **See changes** before the first **Check now**
 - [ ] Check the results table: copied, flagged, skipped, failed
 - [ ] Open the synced activities and compare them with the source
 
 ## What to tell teachers up front
 
-- Only seventeen activity types are copied: Page, URL, Label, File, Folder, Book,
+- Only eighteen activity types are copied: Page, URL, Label, File, Folder, Book,
   Forum, Wiki, Assignment, Quiz, Choice, Glossary, Feedback, Database, Workshop,
-  Lesson, H5P. Everything
+  Lesson, H5P, Question bank. Everything
   else is listed as skipped
 - Forum, Wiki and Assignment **settings** come across; discussions, wiki pages
   and student submissions do not
-- A copied **Quiz has no questions** — question banks are per-site. Tell pilot
-  teachers this before they open one, not after
+- A copied **Quiz has no questions**, even if you also sync a Question bank
+  activity — the two are not linked automatically. Tell pilot teachers this
+  before they open one, not after
+- A copied **Question bank brings only six question types** (multiple choice,
+  true/false, short answer, matching, essay, numerical) and only each
+  question's current version. Anything else is named in the results, not
+  silently dropped
 - A copied **Database has no custom CSS or JavaScript**, and a copied **Lesson
   has no password**. Both are deliberate and both are reported on the results
   page; see `SECURITY.md`

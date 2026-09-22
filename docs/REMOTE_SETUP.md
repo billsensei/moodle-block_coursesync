@@ -69,7 +69,7 @@ The service contains one function in this phase:
 
 ## 4. Give the sync account permission
 
-The sync account needs two capabilities at site level on the source site:
+The sync account needs three capabilities at site level on the source site:
 
 | Capability | Why |
 | --- | --- |
@@ -79,9 +79,10 @@ The sync account needs two capabilities at site level on the source site:
 
 Those three are the whole list, whatever kinds of activity the course holds. In
 particular the account does **not** need `mod/assign:view`, `mod/quiz:view`,
-`mod/wiki:viewpage` or any other per-activity permission: what authorises reading
-an activity is `block/coursesync:sync` on its course. `SECURITY.md` explains why
-it is checked there and what follows from that.
+`mod/wiki:viewpage`, `mod/qbank:view`, `moodle/question:viewall`, or any other
+per-activity permission: what authorises reading an activity is
+`block/coursesync:sync` on its course. `SECURITY.md` explains why it is
+checked there and what follows from that.
 
 Because of this, grant `block/coursesync:sync` only to the sync account's role.
 An account holding it on a course can read everything in that course, including

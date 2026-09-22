@@ -84,7 +84,7 @@ That is setup finished. The block now shows what it is connected to.
 
 ## Running a sync
 
-Choose **Sync now** in the block. Course Sync asks the other site what it has and
+Choose **Check now** in the block. Course Sync asks the other site what it has and
 shows you every activity in that course, one row each, with a **Status** column
 saying what will happen to it.
 
@@ -114,7 +114,7 @@ other site but Course Sync did not put it there, you get a warning naming it.
 Nothing will be changed or copied over it — but it is worth a look, because it
 usually means two things have ended up with the same ID number.
 
-Course Sync currently copies seventeen kinds:
+Course Sync currently copies eighteen kinds:
 
 | Type | What comes across | What stays behind |
 | --- | --- | --- |
@@ -135,16 +135,25 @@ Course Sync currently copies seventeen kinds:
 | **Workshop** | The settings and the whole assessment form reviewers fill in | Submissions, assessments and grades |
 | **Lesson** | Every page, and every path between them, including where each answer leads | What students did in it, and the password |
 | **H5P** | The interactive content itself and all its settings | Attempts and results |
+| **Question bank** | Its categories, and questions of the six most common types | Questions of any other type, attempts, and usage statistics |
 
 Most of these copy the activity as a teacher set it up, not what anyone did in
 it. That is on purpose: work students did belongs where they did it. Each copy
 says on the results page what was left behind, so you are never left to find out
 by opening it.
 
-**A copied quiz has no questions in it.** Quiz questions live in a question bank,
-which belongs to the site it is on, so there is no safe way to carry them to a
-different site. The quiz arrives with every setting right and empty; add the
-questions here.
+**A copied quiz has no questions in it.** Quiz questions live in a question
+bank, and a quiz only holds a reference into one — copying the quiz does not
+follow that reference yet, even if you also sync a Question bank activity
+separately. The quiz arrives with every setting right and empty; add the
+questions here, or copy a **Question bank** activity if the other course has
+one and build the quiz from it directly.
+
+**A copied Question bank leaves out any question of a type it does not yet
+handle** — multiple choice, true/false, short answer, matching, essay and
+numerical are covered; anything else is named in the results, so you know it
+did not come across. Only the current version of each question travels, not
+its edit history, and student attempts and usage statistics never do.
 
 Anything else in the other course is listed as skipped, so you know it was seen
 and left.
@@ -162,7 +171,7 @@ A table of everything considered:
 
 ### Seeing what has changed first
 
-**See what has changed** lists what a sync would consider, without copying
+**See changes** lists what a sync would consider, without copying
 anything. Useful for a look before committing.
 
 ## Flagged activities
@@ -215,7 +224,9 @@ activities arrive set up but empty. Anything people wrote or handed in stays on
 the other site.
 
 **A copied quiz has no questions.** See the table above. This is the one that
-surprises people, so the sync says it against every quiz it copies.
+surprises people, so the sync says it against every quiz it copies. Copying a
+**Question bank** activity separately does not fill in a quiz's questions
+either — the two are not linked automatically yet.
 
 **A copied database has no custom CSS or JavaScript.** If the original used
 either, the copy is made without them and says so. Those two are run as code by
@@ -245,7 +256,7 @@ than leaving something that would fail confusingly later.
 recognise what it has already brought across. Change it and the next sync will
 make a second copy.
 
-**Nothing is automatic.** Course Sync only runs when you choose **Sync now**.
+**Nothing is automatic.** Course Sync only runs when you choose **Check now**.
 
 ## If you get stuck
 

@@ -53,6 +53,7 @@ class handler_registry {
         workshop_handler::class,
         lesson_handler::class,
         h5pactivity_handler::class,
+        qbank_handler::class,
     ];
 
     /**

@@ -236,4 +236,19 @@ class sync_result {
             'failed' => $this->count('failed'),
         ]);
     }
+
+    /**
+     * Render one entry from a handler's notes(): a plain language string
+     * key, or a [key, $a] pair when the string takes a parameter.
+     *
+     * @param string|array{0:string,1:mixed} $note
+     * @return string
+     */
+    public static function describe_note($note): string {
+        if (is_array($note)) {
+            return get_string($note[0], 'block_coursesync', $note[1]);
+        }
+
+        return get_string($note, 'block_coursesync');
+    }
 }

@@ -104,6 +104,13 @@ an account with exactly the two documented capabilities and reads one of every
 supported type; `test_an_account_without_the_sync_permission_is_refused()` is the
 other half.
 
+`qbank_handler` (a question bank's categories and questions) follows the same
+rule rather than adding to it: no new capability was introduced for it,
+because the core calls it makes to read and write question data do no
+capability enforcement of their own — those checks belong to the question
+bank's editing UI, which this handler never goes through. See
+`DEVELOPER.md`'s "Security" section.
+
 ## Outgoing requests
 
 A destination site makes server-side requests to whatever address is stored, so
@@ -320,3 +327,9 @@ do. Table cells use `s()`.
   created without them and the teacher sets their own.
 - A source site is trusted not to send an enormous file. `file_sync::MAX_CHUNKS`
   caps a single file at 1 GB.
+- A question's own files (its text, feedback, answers) do not go through
+  `file_sync` at all — `qbank_handler` relies on `qformat_xml` inlining them
+  as base64 inside each question's own XML, so `file_sync::MAX_CHUNKS`'s cap
+  does not apply to them. A question bank with unusually large embedded
+  images produces one correspondingly large `get_activity` response instead
+  of many small file transfers.

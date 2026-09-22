@@ -383,11 +383,13 @@ abstract class activity_handler {
      * Anything a teacher should be told about this activity once it is created.
      *
      * A handler that cannot bring part of an activity across says so here, and
-     * the run reports it against that activity. Each entry is a language string
-     * key in this plugin.
+     * the run reports it against that activity. Each entry is either a
+     * language string key in this plugin, or a [key, $a] pair when the string
+     * needs a parameter (a count, say). Render either shape with
+     * sync_result::describe_note() rather than calling get_string() directly.
      *
      * @param activity_payload $payload what the source site sent
-     * @return string[]
+     * @return array<string|array{0:string,1:mixed}>
      */
     public function notes(activity_payload $payload): array {
         return [];

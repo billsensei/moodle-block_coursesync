@@ -28,7 +28,7 @@ Feature: Mapping a remote course
   Scenario: A student is not offered the preview at all
     Given I am on the "Course 1" course page logged in as "student1"
     Then I should see "Course Sync" in the "Course Sync" "block"
-    And I should not see "See what has changed" in the "Course Sync" "block"
+    And I should not see "See changes" in the "Course Sync" "block"
     And I should not see "Set up the connection" in the "Course Sync" "block"
 
   Scenario: A course cannot be mapped before a token exists

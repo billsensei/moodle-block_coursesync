@@ -230,6 +230,7 @@ reference can point forward as well as backward. Four handlers do this:
 | `data_handler` | Which field the entries are sorted by |
 | `workshop_handler` | A rubric level belongs to a criterion |
 | `lesson_handler` | The page chain, and where every answer jumps to |
+| `qbank_handler` | A category can belong to another category, and a question belongs to a category |
 
 Resolve an unknown reference to a safe value rather than passing the number
 through. It will match some unrelated local record if you do.
@@ -241,6 +242,14 @@ unrelated — `assignsubmission_file`'s `assignsubmission_file_maxfiles` field i
 stored as `maxfilesubmissions`. Only the subplugin knows its own mapping, so the
 rows are carried as stored and written back directly, which is what mod_assign's
 own restore does.
+
+`qbank_handler` bends the "flat map of fields" rule on purpose for its
+`'question'` children: rather than flattening each question type's own
+columns (six types means six different, unrelated shapes), one field holds
+the whole question as a `qformat_xml`-serialised fragment - Moodle's own
+question export format, reused rather than re-derived. `'category'`
+children stay flat, because a category's own fields are the same regardless
+of type.
 
 ### 5. If a field is code rather than content
 
@@ -274,12 +283,26 @@ filed against whatever local record holds that number.
 the ids genuinely cannot be known in advance, and read the note in `SECURITY.md`
 on exactly what it does and does not allow.
 
+`qbank_handler` is the one handler that declares no file areas at all -
+`get_file_areas()` returns `[]`, the inherited default. A question's own
+files (its text, feedback, answers) never go through `file_sync`: the
+`qformat_xml` fragment in each `'question'` child already carries them,
+base64-encoded, because that is what Moodle's own question export format
+does. Piping the same bytes through a second transfer mechanism would be
+strictly more code for nothing, so this handler does not.
+
 ### 7. If it cannot bring everything across
 
 Override `notes()` to return language string keys. The run reports them against
 that activity and the history keeps them. An activity that quietly arrives
 incomplete is worse than one that says what is missing — `quiz_handler` uses this
 to state on every quiz that its questions did not come with it.
+
+An entry can also be a `[key, $a]` pair when the string needs a parameter -
+`qbank_handler` reports how many questions were of a type it could not
+rebuild this way. Render either shape with `sync_result::describe_note()`
+rather than calling `get_string()` directly; both `sync.php` and
+`history.php` already do.
 
 ### 8. Write the tests
 
@@ -434,6 +457,13 @@ write code here:
   matters, because a hostname can resolve differently later.
 - **`confirm_sesskey()` returns a bool and does not throw.** Use
   `require_sesskey()`.
+- **Only `block/coursesync:sync`, at the course context, is ever checked.**
+  No handler checks a module-specific capability, on purpose - see
+  `SECURITY.md` for why. `qbank_handler` follows this too: the core calls it
+  makes (`get_qtype()->save_question_options()` and friends) do no
+  capability enforcement of their own, since those checks live in the
+  question bank's editing UI, which this handler never goes through. Do not
+  add one without re-reading that reasoning first.
 
 ## Testing
 
@@ -480,12 +510,18 @@ and Behat each refuse to run against a site built for a different version.
 - An H5P activity is refused outright if its package did not arrive, rather than
   created as something that cannot be opened. It is the only handler that
   overrides `check_payload()` to insist on a file.
-- **Quiz questions are not synced.** They live in the question bank, which is
-  per-site, and a quiz holds references into it. Copying those references would
-  point them at whatever held the same ids on the other site. Question banks are
-  their own piece of work: they are shared between activities, they have
-  categories and versions, and moving them safely is a larger job than moving an
-  activity.
+- **Quiz questions are still not synced.** A quiz holds references into a
+  question bank rather than the questions themselves, and `quiz_handler` does
+  not follow those references, even when the bank they point at is also
+  synced separately via `qbank_handler`. The two are not linked.
+- **A synced Question bank covers six question types** — multiple choice,
+  true/false, short answer, matching, essay, numerical (`qbank_handler::SUPPORTED_QTYPES`).
+  A question of any other type is left out and counted, not attempted; see
+  `qbank_handler::notes()`. Only the current ready version of each question
+  is copied — no drafts, no hidden versions, no history.
+- Random or category-based question selection on a quiz slot cannot be
+  reached in the current version, because nothing wires a quiz to any
+  question bank yet; it will need its own design once that exists.
 - An assignment's grading scale, and a forum's, are matched by name. A scale that
   does not exist on the destination means the copy is created ungraded, and the
   run says so.
