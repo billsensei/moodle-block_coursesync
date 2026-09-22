@@ -85,22 +85,29 @@ That is setup finished. The block now shows what it is connected to.
 ## Running a sync
 
 Choose **Sync now** in the block. Course Sync asks the other site what it has and
-shows you a list of **what is in that course but not in yours**, one row each,
-all ticked.
+shows you every activity in that course, one row each, with a **Status** column
+saying what will happen to it.
 
+Only rows marked **New** have a working checkbox, and those start ticked.
 Untick anything you do not want and choose **Copy the ticked activities**.
 
-Three things are worth knowing about that list:
+Four things are worth knowing about that list:
 
-- **Anything already in your course is not on it.** Course Sync never copies the
-  same activity twice, so listing those would only be offering something it
-  would then refuse. A line underneath says how many were left out for this
-  reason, so a short list is explained rather than puzzling.
-- **Whatever you untick comes back next time.** Leaving something out is not the
-  same as saying no forever: the next sync offers it again. Nothing is marked as
-  dealt with unless it was actually copied.
-- **Activities Course Sync cannot copy are named but not offered**, so you know
-  they exist and need moving by hand.
+- **New** is not already in your course, so it can be copied.
+- **Already synced** means Course Sync copied it here before. Its checkbox is
+  disabled — copying it again is exactly what Course Sync refuses to do — but
+  it stays in the list so you can see the whole course at a glance rather than
+  a partial one.
+- **Needs review** means something in your course already carries that
+  activity's identity, but Course Sync did not put it there. It is named in a
+  warning above the list and its checkbox is disabled until you have looked at
+  it by hand.
+- **Not supported** means Course Sync has no handler for that type yet. It is
+  named below the list too, so you know it exists and needs moving by hand.
+
+Whatever you untick comes back next time. Leaving something out is not the
+same as saying no forever: the next sync offers it again. Nothing is marked as
+dealt with unless it was actually copied.
 
 If something in your course already carries the identity of an activity on the
 other site but Course Sync did not put it there, you get a warning naming it.

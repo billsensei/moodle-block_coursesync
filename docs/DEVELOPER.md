@@ -330,10 +330,14 @@ carry that activity's identity:
 
 | Group | Shown as | Why |
 | --- | --- | --- |
-| `new` | A ticked checkbox | Not here yet and this plugin handles it |
-| `present` | A count | Pulled here by an earlier run |
-| `collisions` | A warning, named | Something carries the identity that this plugin did not put there |
-| `unsupported` | Named, not selectable | No handler for the type |
+| `new` | A row with a ticked, enabled checkbox | Not here yet and this plugin handles it |
+| `present` | A row, disabled checkbox, status "Already synced" | Pulled here by an earlier run |
+| `collisions` | A row, disabled checkbox, status "Needs review", plus a named warning above the table | Something carries the identity that this plugin did not put there |
+| `unsupported` | A row, disabled checkbox, status "Not supported", plus named below the table | No handler for the type |
+
+All four groups are merged into one table, sorted by remote cmid, so the page
+shows the whole course rather than only the copyable slice - only `new` rows
+can actually be ticked; `sync.php:list_candidates` builds that merged list.
 
 `list_candidates()` writes nothing, so the page can be reloaded freely.
 

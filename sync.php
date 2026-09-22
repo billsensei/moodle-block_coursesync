@@ -24,6 +24,7 @@
 
 require_once(__DIR__ . '/../../config.php');
 
+use block_coursesync\activity;
 use block_coursesync\connection;
 use block_coursesync\local\handler\handler_registry;
 use block_coursesync\syncer;
@@ -107,40 +108,73 @@ if (!$confirm) {
         ? get_string('syncconfirmnever', 'block_coursesync')
         : get_string('syncconfirmsince', 'block_coursesync', userdate($lastsync)));
 
-    if (!$candidates->has_any()) {
-        echo $OUTPUT->notification(
-            $candidates->present_count() > 0
-                ? get_string('syncnothingnew', 'block_coursesync', $candidates->present_count())
-                : get_string('syncnothingatall', 'block_coursesync'),
-            'success',
-            false
-        );
+    // Everything on the other site, tagged with why it is or is not offered.
+    // A teacher wants to see the whole course, not just the copyable slice, so
+    // only "new" gets a live checkbox — the rest are listed next to it, ticked
+    // never, so the picture of what is already here is never a guess.
+    $tag = static fn(string $status): \Closure => static fn(activity $activity): array => [
+        'activity' => $activity,
+        'status' => $status,
+    ];
+
+    $everything = array_merge(
+        array_map($tag('new'), $candidates->new),
+        array_map($tag('present'), $candidates->present),
+        array_map($tag('collision'), $candidates->collisions),
+        array_map($tag('unsupported'), $candidates->unsupported)
+    );
+
+    if ($everything === []) {
+        echo $OUTPUT->notification(get_string('syncnothingatall', 'block_coursesync'), 'success', false);
     } else {
-        echo html_writer::start_tag('form', [
-            'method' => 'post',
-            'action' => $pageurl->out(false),
-            'id' => 'coursesync-choose',
-        ]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'full', 'value' => (int) $full]);
+        usort($everything, static fn(array $a, array $b): int => $a['activity']->cmid <=> $b['activity']->cmid);
+
+        if (!$candidates->has_any()) {
+            echo $OUTPUT->notification(
+                get_string('syncnothingnew', 'block_coursesync', $candidates->present_count()),
+                'success',
+                false
+            );
+        }
 
         echo $OUTPUT->heading(get_string('syncchooseheading', 'block_coursesync'), 3);
         echo html_writer::tag('p', get_string('syncchooseintro', 'block_coursesync'), ['class' => 'text-muted']);
 
+        if ($candidates->has_any()) {
+            echo html_writer::start_tag('form', [
+                'method' => 'post',
+                'action' => $pageurl->out(false),
+                'id' => 'coursesync-choose',
+            ]);
+            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
+            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'full', 'value' => (int) $full]);
+        }
+
+        $statuslabels = [
+            'new' => get_string('syncstatusnew', 'block_coursesync'),
+            'present' => get_string('syncstatuspresent', 'block_coursesync'),
+            'collision' => get_string('syncstatuscollision', 'block_coursesync'),
+            'unsupported' => get_string('syncstatusunsupported', 'block_coursesync'),
+        ];
+
         $rows = '';
 
-        foreach ($candidates->new as $activity) {
+        foreach ($everything as $row) {
+            $activity = $row['activity'];
+            $isnew = $row['status'] === 'new';
             $id = 'coursesync-cm-' . (int) $activity->cmid;
 
-            // Everything is ticked to begin with: copying all of it is the
-            // usual answer, and unticking is the exception.
+            // Only what is not on this course yet can be copied. Everything
+            // else is shown for reference with its checkbox disabled, so it
+            // cannot be ticked and is not sent even if a browser ignores that.
             $checkbox = html_writer::empty_tag('input', [
                 'type' => 'checkbox',
-                'name' => 'cmids[]',
+                'name' => $isnew ? 'cmids[]' : null,
                 'value' => (int) $activity->cmid,
                 'id' => $id,
-                'checked' => 'checked',
+                'checked' => $isnew ? 'checked' : null,
+                'disabled' => $isnew ? null : 'disabled',
                 'class' => 'form-check-input',
             ]);
 
@@ -150,6 +184,7 @@ if (!$confirm) {
                 . html_writer::tag('td', html_writer::tag('label', s($activity->name), ['for' => $id]))
                 . html_writer::tag('td', s($activity->get_type_name()))
                 . html_writer::tag('td', userdate($activity->timemodified))
+                . html_writer::tag('td', $statuslabels[$row['status']])
             );
         }
 
@@ -159,6 +194,7 @@ if (!$confirm) {
             . html_writer::tag('th', get_string('previewcolname', 'block_coursesync'), ['scope' => 'col'])
             . html_writer::tag('th', get_string('previewcoltype', 'block_coursesync'), ['scope' => 'col'])
             . html_writer::tag('th', get_string('previewcolmodified', 'block_coursesync'), ['scope' => 'col'])
+            . html_writer::tag('th', get_string('syncstatuscolumn', 'block_coursesync'), ['scope' => 'col'])
         );
 
         echo html_writer::tag(
@@ -169,27 +205,20 @@ if (!$confirm) {
             ['class' => 'table table-striped']
         );
 
-        echo html_writer::tag(
-            'div',
-            html_writer::empty_tag('input', [
-                'type' => 'submit',
-                'value' => get_string('syncchoosesubmit', 'block_coursesync'),
-                'class' => 'btn btn-primary me-2',
-            ])
-            . html_writer::link($courseurl, get_string('cancel'), ['class' => 'btn btn-secondary']),
-            ['class' => 'mb-4']
-        );
+        if ($candidates->has_any()) {
+            echo html_writer::tag(
+                'div',
+                html_writer::empty_tag('input', [
+                    'type' => 'submit',
+                    'value' => get_string('syncchoosesubmit', 'block_coursesync'),
+                    'class' => 'btn btn-primary me-2',
+                ])
+                . html_writer::link($courseurl, get_string('cancel'), ['class' => 'btn btn-secondary']),
+                ['class' => 'mb-4']
+            );
 
-        echo html_writer::end_tag('form');
-    }
-
-    // Why the list is shorter than the other course.
-    if ($candidates->present_count() > 0 && $candidates->has_any()) {
-        echo html_writer::tag(
-            'p',
-            get_string('syncalreadyhere', 'block_coursesync', $candidates->present_count()),
-            ['class' => 'text-muted small']
-        );
+            echo html_writer::end_tag('form');
+        }
     }
 
     // The one thing on this page that wants a person's attention: something in
