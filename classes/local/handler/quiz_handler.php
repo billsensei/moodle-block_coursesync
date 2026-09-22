@@ -89,6 +89,13 @@ class quiz_handler extends activity_handler {
     protected int $unresolvedslotcount = 0;
 
     /**
+     * @var bool Something unexpected stopped the questions rebuilding -
+     * unlike an unsupported type or an unresolved slot, this is not a
+     * normal, expected gap, so it gets its own, more alarming note.
+     */
+    protected bool $questionsyncfailed = false;
+
+    /**
      * The activity type this handler is responsible for.
      *
      * @return string
@@ -336,22 +343,38 @@ class quiz_handler extends activity_handler {
 
         // A quiz whose questions did not fully arrive is still a real quiz -
         // unlike qbank_handler's own module, nothing here is torn down on
-        // failure. syncer::handle_one() already deletes the course module
-        // this call produced if create_from_remote_data() throws, and that
-        // is the right amount of cleanup: a category or question already
-        // added to the shared System Bank before a later failure is left
-        // exactly as if a teacher had added a question by hand and then
-        // deleted the quiz - an unreferenced bank question is a normal
-        // state, not a broken one. It might also not belong to this call at
-        // all, if an earlier step reused a row another sync already owns.
-        $bankcm = \core_question\local\bank\question_bank_helper::get_default_open_instance_system_type($course, true);
-        $bankcontext = \context_module::instance($bankcm->id);
+        // failure. This is deliberately caught here, inside this call,
+        // rather than left to propagate to syncer::handle_one(): that
+        // caller only assigns its own $cm once this whole method returns,
+        // so an exception here would leave it null there, skip its
+        // cleanup entirely (it is conditional on $cm !== null), and orphan
+        // the quiz this call already created - unreported as a failure and
+        // uncounted as a success. Catching it here, and always returning
+        // $cm, keeps the guarantee this class actually wants: a category or
+        // question already added to the shared System Bank before a later
+        // failure is left exactly as if a teacher had added a question by
+        // hand and then deleted the quiz - an unreferenced bank question is
+        // a normal state, not a broken one - and the quiz itself is
+        // reported as created, with notes() saying plainly that something
+        // went wrong, rather than silently vanishing from the sync results.
+        try {
+            $bankcm = \core_question\local\bank\question_bank_helper::get_default_open_instance_system_type($course, true);
+            $bankcontext = \context_module::instance($bankcm->id);
 
-        $this->sync_question_bank_categories($bankcontext, $payload);
-        $this->sync_question_bank_questions($bankcontext, $payload);
-        $this->sync_quiz_slots((int) $instanceid, $cmid, $course->id, $data->questionsperpage, $payload);
+            $this->sync_question_bank_categories($bankcontext, $payload);
+            $this->sync_question_bank_questions($bankcontext, $payload);
+            $this->sync_quiz_slots((int) $instanceid, $cmid, $course->id, $data->questionsperpage, $payload);
 
-        \mod_quiz\quiz_settings::create((int) $instanceid)->get_grade_calculator()->recompute_quiz_sumgrades();
+            \mod_quiz\quiz_settings::create((int) $instanceid)->get_grade_calculator()->recompute_quiz_sumgrades();
+        } catch (\Throwable $e) {
+            debugging(
+                'block_coursesync: quiz cmid ' . $cmid . ' was created, but rebuilding its questions failed: '
+                    . $e->getMessage(),
+                DEBUG_DEVELOPER
+            );
+
+            $this->questionsyncfailed = true;
+        }
 
         return $cm;
     }
@@ -573,6 +596,15 @@ class quiz_handler extends activity_handler {
         }
 
         $notes = ['syncqbanknoattempts'];
+
+        if ($this->questionsyncfailed) {
+            // Whatever else notes() would otherwise say is unreliable if
+            // the rebuild broke partway through, so this replaces rather
+            // than joins the rest.
+            $notes[] = 'syncquizquestionsyncfailed';
+
+            return $notes;
+        }
 
         if ($this->unsupportedcount > 0) {
             $notes[] = ['syncqbankunsupportedcount', $this->unsupportedcount];

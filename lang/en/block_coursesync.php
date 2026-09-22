@@ -189,6 +189,7 @@ $string['syncoutcome'] = 'Outcome';
 $string['syncqbanknoattempts'] = 'Its categories and questions were copied. Nobody\'s attempts or usage statistics did.';
 $string['syncqbankunsupportedcount'] = '{$a} question(s) of a type Course Sync does not support yet were left out.';
 $string['syncquiznoquestions'] = 'Its settings were copied, but no questions came with it - either the quiz has none, or none of its slots could be rebuilt. Add them on this site.';
+$string['syncquizquestionsyncfailed'] = 'Its settings were copied, but something went wrong rebuilding its questions, so none of them made it across. Delete this copy and use Check everything again to try the sync once more.';
 $string['syncquizunresolvedslotcount'] = '{$a} question slot(s) this site could not rebuild were left out of the quiz.';
 $string['syncscaledropped'] = 'Its grading used a marking scale that does not exist on this site, so the copy was created ungraded.';
 $string['syncselectall'] = 'Select all';

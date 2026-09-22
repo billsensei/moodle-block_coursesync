@@ -261,6 +261,76 @@ final class quiz_handler_test extends advanced_testcase {
     }
 
     /**
+     * If something throws while rebuilding a quiz's questions - here, a
+     * destination teacher explicitly refused moodle/question:useall, the
+     * one capability this plugin ever checks beyond its own - the quiz this
+     * call already created is still returned rather than silently orphaned,
+     * and notes() says plainly that something went wrong instead of the
+     * sync looking like a clean, empty success.
+     */
+    public function test_a_failure_rebuilding_questions_still_returns_the_quiz(): void {
+        global $CFG, $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $quizgen = $this->getDataGenerator()->get_plugin_generator('mod_quiz');
+        $quiz = $quizgen->create_instance(['course' => $source->id, 'name' => 'Doomed quiz']);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $cat = $qgen->create_question_category();
+        $qgen->create_question('shortanswer', null, ['category' => $cat->id, 'name' => 'Pool question']);
+
+        $this->add_random_slot($quiz->id, $cat->id, false, 1.0);
+
+        // Exported as admin - this is the source site's own service account
+        // in real use, unrelated to the destination teacher's capabilities
+        // being restricted below.
+        $exported = get_activity::execute($quiz->cmid);
+        $payload = activity_payload::from_response($exported);
+
+        $teacher = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($teacher->id, $target->id, 'editingteacher');
+
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'editingteacher'], MUST_EXIST);
+        assign_capability(
+            'moodle/question:useall',
+            CAP_PROHIBIT,
+            $roleid,
+            \context_course::instance($target->id)->id,
+            true
+        );
+        accesslib_clear_all_caches_for_unit_testing();
+
+        $this->setUser($teacher);
+
+        $handler = new quiz_handler();
+        $this->assertNull($handler->check_payload($payload));
+        $cm = $handler->create_from_remote_data($target, $payload, 'coursesync-1');
+
+        // The caught exception is deliberately logged for a developer to
+        // find, not silenced outright.
+        $this->assertDebuggingCalled();
+
+        $this->assertNotNull($cm, 'the quiz must still be returned, not orphaned');
+        $this->assertSame('quiz', $DB->get_field('modules', 'name', [
+            'id' => $DB->get_field('course_modules', 'module', ['id' => $cm->id]),
+        ]));
+
+        $notes = $handler->notes($payload);
+        $this->assertContains('syncquizquestionsyncfailed', $notes);
+
+        // Its own settings are real and usable even though the question
+        // rebuild broke - this is what "not orphaned" means in practice.
+        $this->assertSame('Doomed quiz', $DB->get_field('quiz', 'name', ['id' => $cm->instance]));
+    }
+
+    /**
      * Two halves of "delete a synced quiz, then sync it back", proven
      * together: syncer::find_existing() - unit-tested on its own in
      * syncer_test.php - really would let a repeat sync through once the old
