@@ -354,14 +354,17 @@ carry that activity's identity:
 
 | Group | Shown as | Why |
 | --- | --- | --- |
-| `new` | A row with a ticked, enabled checkbox | Not here yet and this plugin handles it |
-| `present` | A row, disabled checkbox, status "Already synced" | Pulled here by an earlier run |
-| `collisions` | A row, disabled checkbox, status "Needs review", plus a named warning above the table | Something carries the identity that this plugin did not put there |
-| `unsupported` | A row, disabled checkbox, status "Not supported", plus named below the table | No handler for the type |
+| `new` | "Ready to copy" table, ticked, enabled checkbox | Not here yet and this plugin handles it |
+| `present` | "Already on this course" table, disabled checkbox, status "Already synced" | Pulled here by an earlier run |
+| `collisions` | "Already on this course" table, disabled checkbox, status "Needs review", plus a named warning above that table | Something carries the identity that this plugin did not put there |
+| `unsupported` | Not shown anywhere on this page | No handler for the type - nothing a teacher can do about it here |
 
-All four groups are merged into one table, sorted by remote cmid, so the page
-shows the whole course rather than only the copyable slice - only `new` rows
-can actually be ticked; `sync.php:list_candidates` builds that merged list.
+`new` and `present`/`collisions` are two separate tables, each sorted by
+remote cmid, under their own heading - `new` first and ticked, since that is
+the actual decision this page exists for; the other two after it, for
+reference, never ticked. `unsupported` is computed by `list_candidates()` but
+deliberately never rendered: a type nothing here handles is not a choice a
+teacher can make on this page, so naming it would be noise, not help.
 
 `list_candidates()` writes nothing, so the page can be reloaded freely.
 

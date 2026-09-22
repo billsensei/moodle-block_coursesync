@@ -84,26 +84,26 @@ That is setup finished. The block now shows what it is connected to.
 
 ## Running a sync
 
-Choose **Check now** in the block. Course Sync asks the other site what it has and
-shows you every activity in that course, one row each, with a **Status** column
-saying what will happen to it.
+Choose **Check now** in the block. Course Sync asks the other site what it has
+and shows you two groups of activities, each with a **Status** column saying
+what will happen to it.
 
-Only rows marked **New** have a working checkbox, and those start ticked.
-Untick anything you do not want and choose **Copy the ticked activities**.
+**Ready to copy** comes first: everything not already in your course, one row
+each, ticked and ready. Untick anything you do not want and choose
+**Copy the ticked activities**.
 
-Four things are worth knowing about that list:
+**Already on this course** comes after it, for reference - nothing there can
+be ticked:
 
-- **New** is not already in your course, so it can be copied.
-- **Already synced** means Course Sync copied it here before. Its checkbox is
-  disabled — copying it again is exactly what Course Sync refuses to do — but
-  it stays in the list so you can see the whole course at a glance rather than
-  a partial one.
+- **Already synced** means Course Sync copied it here before. Copying it
+  again is exactly what Course Sync refuses to do.
 - **Needs review** means something in your course already carries that
   activity's identity, but Course Sync did not put it there. It is named in a
-  warning above the list and its checkbox is disabled until you have looked at
-  it by hand.
-- **Not supported** means Course Sync has no handler for that type yet. It is
-  named below the list too, so you know it exists and needs moving by hand.
+  warning above this group until you have looked at it by hand.
+
+An activity of a type Course Sync has no handler for at all is not shown on
+this page - there is nothing to choose about it here, so it is left off
+rather than listed as one more thing you cannot act on.
 
 Whatever you untick comes back next time. Leaving something out is not the
 same as saying no forever: the next sync offers it again. Nothing is marked as

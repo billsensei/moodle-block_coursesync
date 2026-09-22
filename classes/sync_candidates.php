@@ -34,8 +34,9 @@ namespace block_coursesync;
  *   than counted: it is the one case a person needs to look at, and hiding it
  *   among the ordinary already-here ones would lose what phase 6 added.
  * - **unsupported**: in the other course, not here, and of a type this plugin
- *   has no handler for. Shown but not selectable, so a teacher knows it exists
- *   and has to be moved by hand.
+ *   has no handler for. Never offered - there is nothing a teacher can do
+ *   about it from the sync page, so it is left off that page entirely rather
+ *   than named there. Still counted here, for anything that wants to know.
  *
  * Working this out costs one request to the other site - the same change
  * detection a sync starts with - and reads the local course. It creates nothing.
