@@ -20,21 +20,36 @@ use block_coursesync\activity_payload;
 use mod_quiz\question\display_options;
 
 /**
- * Handles mod_quiz: the quiz's settings, not its questions.
+ * Handles mod_quiz: the quiz's settings, and the questions its slots use.
  *
- * A quiz is the one type here whose content does not belong to it. Its
- * questions live in the question bank, and a quiz holds references into that
- * bank rather than the questions themselves. Copying those references to
- * another site would point them at whatever happened to hold the same ids
- * there, so this handler brings the quiz across empty: the settings, the dates,
- * the review rules and the access rules, with no questions in it. The teacher
- * adds questions on this site.
+ * A quiz does not own its questions - it holds references into a question
+ * bank. This handler follows both kinds of reference a slot can carry: a
+ * fixed question (question_references), or a random draw from a category
+ * (question_set_references). The categories and questions themselves are
+ * rebuilt using the same code qbank_handler uses (question_bank_sync_trait) -
+ * six supported types, current ready version only, question content
+ * travelling as a qformat_xml fragment - but they land in the destination
+ * course's own shared System Bank rather than a dedicated activity, exactly
+ * where Moodle itself puts a question a teacher adds straight to a quiz with
+ * no bank picked. Only the questions and categories are copied; nobody's
+ * attempts or usage statistics come with them.
  *
- * That is a real limit, not an oversight, and the sync says so on every quiz it
- * creates so nobody discovers it by opening an empty quiz. Question banks are
- * their own piece of work - they are shared between activities, they have
- * categories and versions of their own, and moving them safely is a larger job
- * than moving an activity.
+ * A slot whose question is of an unsupported type, or whose category never
+ * arrived, is left out rather than left as a broken reference - see
+ * notes(). The former is already counted by the shared trait's
+ * unsupported-type note; the latter gets its own, since it is not
+ * explained by anything already reported. Only current-ready versions of
+ * the six supported types are ever attempted; that is qbank_handler's own
+ * limit, inherited here rather than restated differently.
+ *
+ * Building a random slot is the one place in this plugin that checks a
+ * capability beyond block/coursesync:sync: core's own
+ * mod_quiz\structure::add_random_questions() requires
+ * moodle/question:useall on the category's context, checked against the
+ * destination teacher's own session - the same check that would run if they
+ * added a random question by hand. The editingteacher archetype holds it by
+ * default at the course context, which covers the System Bank since it is a
+ * module within that same course. See SECURITY.md.
  *
  * The other thing to know is that quiz_add_instance() does not take a quiz as
  * it is stored. It runs the data through quiz_process_options() first, which
@@ -48,6 +63,8 @@ use mod_quiz\question\display_options;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class quiz_handler extends activity_handler {
+    use question_bank_sync_trait;
+
     /**
      * The eight things a student may be shown when reviewing an attempt.
      *
@@ -63,6 +80,13 @@ class quiz_handler extends activity_handler {
         'rightanswer',
         'overallfeedback',
     ];
+
+    /**
+     * @var int Random slots whose category could not be resolved. A fixed
+     * slot whose question could not be resolved is not counted here - it is
+     * always an unsupported type, already counted by the shared trait.
+     */
+    protected int $unresolvedslotcount = 0;
 
     /**
      * The activity type this handler is responsible for.
@@ -111,6 +135,131 @@ class quiz_handler extends activity_handler {
     }
 
     /**
+     * SOURCE SIDE. Every slot in the quiz, in order, and the categories and
+     * questions those slots actually need.
+     *
+     * A fixed slot needs its one question and that question's category. A
+     * random slot needs the whole category it draws from - and its whole
+     * subtree, when the slot includes subcategories - because the point of a
+     * random slot is drawing from the full pool at attempt time; exporting a
+     * subset would silently narrow that pool in a way nobody would ever see.
+     * Both kinds of slot funnel into the same needed-category set, so a
+     * category referenced by more than one slot is only exported once.
+     *
+     * @param \cm_info $cm the course module on the source site
+     * @param \stdClass $instance the row from the quiz table
+     * @return array[]
+     */
+    public function export_children(\cm_info $cm, \stdClass $instance): array {
+        global $DB, $CFG;
+
+        require_once($CFG->libdir . '/questionlib.php');
+
+        $slots = $DB->get_records('quiz_slots', ['quizid' => $instance->id], 'slot ASC');
+        $modcontextid = \context_module::instance($cm->id)->id;
+
+        $neededcategoryids = [];
+        $slotchildren = [];
+        $order = 0;
+
+        foreach ($slots as $slot) {
+            // Fixed and random references are mutually exclusive per slot -
+            // core's own structure::remove_slot() defensively deletes from
+            // both tables for exactly this reason.
+            $fixed = $DB->get_record_sql(
+                'SELECT qr.questionbankentryid, qbe.questioncategoryid AS categoryid
+                   FROM {question_references} qr
+                   JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
+                  WHERE qr.component = ? AND qr.questionarea = ? AND qr.itemid = ? AND qr.usingcontextid = ?',
+                ['mod_quiz', 'slot', $slot->id, $modcontextid]
+            );
+
+            if ($fixed) {
+                $neededcategoryids[(int) $fixed->categoryid] = true;
+
+                $slotchildren[] = [
+                    'type' => 'slot',
+                    'sortorder' => $order++,
+                    'fields' => [
+                        'kind' => 'fixed',
+                        'maxmark' => (string) (float) $slot->maxmark,
+                        'questionref' => (int) $fixed->questionbankentryid,
+                        'categoryref' => 0,
+                        'includesubcategories' => 0,
+                        'catjointype' => 0,
+                        'tagnames' => '[]',
+                        'tagjointype' => 0,
+                    ],
+                ];
+
+                continue;
+            }
+
+            $setref = $DB->get_record('question_set_references', [
+                'component' => 'mod_quiz', 'questionarea' => 'slot', 'itemid' => $slot->id,
+            ]);
+
+            if (!$setref) {
+                // Neither reference kind exists - a dangling slot. Nothing to
+                // export for it; the import side counts it as unresolved.
+                continue;
+            }
+
+            $filter = json_decode((string) $setref->filtercondition, true) ?: [];
+            $categoryid = (int) ($filter['filter']['category']['values'][0] ?? 0);
+
+            if ($categoryid === 0 || !$DB->record_exists('question_categories', ['id' => $categoryid])) {
+                continue;
+            }
+
+            $includesub = !empty($filter['filter']['category']['filteroptions']['includesubcategories']);
+            $neededcategoryids[$categoryid] = true;
+
+            if ($includesub) {
+                foreach (\question_categorylist($categoryid) as $descendantid) {
+                    $neededcategoryids[(int) $descendantid] = true;
+                }
+            }
+
+            // Tag ids are site-local; the name is what travels, resolved
+            // back to an id (creating it if missing) on the way in - the
+            // same pattern core itself uses when migrating this filter
+            // shape (question_reference_manager::convert_legacy_set_reference_filter_condition()).
+            // Carried as JSON rather than a comma-joined string - a tag name
+            // is free text and PARAM_TAG does not forbid a comma in one, so
+            // joining would risk splitting one real tag into two on import.
+            $tagids = $filter['filter']['qtagids']['values'] ?? [];
+            $tagnames = [];
+
+            foreach (\core_tag_tag::get_bulk($tagids) as $tag) {
+                $tagnames[] = $tag->name;
+            }
+
+            $slotchildren[] = [
+                'type' => 'slot',
+                'sortorder' => $order++,
+                'fields' => [
+                    'kind' => 'random',
+                    'maxmark' => (string) (float) $slot->maxmark,
+                    'questionref' => 0,
+                    'categoryref' => $categoryid,
+                    'includesubcategories' => $includesub ? 1 : 0,
+                    'catjointype' => (int) ($filter['filter']['category']['jointype']
+                        ?? \qbank_managecategories\category_condition::JOINTYPE_DEFAULT),
+                    'tagnames' => json_encode($tagnames),
+                    'tagjointype' => (int) ($filter['filter']['qtagids']['jointype']
+                        ?? \qbank_tagquestion\tag_condition::JOINTYPE_DEFAULT),
+                ],
+            ];
+        }
+
+        return array_merge(
+            $slotchildren,
+            $this->export_question_bank_children(array_keys($neededcategoryids), $order)
+        );
+    }
+
+    /**
      * DESTINATION SIDE. Build the quiz in a local course.
      *
      * @param \stdClass $course the destination course
@@ -127,6 +276,9 @@ class quiz_handler extends activity_handler {
 
         require_once($CFG->dirroot . '/mod/quiz/lib.php');
         require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+        require_once($CFG->libdir . '/questionlib.php');
+        require_once($CFG->dirroot . '/question/engine/bank.php');
+        require_once($CFG->dirroot . '/question/format/xml/format.php');
 
         $sectionnum = $this->resolve_section($course, $payload->sectionnum);
         $cmid = $this->create_course_module($course, $payload, $idnumber);
@@ -149,7 +301,8 @@ class quiz_handler extends activity_handler {
         $data->navmethod = self::clean_choice($payload->setting('navmethod'), ['free', 'sequential'], 'free');
         $data->preferredbehaviour = self::clean_behaviour($payload->setting('preferredbehaviour'));
 
-        // A quiz with no questions has nothing to add up.
+        // Starting point before any slots exist; sync_quiz_slots() below
+        // recomputes this once the real questions are in place.
         $data->sumgrades = 0;
 
         // Access rule settings that name something local, or are a secret of
@@ -174,7 +327,170 @@ class quiz_handler extends activity_handler {
 
         $DB->set_field('course_modules', 'instance', $instanceid, ['id' => $cmid]);
 
-        return $this->finish_creation($course, $cmid, $sectionnum);
+        // The quiz has to be a real, findable course module - placed in its
+        // section, with the course's module cache rebuilt - before anything
+        // here can ask quiz_settings::create() for it; that call resolves
+        // the quiz through get_fast_modinfo(), which knows nothing about a
+        // course_modules row that has not been placed and cached yet.
+        $cm = $this->finish_creation($course, $cmid, $sectionnum);
+
+        // A quiz whose questions did not fully arrive is still a real quiz -
+        // unlike qbank_handler's own module, nothing here is torn down on
+        // failure. syncer::handle_one() already deletes the course module
+        // this call produced if create_from_remote_data() throws, and that
+        // is the right amount of cleanup: a category or question already
+        // added to the shared System Bank before a later failure is left
+        // exactly as if a teacher had added a question by hand and then
+        // deleted the quiz - an unreferenced bank question is a normal
+        // state, not a broken one. It might also not belong to this call at
+        // all, if an earlier step reused a row another sync already owns.
+        $bankcm = \core_question\local\bank\question_bank_helper::get_default_open_instance_system_type($course, true);
+        $bankcontext = \context_module::instance($bankcm->id);
+
+        $this->sync_question_bank_categories($bankcontext, $payload);
+        $this->sync_question_bank_questions($bankcontext, $payload);
+        $this->sync_quiz_slots((int) $instanceid, $cmid, $course->id, $data->questionsperpage, $payload);
+
+        \mod_quiz\quiz_settings::create((int) $instanceid)->get_grade_calculator()->recompute_quiz_sumgrades();
+
+        return $cm;
+    }
+
+    /**
+     * DESTINATION SIDE. Rebuild every slot in order: a fixed slot points at
+     * one already-synced question, a random slot draws from an
+     * already-synced category.
+     *
+     * @param int $instanceid the new quiz's own id
+     * @param int $cmid the new quiz's course module id
+     * @param int $courseid the destination course
+     * @param int $questionsperpage the new quiz's own paging setting
+     * @param activity_payload $payload what the source site sent
+     * @return void
+     */
+    protected function sync_quiz_slots(
+        int $instanceid,
+        int $cmid,
+        int $courseid,
+        int $questionsperpage,
+        activity_payload $payload
+    ): void {
+        global $DB;
+
+        // Core's quiz_add_quiz_question() reads ->questionsperpage itself to
+        // decide whether a new slot starts a new page; nothing here needs
+        // that decided any more carefully than the quiz's own setting already
+        // says, since slot-level page placement is not carried - see
+        // export_children().
+        $quizdata = (object) [
+            'id' => $instanceid,
+            'course' => $courseid,
+            'cmid' => $cmid,
+            'questionsperpage' => $questionsperpage,
+        ];
+        $structure = null;
+
+        foreach ($payload->children('slot') as $child) {
+            $maxmark = (float) activity_payload::child_field($child, 'maxmark', '0');
+
+            if (activity_payload::child_field($child, 'kind') === 'fixed') {
+                $questionid = $this->mapped_id('question', activity_payload::child_int($child, 'questionref', 0));
+
+                if ($questionid === 0) {
+                    // Every question a fixed slot points at was in the
+                    // payload and was walked by sync_question_bank_questions()
+                    // - the only reason it would not have a mapped id is an
+                    // unsupported type, which that pass already counted via
+                    // $unsupportedcount. Counting it again here under a
+                    // different note would describe the same one missing
+                    // question twice.
+                    continue;
+                }
+
+                \quiz_add_quiz_question($questionid, $quizdata, 0, $maxmark);
+
+                continue;
+            }
+
+            $categoryid = $this->mapped_id('category', activity_payload::child_int($child, 'categoryref', 0));
+
+            if ($categoryid === 0) {
+                $this->unresolvedslotcount++;
+
+                continue;
+            }
+
+            // Built once, only if a random slot is actually encountered.
+            $structure ??= \mod_quiz\structure::create_for_quiz(\mod_quiz\quiz_settings::create($instanceid));
+
+            $structure->add_random_questions(0, 1, $this->random_slot_filter_condition($child, $categoryid));
+
+            // Core's add_random_questions() hardcodes maxmark to 1; this
+            // quiz's own slot weighting is fixed up immediately after, on
+            // the slot that call just created (nothing else can be
+            // inserting into this brand new quiz at the same time).
+            $newslotid = (int) $DB->get_field_sql(
+                'SELECT MAX(id) FROM {quiz_slots} WHERE quizid = ?',
+                [$instanceid]
+            );
+
+            if ($newslotid > 0) {
+                $DB->set_field('quiz_slots', 'maxmark', $maxmark, ['id' => $newslotid]);
+            }
+        }
+    }
+
+    /**
+     * DESTINATION SIDE. Rebuild a random slot's filter condition, resolving
+     * the tag names it travelled with back into ids on this site - creating
+     * a tag of that name if this site does not already have one, the same
+     * way core resolves a legacy filter's tag names when migrating it.
+     *
+     * @param array $child the 'slot' child, kind 'random'
+     * @param int $categoryid the local category already resolved by the caller
+     * @return array
+     */
+    protected function random_slot_filter_condition(array $child, int $categoryid): array {
+        $filtercondition = [
+            'filter' => [
+                'category' => [
+                    'jointype' => activity_payload::child_int(
+                        $child,
+                        'catjointype',
+                        \qbank_managecategories\category_condition::JOINTYPE_DEFAULT
+                    ),
+                    'values' => [$categoryid],
+                    'filteroptions' => [
+                        'includesubcategories' => (bool) activity_payload::child_int($child, 'includesubcategories', 0),
+                    ],
+                ],
+            ],
+        ];
+
+        $decoded = json_decode(activity_payload::child_field($child, 'tagnames', '[]'), true);
+        $tagnames = array_values(array_filter(array_map(
+            'trim',
+            is_array($decoded) ? array_filter($decoded, 'is_string') : []
+        )));
+
+        if ($tagnames !== []) {
+            $collectionid = \core_tag_area::get_collection('core_question', 'question');
+            $tagids = array_map(
+                static fn(\core_tag_tag $tag): int => (int) $tag->id,
+                \core_tag_tag::create_if_missing($collectionid, $tagnames)
+            );
+
+            $filtercondition['filter']['qtagids'] = [
+                'jointype' => activity_payload::child_int(
+                    $child,
+                    'tagjointype',
+                    \qbank_tagquestion\tag_condition::JOINTYPE_DEFAULT
+                ),
+                'values' => array_values($tagids),
+            ];
+        }
+
+        return $filtercondition;
     }
 
     /**
@@ -238,13 +554,35 @@ class quiz_handler extends activity_handler {
     }
 
     /**
-     * Say on every quiz that it arrived without its questions.
+     * Say what came across with the quiz, or - the now rare case - that
+     * nothing did.
+     *
+     * $unsupportedcount (an unsupported question type) and
+     * $unresolvedslotcount (a whole slot that could not be classified or
+     * whose reference never arrived) are deliberately not both counted for
+     * the same fixed slot - see sync_quiz_slots(). A random slot's
+     * unresolved category still counts here, since that is not something
+     * $unsupportedcount already describes.
      *
      * @param activity_payload $payload what the source site sent
-     * @return string[] message keys to show against this activity
+     * @return array<string|array{0:string,1:mixed}>
      */
     public function notes(activity_payload $payload): array {
-        return ['syncquiznoquestions'];
+        if ($payload->children('slot') === []) {
+            return ['syncquiznoquestions'];
+        }
+
+        $notes = ['syncqbanknoattempts'];
+
+        if ($this->unsupportedcount > 0) {
+            $notes[] = ['syncqbankunsupportedcount', $this->unsupportedcount];
+        }
+
+        if ($this->unresolvedslotcount > 0) {
+            $notes[] = ['syncquizunresolvedslotcount', $this->unresolvedslotcount];
+        }
+
+        return $notes;
     }
 
     /**

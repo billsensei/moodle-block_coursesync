@@ -105,7 +105,20 @@ class behat_block_coursesync extends behat_base {
 
         set_config('enablewebservices', 1);
 
-        $protocols = empty($CFG->webserviceprotocols) ? [] : explode(',', $CFG->webserviceprotocols);
+        // Read the current protocol list from the database, not from $CFG.
+        // This step runs inside the long-lived Behat CLI process, which
+        // handles every scenario in the feature one after another; the
+        // database is reset between scenarios but $CFG is not. A value this
+        // process wrote for an earlier scenario stays sitting in $CFG after
+        // the database has been wiped back to a state that never had it, so
+        // trusting $CFG here silently skips a write a reset scenario
+        // actually needs, leaving webserviceprotocols unset and the self-sync
+        // ping refused with HTTP 403 - intermittently, depending on whether
+        // this happens to be the first scenario in the process to reach this
+        // step.
+        $current = (string) ($DB->get_field('config', 'value', ['name' => 'webserviceprotocols']) ?: '');
+        $protocols = $current === '' ? [] : explode(',', $current);
+
         if (!in_array('rest', $protocols, true)) {
             $protocols[] = 'rest';
             set_config('webserviceprotocols', implode(',', $protocols));
@@ -208,5 +221,42 @@ class behat_block_coursesync extends behat_base {
         }
 
         $this->execute('behat_forms::i_set_the_field_to', ['Token', self::$synctoken]);
+    }
+
+    /**
+     * Open the question bank edit page for a Question bank activity this
+     * plugin created in the given course.
+     *
+     * A synced copy always carries the source's own name, so a self-sync
+     * scenario - source and destination on the same site - can have two
+     * activities with the same name at once. Core's own "question bank"
+     * page type resolves an activity by name alone
+     * (behat_session_trait::get_cm_by_activity_name()), which is ambiguous
+     * in exactly that situation. Scoping by idnumber as well as by course
+     * finds only the one this plugin created here, never the source's own.
+     *
+     * @Given /^I am on the question bank page for the synced "(?P<name>(?:[^"]|\\")*)" in "(?P<shortname>(?:[^"]|\\")*)"$/
+     * @param string $name the Question bank activity's name
+     * @param string $shortname the destination course's shortname
+     */
+    public function i_am_on_the_synced_question_bank_page(string $name, string $shortname) {
+        global $DB;
+
+        $courseid = $this->get_course_id($shortname);
+
+        $cmid = $DB->get_field_sql(
+            "SELECT cm.id
+               FROM {course_modules} cm
+               JOIN {modules} m ON m.id = cm.module
+               JOIN {qbank} q ON q.id = cm.instance
+              WHERE cm.course = ?
+                AND m.name = 'qbank'
+                AND cm.idnumber LIKE 'coursesync-%'
+                AND q.name = ?",
+            [$courseid, $name],
+            MUST_EXIST
+        );
+
+        $this->execute('behat_general::i_visit', [new moodle_url('/question/edit.php', ['cmid' => $cmid])]);
     }
 }

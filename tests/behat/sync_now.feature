@@ -70,6 +70,10 @@ Feature: Sync now
     And I should not see "Unwanted bits"
 
     # And the one left out is offered again rather than quietly passed over.
+    # The one already copied is still listed - the picker shows every
+    # activity, not only what is new - but marked "Already synced" and
+    # cannot be ticked again.
     When I am on the "C1" "block_coursesync > Sync" page
     Then I should see "Unwanted bits"
-    And I should not see "Wanted notes"
+    And "Wanted notes" "table_row" should exist
+    And the "Wanted notes" "checkbox" should be disabled

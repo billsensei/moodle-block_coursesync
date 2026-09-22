@@ -65,13 +65,16 @@ read"*.
   else is listed as skipped
 - Forum, Wiki and Assignment **settings** come across; discussions, wiki pages
   and student submissions do not
-- A copied **Quiz has no questions**, even if you also sync a Question bank
-  activity — the two are not linked automatically. Tell pilot teachers this
-  before they open one, not after
-- A copied **Question bank brings only six question types** (multiple choice,
-  true/false, short answer, matching, essay, numerical) and only each
-  question's current version. Anything else is named in the results, not
-  silently dropped
+- A copied **Quiz brings its questions with it** — fixed slots and random
+  (draw-from-category) slots both come across, landing in this course's
+  question bank alongside anything already there. A question used by more
+  than one quiz, or also synced via a separate Question bank activity, is
+  only ever added once
+- Both **Quiz** and **Question bank** are limited to six question types
+  (multiple choice, true/false, short answer, matching, essay, numerical)
+  and only each question's current version. A slot or question of any other
+  type is named in the results, not silently dropped. Tell pilot teachers
+  this before they open a copied quiz, not after
 - A copied **Database has no custom CSS or JavaScript**, and a copied **Lesson
   has no password**. Both are deliberate and both are reported on the results
   page; see `SECURITY.md`

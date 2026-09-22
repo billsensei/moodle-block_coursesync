@@ -111,6 +111,17 @@ capability enforcement of their own — those checks belong to the question
 bank's editing UI, which this handler never goes through. See
 `DEVELOPER.md`'s "Security" section.
 
+`quiz_handler`'s random-slot import is the one deliberate exception, and it
+is unrelated to and does not widen anything documented above — that account
+is never the one checked here. Building a random slot calls core's own
+`mod_quiz\structure::add_random_questions()`, which itself requires
+`moodle/question:useall` on the System Bank's context. That capability is
+evaluated against the *destination* teacher's own session, exactly as it
+would be if that teacher added a random question to the quiz by hand — the
+`editingteacher` archetype already holds it by default at the course
+context. Fixed-question slots add no check at all, same reasoning as
+`qbank_handler` above. See `DEVELOPER.md`'s "Security" section.
+
 ## Outgoing requests
 
 A destination site makes server-side requests to whatever address is stored, so

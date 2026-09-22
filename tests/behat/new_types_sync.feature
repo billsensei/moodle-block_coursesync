@@ -57,7 +57,7 @@ Feature: Syncing books, folders, assignments, quizzes and wikis
     And I should see "Interactive bit"
 
     # Nothing is copied without saying what stayed behind.
-    And I should see "quiz questions live in a question bank"
+    And I should see "no questions came with it"
     And I should see "Student submissions, grades and feedback stay on the other site"
     And I should see "The pages people wrote in it stay on the other site"
 

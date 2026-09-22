@@ -222,7 +222,7 @@ whether a field is a number, a title or a block of HTML.
 **If those records refer to each other**, use the id map on `activity_handler`:
 `remember_id()` while creating, then `mapped_id()` to translate. The shape is
 always the same - create everything first, then fix the references, because a
-reference can point forward as well as backward. Four handlers do this:
+reference can point forward as well as backward. Several handlers do this:
 
 | Handler | What refers to what |
 | --- | --- |
@@ -231,6 +231,7 @@ reference can point forward as well as backward. Four handlers do this:
 | `workshop_handler` | A rubric level belongs to a criterion |
 | `lesson_handler` | The page chain, and where every answer jumps to |
 | `qbank_handler` | A category can belong to another category, and a question belongs to a category |
+| `quiz_handler` | A slot points at a question or a category - question_bank_sync_trait, shared with qbank_handler, is where the referencing actually happens |
 
 Resolve an unknown reference to a safe value rather than passing the number
 through. It will match some unrelated local record if you do.
@@ -464,6 +465,18 @@ write code here:
   capability enforcement of their own, since those checks live in the
   question bank's editing UI, which this handler never goes through. Do not
   add one without re-reading that reasoning first.
+- **`quiz_handler`'s random-slot import is the one exception**, and it is not
+  this plugin's own check: building a random slot calls core's own
+  `mod_quiz\structure::add_random_questions()`, which itself calls
+  `require_capability('moodle/question:useall', $catcontext)` against the
+  System Bank's own context. That runs against the *destination* teacher's
+  own session - the same check that would run if they added a random
+  question by hand - not a wider grant for the source-side service account.
+  The `editingteacher` archetype holds it by default at the course context,
+  which covers the System Bank since it lives inside that same course, so
+  this is not a new administrative step for the normal case. Fixed-question
+  slots need no capability at all, same reasoning as `qbank_handler` -
+  `quiz_add_quiz_question()` enforces nothing itself.
 
 ## Testing
 
@@ -510,18 +523,33 @@ and Behat each refuse to run against a site built for a different version.
 - An H5P activity is refused outright if its package did not arrive, rather than
   created as something that cannot be opened. It is the only handler that
   overrides `check_payload()` to insist on a file.
-- **Quiz questions are still not synced.** A quiz holds references into a
-  question bank rather than the questions themselves, and `quiz_handler` does
-  not follow those references, even when the bank they point at is also
-  synced separately via `qbank_handler`. The two are not linked.
-- **A synced Question bank covers six question types** — multiple choice,
-  true/false, short answer, matching, essay, numerical (`qbank_handler::SUPPORTED_QTYPES`).
-  A question of any other type is left out and counted, not attempted; see
-  `qbank_handler::notes()`. Only the current ready version of each question
-  is copied — no drafts, no hidden versions, no history.
-- Random or category-based question selection on a quiz slot cannot be
-  reached in the current version, because nothing wires a quiz to any
-  question bank yet; it will need its own design once that exists.
+- **A synced Question bank, and a synced quiz's questions, cover six question
+  types** — multiple choice, true/false, short answer, matching, essay,
+  numerical (`question_bank_sync_trait::SUPPORTED_QTYPES`, shared by both
+  `qbank_handler` and `quiz_handler`). A question of any other type is left
+  out and counted, not attempted; see `notes()` on either handler. Only the
+  current ready version of each question is copied — no drafts, no hidden
+  versions, no history.
+- **A quiz's questions land in the destination course's shared System Bank**
+  (`\core_question\local\bank\question_bank_helper::TYPE_SYSTEM`), not a
+  dedicated activity — the same place Moodle itself puts a question added
+  straight to a quiz with no bank picked. Two quizzes sharing a question, or
+  a quiz and a `qbank_handler` sync, reuse the same local question rather
+  than duplicating it; see `question_bank_sync_trait`'s idnumber-reuse logic.
+- A fixed slot whose question is unsupported is left out of the quiz - it is
+  never left as a broken reference - and counted once, under the shared
+  trait's `syncqbankunsupportedcount`. A random slot whose category never
+  arrived at all is a separate case, counted under its own
+  `syncquizunresolvedslotcount`; see `quiz_handler::notes()`. The two are
+  deliberately never both counted for the same slot.
+- A random slot's whole source category (and its whole subtree, when the
+  slot includes subcategories) is exported, not a sample — the point of a
+  random slot is drawing from the full pool at attempt time, and exporting
+  only enough to look plausible would silently narrow that pool.
+- A quiz's per-slot page number is not carried; every synced slot is
+  appended in the source's original order, relying on the destination's own
+  `questionsperpage` setting (which is carried) to reproduce equivalent
+  paging.
 - An assignment's grading scale, and a forum's, are matched by name. A scale that
   does not exist on the destination means the copy is created ungraded, and the
   run says so.

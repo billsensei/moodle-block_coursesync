@@ -53,9 +53,22 @@ Feature: Syncing a question bank
     # out on arrival, not filtered out on the way - and the teacher is told.
     And I should see "1 question(s) of a type Course Sync does not support yet were left out"
 
+    # The run is recorded against this course's connection - scoped by
+    # instanceid, not by name, so it is unambiguous even though the source
+    # course has an activity of the same name. Each run is a collapsed
+    # <details> element, so it has to be opened before its body is visible.
+    When I am on the "DEST" "block_coursesync > History" page
+    And I click on "details summary" "css_element"
+    Then I should see "Reading questions"
+    And I should see "Copied into this course"
+
     # It really is in the destination course, with its category and the two
-    # supported questions - not the unsupported one.
-    When I am on the "Reading questions" "core_question > question bank" page logged in as "teacher1"
+    # supported questions - not the unsupported one. Reached by this
+    # plugin's own step rather than core's "question bank" page type - that
+    # one resolves an activity by name alone, and the source course has a
+    # "Reading questions" of its own, on this same self-synced site.
+    When I change window size to "large"
+    And I am on the question bank page for the synced "Reading questions" in "DEST"
     And I apply question bank filter "Category" with value "Week 1"
     Then I should see "River question"
     And I should see "Capital question"

@@ -1,0 +1,379 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace block_coursesync\local\handler;
+
+use advanced_testcase;
+use block_coursesync\activity_payload;
+use block_coursesync\external\get_activity;
+use core_question\local\bank\question_bank_helper;
+use PHPUnit\Framework\Attributes\CoversClass;
+
+/**
+ * Round-trip tests for quiz_handler's question pulling: a quiz's fixed and
+ * random slots, exported the way the source site would and rebuilt into the
+ * destination course's shared System Bank the way the destination would.
+ *
+ * @package    block_coursesync
+ * @copyright  2026 Course Sync project
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+#[CoversClass(quiz_handler::class)]
+final class quiz_handler_test extends advanced_testcase {
+    /**
+     * Export a quiz the way the source site would, and rebuild it in
+     * another course the way the destination would.
+     *
+     * @param int $cmid the quiz to export
+     * @param \stdClass $target the course to rebuild it in
+     * @param string $idnumber
+     * @return array [the new course_modules record, the payload, the handler]
+     */
+    protected function round_trip(int $cmid, \stdClass $target, string $idnumber = 'coursesync-1'): array {
+        $exported = get_activity::execute($cmid);
+        $payload = activity_payload::from_response($exported);
+
+        $handler = new quiz_handler();
+        $this->assertNull($handler->check_payload($payload));
+
+        $cm = $handler->create_from_remote_data($target, $payload, $idnumber);
+
+        return [$cm, $payload, $handler];
+    }
+
+    /**
+     * A quiz with fixed slots across several supported types, one
+     * unsupported-type fixed slot, a random slot without subcategories, one
+     * with subcategories, and one filtered by tags - all copied in one sync.
+     */
+    public function test_quiz_round_trip(): void {
+        global $CFG, $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $quiz = $this->getDataGenerator()->get_plugin_generator('mod_quiz')->create_instance([
+            'course' => $source->id,
+            'name' => 'Mixed quiz',
+            'questionsperpage' => 0,
+        ]);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $parent = $qgen->create_question_category(['name' => 'Fixed questions']);
+        $randomcat = $qgen->create_question_category(['name' => 'Random pool']);
+        $subcat = $qgen->create_question_category(['name' => 'Random pool sub', 'parent' => $randomcat->id]);
+        $tagcat = $qgen->create_question_category(['name' => 'Tagged pool']);
+
+        // Fixed slots, weighted differently from their own default mark.
+        $truefalse = $qgen->create_question('truefalse', null, ['category' => $parent->id]);
+        \quiz_add_quiz_question($truefalse->id, $quiz, 0, 3.0);
+
+        $shortanswer = $qgen->create_question('shortanswer', null, ['category' => $parent->id]);
+        \quiz_add_quiz_question($shortanswer->id, $quiz, 0, 2.5);
+
+        // A fixed slot of a type this handler does not rebuild.
+        $description = $qgen->create_question('description', null, ['category' => $parent->id]);
+        \quiz_add_quiz_question($description->id, $quiz, 0, 0);
+
+        // Random slot: one category, no subcategories, two questions in the pool.
+        $qgen->create_question('shortanswer', null, ['category' => $randomcat->id, 'name' => 'Pool Q1']);
+        $qgen->create_question('numerical', null, ['category' => $randomcat->id, 'name' => 'Pool Q2']);
+        $this->add_random_slot($quiz->id, $randomcat->id, false, 1.5);
+
+        // Random slot: subcategories included, one question only in the subcategory.
+        $qgen->create_question('shortanswer', null, ['category' => $subcat->id, 'name' => 'Subpool Q']);
+        $this->add_random_slot($quiz->id, $randomcat->id, true, 1.0);
+
+        // Random slot: filtered by a tag - one whose own name contains a
+        // comma, proving the tag list travels as JSON rather than a
+        // comma-joined string that would split this one tag into two.
+        $tagged = $qgen->create_question('shortanswer', null, ['category' => $tagcat->id, 'name' => 'Tagged Q']);
+        $qgen->create_question_tag(['questionid' => $tagged->id, 'tag' => 'week1, priority']);
+        $this->add_random_slot($quiz->id, $tagcat->id, false, 2.0, ['week1, priority']);
+
+        [$cm, $payload, $handler] = $this->round_trip($quiz->cmid, $target);
+
+        $newquiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
+        $newslots = $DB->get_records('quiz_slots', ['quizid' => $newquiz->id], 'slot ASC');
+        $this->assertCount(5, $newslots, 'two fixed slots plus three random slots, description slot skipped');
+
+        $bankcm = question_bank_helper::get_default_open_instance_system_type($target, false);
+        $this->assertNotNull($bankcm, 'the System Bank should have been created');
+        $bankcontext = \context_module::instance($bankcm->id);
+
+        // Fixed slots: right question, right mark.
+        $newtruefalse = $this->find_slot_question($DB, $newquiz->id, 'truefalse');
+        $this->assertNotNull($newtruefalse);
+        $this->assertSame(3.0, (float) $newtruefalse->maxmark);
+
+        $newshortanswer = $this->find_fixed_slot_by_question_name($DB, $newquiz->id, $shortanswer->name);
+        $this->assertNotNull($newshortanswer);
+        $this->assertSame(2.5, (float) $newshortanswer->maxmark);
+
+        // The unsupported type was left out and counted, not silently dropped.
+        $notes = $handler->notes($payload);
+        $this->assertContains(['syncqbankunsupportedcount', 1], $notes);
+
+        // That one fixed slot is not counted a second time under the
+        // separate "unresolved slot" note - every random slot above did
+        // resolve, so nothing should be unresolved here at all.
+        foreach ($notes as $note) {
+            if (is_array($note) && $note[0] === 'syncquizunresolvedslotcount') {
+                $this->fail('an unsupported-type fixed slot should not also be counted as unresolved');
+            }
+        }
+
+        // Random slots: filter conditions decode to the right local category
+        // and, where relevant, subcategories and a resolved local tag id.
+        $randomslots = $this->find_random_slots($DB, $newquiz->id, $bankcontext);
+        $this->assertCount(3, $randomslots);
+
+        $newrandomcat = $DB->get_record(
+            'question_categories',
+            ['contextid' => $bankcontext->id, 'name' => 'Random pool'],
+            '*',
+            MUST_EXIST
+        );
+        $newsubcat = $DB->get_record(
+            'question_categories',
+            ['contextid' => $bankcontext->id, 'name' => 'Random pool sub'],
+            '*',
+            MUST_EXIST
+        );
+        $newtagcat = $DB->get_record(
+            'question_categories',
+            ['contextid' => $bankcontext->id, 'name' => 'Tagged pool'],
+            '*',
+            MUST_EXIST
+        );
+
+        $plainslot = $this->find_random_slot_for_category($randomslots, (int) $newrandomcat->id, false);
+        $this->assertNotNull($plainslot);
+        $this->assertSame(1.5, (float) $plainslot->maxmark);
+
+        $subslot = $this->find_random_slot_for_category($randomslots, (int) $newrandomcat->id, true);
+        $this->assertNotNull($subslot);
+        $this->assertSame(1.0, (float) $subslot->maxmark);
+        // The subcategory's own question travelled too - proving the whole
+        // subtree was exported, not just the named category.
+        $this->assertTrue($DB->record_exists('question_categories', [
+            'id' => $newsubcat->id, 'parent' => $newrandomcat->id,
+        ]));
+        $this->assertTrue($DB->record_exists('question', ['name' => 'Subpool Q']));
+
+        $tagslot = $this->find_random_slot_for_category($randomslots, (int) $newtagcat->id, false);
+        $this->assertNotNull($tagslot);
+        $this->assertSame(2.0, (float) $tagslot->maxmark);
+        $filter = json_decode((string) $tagslot->filtercondition, true);
+        $this->assertCount(
+            1,
+            $filter['filter']['qtagids']['values'] ?? [],
+            'the comma inside the tag name must not split it in two'
+        );
+        $localtagid = $filter['filter']['qtagids']['values'][0];
+        $this->assertSame('week1, priority', $DB->get_field('tag', 'name', ['id' => $localtagid]));
+
+        // Sumgrades reflects the real per-slot marks, not just a count.
+        $this->assertSame(3.0 + 2.5 + 1.5 + 1.0 + 2.0, (float) $newquiz->sumgrades);
+    }
+
+    /**
+     * The same source question, used by two different quizzes, is only
+     * copied once into the shared System Bank - both quizzes reference the
+     * one local question.
+     */
+    public function test_two_quizzes_sharing_a_question_reuse_it(): void {
+        global $CFG, $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $quizgen = $this->getDataGenerator()->get_plugin_generator('mod_quiz');
+        $quiza = $quizgen->create_instance(['course' => $source->id, 'name' => 'Quiz A']);
+        $quizb = $quizgen->create_instance(['course' => $source->id, 'name' => 'Quiz B']);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $cat = $qgen->create_question_category();
+        $shared = $qgen->create_question('shortanswer', null, ['category' => $cat->id]);
+
+        \quiz_add_quiz_question($shared->id, $quiza, 0, 1.0);
+        \quiz_add_quiz_question($shared->id, $quizb, 0, 1.0);
+
+        [$cma] = $this->round_trip($quiza->cmid, $target, 'coursesync-1');
+        [$cmb] = $this->round_trip($quizb->cmid, $target, 'coursesync-2');
+
+        // The source's own original question has no idnumber - only a
+        // synced copy is stamped 'coursesync-<remote entry id>' - so this
+        // finds the one real source entry unambiguously.
+        $sourceentryid = $DB->get_field_sql(
+            'SELECT qbe.id
+               FROM {question_bank_entries} qbe
+               JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
+               JOIN {question} q ON q.id = qv.questionid
+              WHERE q.name = ? AND qbe.idnumber IS NULL',
+            [$shared->name],
+            MUST_EXIST
+        );
+        $syncedidnumber = 'coursesync-' . $sourceentryid;
+
+        // Exactly one synced copy should exist - both quizzes reused it
+        // rather than each creating their own.
+        $this->assertSame(1, $DB->count_records('question_bank_entries', ['idnumber' => $syncedidnumber]));
+
+        $entryid = $DB->get_field('question_bank_entries', 'id', ['idnumber' => $syncedidnumber], MUST_EXIST);
+
+        foreach ([$cma, $cmb] as $cm) {
+            $quizid = $DB->get_field('quiz', 'id', ['id' => $cm->instance], MUST_EXIST);
+            $referenced = $DB->get_record_sql(
+                'SELECT qr.questionbankentryid
+                   FROM {question_references} qr
+                   JOIN {quiz_slots} slot ON slot.id = qr.itemid
+                  WHERE slot.quizid = ? AND qr.component = ? AND qr.questionarea = ?',
+                [$quizid, 'mod_quiz', 'slot'],
+                MUST_EXIST
+            );
+            $this->assertSame((int) $entryid, (int) $referenced->questionbankentryid);
+        }
+    }
+
+    /**
+     * Add a random slot to a quiz using the same filter-condition shape and
+     * helper pattern mod_quiz's own tests use.
+     *
+     * @param int $quizid
+     * @param int $categoryid
+     * @param bool $includesubcategories
+     * @param float $maxmark
+     * @param string[] $tagnames
+     */
+    protected function add_random_slot(
+        int $quizid,
+        int $categoryid,
+        bool $includesubcategories,
+        float $maxmark,
+        array $tagnames = []
+    ): void {
+        global $DB;
+
+        $structure = \mod_quiz\quiz_settings::create($quizid)->get_structure();
+        $filtercondition = [
+            'filter' => [
+                'category' => [
+                    'jointype' => \core_question\local\bank\condition::JOINTYPE_DEFAULT,
+                    'values' => [$categoryid],
+                    'filteroptions' => ['includesubcategories' => $includesubcategories],
+                ],
+            ],
+        ];
+
+        if ($tagnames !== []) {
+            $collectionid = \core_tag_area::get_collection('core_question', 'question');
+            $tagids = array_map(
+                static fn(\core_tag_tag $tag): int => (int) $tag->id,
+                \core_tag_tag::create_if_missing($collectionid, $tagnames)
+            );
+            $filtercondition['filter']['qtagids'] = [
+                'jointype' => \qbank_tagquestion\tag_condition::JOINTYPE_DEFAULT,
+                'values' => $tagids,
+            ];
+        }
+
+        $structure->add_random_questions(0, 1, $filtercondition);
+
+        // Core's add_random_questions() hardcodes maxmark to 1, same as the
+        // handler being tested works around - matched here for real marks.
+        $newslotid = (int) $DB->get_field_sql('SELECT MAX(id) FROM {quiz_slots} WHERE quizid = ?', [$quizid]);
+        $DB->set_field('quiz_slots', 'maxmark', $maxmark, ['id' => $newslotid]);
+    }
+
+    /**
+     * Find a fixed slot's quiz_slots row by the qtype of the question it
+     * points at.
+     */
+    protected function find_slot_question(\moodle_database $db, int $quizid, string $qtype): ?\stdClass {
+        return $db->get_record_sql(
+            'SELECT slot.*
+               FROM {quiz_slots} slot
+               JOIN {question_references} qr ON qr.itemid = slot.id
+               JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
+               JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
+               JOIN {question} q ON q.id = qv.questionid
+              WHERE slot.quizid = ? AND qr.component = ? AND qr.questionarea = ? AND q.qtype = ?',
+            [$quizid, 'mod_quiz', 'slot', $qtype]
+        ) ?: null;
+    }
+
+    /**
+     * Find a fixed slot's quiz_slots row by the name of the question it
+     * points at.
+     */
+    protected function find_fixed_slot_by_question_name(\moodle_database $db, int $quizid, string $name): ?\stdClass {
+        return $db->get_record_sql(
+            'SELECT slot.*
+               FROM {quiz_slots} slot
+               JOIN {question_references} qr ON qr.itemid = slot.id
+               JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
+               JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
+               JOIN {question} q ON q.id = qv.questionid
+              WHERE slot.quizid = ? AND qr.component = ? AND qr.questionarea = ? AND q.name = ?',
+            [$quizid, 'mod_quiz', 'slot', $name]
+        ) ?: null;
+    }
+
+    /**
+     * Every random slot for a quiz, with its filter condition decoded
+     * category checked against the given bank context.
+     *
+     * @return \stdClass[] each with an extra ->filtercondition (raw string, as stored)
+     */
+    protected function find_random_slots(\moodle_database $db, int $quizid, \context $bankcontext): array {
+        return $db->get_records_sql(
+            'SELECT slot.id AS slotid, slot.maxmark, qsr.filtercondition
+               FROM {quiz_slots} slot
+               JOIN {question_set_references} qsr ON qsr.itemid = slot.id
+              WHERE slot.quizid = ? AND qsr.component = ? AND qsr.questionarea = ? AND qsr.questionscontextid = ?',
+            [$quizid, 'mod_quiz', 'slot', $bankcontext->id]
+        );
+    }
+
+    /**
+     * Pick out the one random slot whose filter condition points at the
+     * given category with the given includesubcategories flag.
+     */
+    protected function find_random_slot_for_category(array $slots, int $categoryid, bool $includesub): ?\stdClass {
+        foreach ($slots as $slot) {
+            $filter = json_decode((string) $slot->filtercondition, true);
+            $filtercat = (int) ($filter['filter']['category']['values'][0] ?? 0);
+            $filterincludesub = !empty($filter['filter']['category']['filteroptions']['includesubcategories']);
+
+            if ($filtercat === $categoryid && $filterincludesub === $includesub) {
+                return $slot;
+            }
+        }
+
+        return null;
+    }
+}

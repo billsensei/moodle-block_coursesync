@@ -127,7 +127,7 @@ Course Sync currently copies eighteen kinds:
 | **Forum** | The forum and its settings | Existing discussions and posts |
 | **Wiki** | The wiki and its settings | The pages people wrote in it |
 | **Assignment** | The task, dates, grading and marking settings, and which submission and feedback types are switched on | Student submissions, grades, feedback and extensions |
-| **Quiz** | All the settings: timing, attempts, review rules, grading | **The questions.** You add those on this site |
+| **Quiz** | All the settings: timing, attempts, review rules, grading — and the questions, of the six most common types | Questions of any other type, student attempts, and usage statistics |
 | **Choice** | The question and every option, including any limits | The answers people gave |
 | **Glossary** | All the settings | The entries people wrote |
 | **Feedback** | Every question, in order, including questions that only appear depending on an earlier answer | The responses people gave |
@@ -142,12 +142,15 @@ it. That is on purpose: work students did belongs where they did it. Each copy
 says on the results page what was left behind, so you are never left to find out
 by opening it.
 
-**A copied quiz has no questions in it.** Quiz questions live in a question
-bank, and a quiz only holds a reference into one — copying the quiz does not
-follow that reference yet, even if you also sync a Question bank activity
-separately. The quiz arrives with every setting right and empty; add the
-questions here, or copy a **Question bank** activity if the other course has
-one and build the quiz from it directly.
+**A copied quiz brings its questions with it.** Both kinds of slot a quiz can
+hold come across: one that names an exact question, and one that draws
+randomly from a category, tag filters included. They land in this course's
+question bank alongside anything already there, so a question used by more
+than one quiz — or also copied here via a separate **Question bank**
+activity — is only ever added once. Only the same six question types
+**Question bank** covers are included; a slot naming a question of some
+other type, or a random slot whose category could not be rebuilt, is left
+out and counted on the results page rather than silently dropped.
 
 **A copied Question bank leaves out any question of a type it does not yet
 handle** — multiple choice, true/false, short answer, matching, essay and
@@ -223,10 +226,10 @@ pictures inside a **Book** chapter.
 activities arrive set up but empty. Anything people wrote or handed in stays on
 the other site.
 
-**A copied quiz has no questions.** See the table above. This is the one that
-surprises people, so the sync says it against every quiz it copies. Copying a
-**Question bank** activity separately does not fill in a quiz's questions
-either — the two are not linked automatically yet.
+**A copied quiz brings its questions, but not every question.** See the table
+above — only the six most common question types travel, fixed or drawn
+randomly from a category. A slot the sync could not rebuild is named on the
+results page rather than left for you to notice by opening the quiz.
 
 **A copied database has no custom CSS or JavaScript.** If the original used
 either, the copy is made without them and says so. Those two are run as code by
