@@ -149,7 +149,7 @@ final class qbank_handler_test extends advanced_testcase {
         ));
         $this->assertSame((int) $newparent->id, (int) $newchild->parent);
 
-        // Seven supported types plus the superseded question's current
+        // Seven of the supported types plus the superseded question's current
         // version plus the one with an image: nine questions in total.
         // The unsupported "description" question and the first version of
         // the superseded one are not among them.
@@ -258,6 +258,174 @@ final class qbank_handler_test extends advanced_testcase {
         // change is possible without a second call, and syncer's own tests
         // already cover that the call never happens.
         $this->assertSame($questioncount, $DB->count_records('question', []));
+    }
+
+    /**
+     * The three drag and drop types round-trip, including the files that
+     * live in their own qtype file areas rather than the question's text:
+     * the background image of both image-based types, and a drag item that
+     * is an image rather than a word. None of this needs code of its own in
+     * the handler - each qtype's own export_to_xml()/import_from_xml() and
+     * save_question_options() carry it - so this test is what proves that.
+     */
+    public function test_drag_and_drop_types_round_trip(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $qbank = $this->getDataGenerator()->create_module('qbank', ['course' => $source->id]);
+        $qbankcontext = \context_module::instance($qbank->cmid);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $category = $qgen->create_question_category([
+            'contextid' => $qbankcontext->id,
+            'name' => 'Drag and drop',
+        ]);
+
+        $ddwtos = $qgen->create_question('ddwtos', 'fox', ['category' => $category->id]);
+        $ddimageortext = $qgen->create_question('ddimageortext', 'xsection', ['category' => $category->id]);
+        $ddmarker = $qgen->create_question('ddmarker', 'mkmap', ['category' => $category->id]);
+
+        // Turn the first drag item of the image question into an image, so
+        // a drag item's own file area is covered as well as the background.
+        $fs = get_file_storage();
+        $firstdrag = $DB->get_record('qtype_ddimageortext_drags', ['questionid' => $ddimageortext->id, 'no' => 1], '*', MUST_EXIST);
+        $fs->create_file_from_string([
+            'contextid' => $qbankcontext->id,
+            'component' => 'qtype_ddimageortext',
+            'filearea' => 'dragimage',
+            'itemid' => $firstdrag->id,
+            'filepath' => '/',
+            'filename' => 'arc.png',
+        ], 'drag image bytes');
+
+        [$cm, $payload, $handler] = $this->round_trip($qbank->cmid, $target);
+        $targetcontext = \context_module::instance($cm->id);
+
+        $notes = $handler->notes($payload);
+        $this->assertSame(['syncqbanknoattempts'], $notes, 'all three types are supported, so nothing is counted as unsupported');
+
+        $newcategory = $DB->get_record(
+            'question_categories',
+            ['contextid' => $targetcontext->id, 'name' => 'Drag and drop'],
+            '*',
+            MUST_EXIST
+        );
+
+        // Drag and drop into text: its options row, and its choices, which
+        // it stores as question_answers.
+        $newddwtos = $this->find_copy($DB, $newcategory->id, $ddwtos->name);
+        $this->assertSame('ddwtos', $newddwtos->qtype);
+        $this->assertTrue($DB->record_exists('question_ddwtos', ['questionid' => $newddwtos->id]));
+        $this->assertSame(
+            $DB->count_records('question_answers', ['question' => $ddwtos->id]),
+            $DB->count_records('question_answers', ['question' => $newddwtos->id])
+        );
+        $this->assertStringContainsString('[[1]]', $newddwtos->questiontext);
+
+        // Drag and drop onto image: drags, drops with their positions, the
+        // background image, and the image drag item.
+        $newddimageortext = $this->find_copy($DB, $newcategory->id, $ddimageortext->name);
+        $this->assertSame('ddimageortext', $newddimageortext->qtype);
+        $this->assertTrue($DB->record_exists('qtype_ddimageortext', ['questionid' => $newddimageortext->id]));
+        $this->assert_same_rows(
+            $DB,
+            'qtype_ddimageortext_drops',
+            $ddimageortext->id,
+            $newddimageortext->id,
+            'no, xleft, ytop, choice'
+        );
+        $this->assert_same_rows($DB, 'qtype_ddimageortext_drags', $ddimageortext->id, $newddimageortext->id, 'no, label');
+        $this->assert_same_file(
+            $fs,
+            $qbankcontext->id,
+            $targetcontext->id,
+            'qtype_ddimageortext',
+            'bgimage',
+            $ddimageortext->id,
+            $newddimageortext->id
+        );
+
+        $newfirstdrag = $DB->get_record(
+            'qtype_ddimageortext_drags',
+            ['questionid' => $newddimageortext->id, 'no' => 1],
+            '*',
+            MUST_EXIST
+        );
+        $dragfiles = $fs->get_area_files($targetcontext->id, 'qtype_ddimageortext', 'dragimage', $newfirstdrag->id, 'id', false);
+        $this->assertCount(1, $dragfiles);
+        $dragfile = reset($dragfiles);
+        $this->assertSame('arc.png', $dragfile->get_filename());
+        $this->assertSame('drag image bytes', $dragfile->get_content());
+
+        // Drag and drop markers: drags, drop zones with their coordinates,
+        // and the background image.
+        $newddmarker = $this->find_copy($DB, $newcategory->id, $ddmarker->name);
+        $this->assertSame('ddmarker', $newddmarker->qtype);
+        $this->assertTrue($DB->record_exists('qtype_ddmarker', ['questionid' => $newddmarker->id]));
+        $this->assert_same_rows($DB, 'qtype_ddmarker_drags', $ddmarker->id, $newddmarker->id, 'no, label, infinite, noofdrags');
+        $this->assert_same_rows($DB, 'qtype_ddmarker_drops', $ddmarker->id, $newddmarker->id, 'no, shape, coords, choice');
+        $this->assert_same_file(
+            $fs,
+            $qbankcontext->id,
+            $targetcontext->id,
+            'qtype_ddmarker',
+            'bgimage',
+            $ddmarker->id,
+            $newddmarker->id
+        );
+    }
+
+    /**
+     * A qtype's own child rows match between the original and its copy,
+     * compared on the given columns only - ids and question ids differ.
+     */
+    protected function assert_same_rows(
+        \moodle_database $db,
+        string $table,
+        int $originalid,
+        int $copyid,
+        string $fields
+    ): void {
+        $original = array_values(array_map(
+            fn($row) => (array) $row,
+            $db->get_records($table, ['questionid' => $originalid], 'no ASC', $fields)
+        ));
+        $copy = array_values(array_map(
+            fn($row) => (array) $row,
+            $db->get_records($table, ['questionid' => $copyid], 'no ASC', $fields)
+        ));
+
+        $this->assertNotEmpty($original, "the original should have {$table} rows to compare");
+        $this->assertEquals($original, $copy, "{$table} should have copied unchanged");
+    }
+
+    /**
+     * A qtype file area holds the same one file, byte for byte, on the copy.
+     */
+    protected function assert_same_file(
+        \file_storage $fs,
+        int $sourcecontextid,
+        int $targetcontextid,
+        string $component,
+        string $filearea,
+        int $originalid,
+        int $copyid
+    ): void {
+        $originals = $fs->get_area_files($sourcecontextid, $component, $filearea, $originalid, 'id', false);
+        $copies = $fs->get_area_files($targetcontextid, $component, $filearea, $copyid, 'id', false);
+
+        $this->assertCount(1, $originals);
+        $this->assertCount(1, $copies, "{$component}/{$filearea} should have travelled");
+
+        $original = reset($originals);
+        $copy = reset($copies);
+        $this->assertSame($original->get_filename(), $copy->get_filename());
+        $this->assertSame($original->get_contenthash(), $copy->get_contenthash());
     }
 
     /**

@@ -70,9 +70,10 @@ read"*.
   question bank alongside anything already there. A question used by more
   than one quiz, or also synced via a separate Question bank activity, is
   only ever added once
-- Both **Quiz** and **Question bank** are limited to seven question types
+- Both **Quiz** and **Question bank** are limited to ten question types
   (multiple choice, true/false, short answer, matching, essay, numerical,
-  embedded answers/Cloze) and only each question's current version. A slot
+  embedded answers/Cloze, and the three drag and drop types: into text, onto
+  image, markers) and only each question's current version. A slot
   or question of any other type is named in the results, not silently
   dropped. Tell pilot teachers this before they open a copied quiz, not
   after

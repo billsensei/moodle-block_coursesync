@@ -35,8 +35,8 @@ use block_coursesync\activity_payload;
  *    transfer mechanism would be strictly more code for nothing.
  *
  * 2. A question travels as one opaque XML fragment (the 'xml' field on a
- *    'question' child), not as flattened settings. Six supported types
- *    means six different column layouts - true/false points at two of its
+ *    'question' child), not as flattened settings. Ten supported types
+ *    means ten different column layouts - true/false points at two of its
  *    own answer rows, matching has no answer rows at all, numerical spans
  *    four tables. qformat_xml already solves exactly this, tags and answer
  *    files included, so this handler serialises with it rather than
@@ -52,15 +52,21 @@ use block_coursesync\activity_payload;
  *    that now does check something extra, and for a different reason - see
  *    that class and SECURITY.md.
  *
- * Only seven question types are rebuilt - multiple choice, true/false,
- * short answer, matching, essay, numerical, multianswer (cloze) - because
+ * Only ten question types are rebuilt - multiple choice, true/false,
+ * short answer, matching, essay, numerical, multianswer (cloze), and the
+ * three drag and drop types (into text, onto image, markers) - because
  * those cover most real question banks and each one's shape has actually
  * been checked against this handler. Multianswer needs nothing special
  * here despite its embedded sub-questions: qformat_xml's own reader
  * already resolves them from the parent's questiontext before
  * save_question() ever sees it, and qtype_multianswer::save_question_options()
  * saves them itself, the same one call this handler already makes for
- * every other type. A question of any other type is left out and counted;
+ * every other type. The two image-based drag and drop types need nothing
+ * special either: their export_to_xml() inlines the background image and
+ * any drag images as base64, their import_from_xml() turns those back into
+ * draft areas, and their save_question_options() files them under the new
+ * question - point 1 above, applied to a qtype's own file areas rather than
+ * the question's text. A question of any other type is left out and counted;
  * see notes(). Only the current ready version of each question is copied -
  * no drafts, no hidden versions, no history - matching how every other
  * type in this plugin carries current state rather than a log of changes.

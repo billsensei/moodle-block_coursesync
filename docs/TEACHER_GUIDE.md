@@ -127,7 +127,7 @@ Course Sync currently copies eighteen kinds:
 | **Forum** | The forum and its settings | Existing discussions and posts |
 | **Wiki** | The wiki and its settings | The pages people wrote in it |
 | **Assignment** | The task, dates, grading and marking settings, and which submission and feedback types are switched on | Student submissions, grades, feedback and extensions |
-| **Quiz** | All the settings: timing, attempts, review rules, grading — and the questions, of the seven most common types | Questions of any other type, student attempts, and usage statistics |
+| **Quiz** | All the settings: timing, attempts, review rules, grading — and the questions, of the ten most common types | Questions of any other type, student attempts, and usage statistics |
 | **Choice** | The question and every option, including any limits | The answers people gave |
 | **Glossary** | All the settings | The entries people wrote |
 | **Feedback** | Every question, in order, including questions that only appear depending on an earlier answer | The responses people gave |
@@ -135,7 +135,7 @@ Course Sync currently copies eighteen kinds:
 | **Workshop** | The settings and the whole assessment form reviewers fill in | Submissions, assessments and grades |
 | **Lesson** | Every page, and every path between them, including where each answer leads | What students did in it, and the password |
 | **H5P** | The interactive content itself and all its settings | Attempts and results |
-| **Question bank** | Its categories, and questions of the seven most common types | Questions of any other type, attempts, and usage statistics |
+| **Question bank** | Its categories, and questions of the ten most common types | Questions of any other type, attempts, and usage statistics |
 
 Most of these copy the activity as a teacher set it up, not what anyone did in
 it. That is on purpose: work students did belongs where they did it. Each copy
@@ -147,15 +147,16 @@ hold come across: one that names an exact question, and one that draws
 randomly from a category, tag filters included. They land in this course's
 question bank alongside anything already there, so a question used by more
 than one quiz — or also copied here via a separate **Question bank**
-activity — is only ever added once. Only the same seven question types
+activity — is only ever added once. Only the same ten question types
 **Question bank** covers are included; a slot naming a question of some
 other type, or a random slot whose category could not be rebuilt, is left
 out and counted on the results page rather than silently dropped.
 
 **A copied Question bank leaves out any question of a type it does not yet
 handle** — multiple choice, true/false, short answer, matching, essay,
-numerical and embedded answers (Cloze) are covered; anything else is named
-in the results, so you know it
+numerical, embedded answers (Cloze), drag and drop into text, drag and drop
+onto image and drag and drop markers are covered, background and drag
+images included; anything else is named in the results, so you know it
 did not come across. Only the current version of each question travels, not
 its edit history, and student attempts and usage statistics never do.
 
@@ -228,7 +229,7 @@ activities arrive set up but empty. Anything people wrote or handed in stays on
 the other site.
 
 **A copied quiz brings its questions, but not every question.** See the table
-above — only the seven most common question types travel, fixed or drawn
+above — only the ten most common question types travel, fixed or drawn
 randomly from a category. A slot the sync could not rebuild is named on the
 results page rather than left for you to notice by opening the quiz.
 

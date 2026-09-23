@@ -246,7 +246,7 @@ own restore does.
 
 `qbank_handler` bends the "flat map of fields" rule on purpose for its
 `'question'` children: rather than flattening each question type's own
-columns (seven types means seven different, unrelated shapes), one field
+columns (ten types means ten different, unrelated shapes), one field
 holds the whole question as a `qformat_xml`-serialised fragment - Moodle's
 own question export format, reused rather than re-derived. `'category'`
 children stay flat, because a category's own fields are the same regardless
@@ -556,16 +556,21 @@ and Behat each refuse to run against a site built for a different version.
 - An H5P activity is refused outright if its package did not arrive, rather than
   created as something that cannot be opened. It is the only handler that
   overrides `check_payload()` to insist on a file.
-- **A synced Question bank, and a synced quiz's questions, cover seven
+- **A synced Question bank, and a synced quiz's questions, cover ten
   question types** — multiple choice, true/false, short answer, matching,
-  essay, numerical, multianswer (cloze)
+  essay, numerical, multianswer (cloze), and drag and drop into text
+  (`ddwtos`), onto image (`ddimageortext`) and markers (`ddmarker`)
   (`question_bank_sync_trait::SUPPORTED_QTYPES`, shared by both
   `qbank_handler` and `quiz_handler`). Multianswer's embedded sub-questions
   need no special handling here — `qformat_xml` resolves them from the
   parent's own `questiontext` before this handler's `save_question()` ever
   sees it, and `qtype_multianswer::save_question_options()` saves them
   itself, inside the same one call this handler already makes for every
-  other type. A question of any other type is left out and counted, not
+  other type. The two image-based drag and drop types need nothing special
+  either: their `export_to_xml()` inlines the background image and any
+  image drag items as base64, `import_from_xml()` turns them back into
+  draft areas, and `save_question_options()` files them under the new
+  question. A question of any other type is left out and counted, not
   attempted; see `notes()` on either handler. Only the current ready
   version of each question is copied — no drafts, no hidden versions, no
   history.
