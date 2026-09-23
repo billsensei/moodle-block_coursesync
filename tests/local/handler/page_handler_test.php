@@ -233,10 +233,9 @@ final class page_handler_test extends advanced_testcase {
         $this->assertInstanceOf(page_handler::class, handler_registry::get('page'));
 
         // Something nothing handles, looked up rather than named so it cannot
-        // go stale. The full list is checked in handlers_test.
-        $unsupported = handler_registry::first_unsupported_modname();
-
-        $this->assertNotNull($unsupported);
+        // go stale - or, now that every standard type has a handler, a
+        // third-party module's name. The full list is checked in handlers_test.
+        $unsupported = handler_registry::first_unsupported_modname() ?? 'thirdpartymodule';
         $this->assertFalse(handler_registry::supports($unsupported));
         $this->assertNull(handler_registry::get($unsupported));
 

@@ -353,6 +353,16 @@ do. Table cells use `s()`.
   A site that grants `block/coursesync:sync` to a role without
   `moodle/course:manageactivities` should know that role can now replace
   synced activities.
+- An External tool copy is only linked to a tool this site's administrator
+  set up (matched by Moodle's own launch matcher), and that tool's privacy
+  settings override what the activity asked to send. So a source cannot
+  direct this site's students' details to a service of its choosing. Tool
+  keys, secrets and service salts are never exported. `lti_add_instance()`
+  may request the tool address to check for a cartridge; by then the address
+  has matched an approved tool's domain.
+- A BigBlueButton copy gets fresh meeting credentials from this site; the
+  source's meeting id and moderator, viewer and guest passwords are never
+  exported, and participant rules naming a source user are dropped.
 - A SCORM or IMS package from the source is unpacked on this site with
   Moodle's own zip packer, exactly as an uploaded package is, and served by
   the module's own pluginfile rules. Its content is as trusted as a package a

@@ -475,6 +475,64 @@ abstract class activity_handler {
     }
 
     /**
+     * Whether this handler can rebuild the payload in this particular course.
+     *
+     * check_payload() is what can be told from the activity alone; this is
+     * for what depends on where it is going - whether this course can use
+     * the external tool it needs, say. Asked before anything is created, so
+     * a refusal here is an expected outcome, not a failure partway through.
+     *
+     * @param \stdClass $course the destination course
+     * @param activity_payload $payload
+     * @return string|null a language string identifier explaining the refusal,
+     *                     or null if the payload can be rebuilt here
+     */
+    public function check_destination(\stdClass $course, activity_payload $payload): ?string {
+        return null;
+    }
+
+    /**
+     * Is a changed copy of this type updated where it stands, rather than
+     * replaced by a fresh copy (see copy_update)?
+     *
+     * Only for a type whose replacement would take more with it than itself:
+     * a subsection's contents go when it does.
+     *
+     * @return bool
+     */
+    public function updates_in_place(): bool {
+        return false;
+    }
+
+    /**
+     * DESTINATION SIDE. Bring a copy up to date where it stands.
+     *
+     * Only called when updates_in_place() says so.
+     *
+     * @param \stdClass $cm the copy here
+     * @param activity_payload $payload what the source site sent
+     * @return void
+     */
+    public function update_in_place(\stdClass $cm, activity_payload $payload): void {
+        throw new \coding_exception(static::class . ' does not update in place');
+    }
+
+    /**
+     * Anything a person needs, beyond the reason, to act on a refusal.
+     *
+     * A failure is reported by a fixed message; this is for what the message
+     * cannot know - which external tool an administrator would have to add,
+     * say. Same shape as notes().
+     *
+     * @param activity_payload $payload what the source site sent
+     * @param string $reason the language string identifier the activity failed with
+     * @return array<string|array{0:string,1:mixed}>
+     */
+    public function failure_notes(activity_payload $payload, string $reason): array {
+        return [];
+    }
+
+    /**
      * Did anything have to be left out because this site cannot express it?
      *
      * A grading scale is the usual case: it is named on the source site and may
@@ -573,11 +631,62 @@ abstract class activity_handler {
             return 0;
         }
 
+        // Ordinary sections only. A delegated section - a subsection's - is
+        // numbered after them, so clamping to the highest number of all could
+        // put the activity inside some unrelated subsection.
         $maxsection = (int) $DB->get_field_sql(
-            'SELECT MAX(section) FROM {course_sections} WHERE course = ?',
+            'SELECT MAX(section) FROM {course_sections} WHERE course = ? AND component IS NULL',
             [$course->id]
         );
 
         return min($wanted, $maxsection);
+    }
+
+    /**
+     * DESTINATION SIDE. The section number to create an activity in.
+     *
+     * In this course's copy of the subsection that holds it on the source, if
+     * that has been copied here; otherwise in the ordinary section it (or its
+     * subsection) is in, as resolve_section() finds it.
+     *
+     * @param \stdClass $course the destination course
+     * @param activity_payload $payload
+     * @return int
+     */
+    protected function target_section(\stdClass $course, activity_payload $payload): int {
+        $subsection = self::local_subsection_section($course, $payload);
+
+        return $subsection ?? $this->resolve_section($course, $payload->sectionnum);
+    }
+
+    /**
+     * The section number of this course's copy of the payload's subsection.
+     *
+     * @param \stdClass $course
+     * @param activity_payload $payload
+     * @return int|null null when the activity is in no subsection, or its
+     *                  subsection has not been copied here
+     */
+    public static function local_subsection_section(\stdClass $course, activity_payload $payload): ?int {
+        if ($payload->subsectioncmid === 0) {
+            return null;
+        }
+
+        $cmid = \block_coursesync\syncer::find_existing((int) $course->id, $payload->subsectioncmid);
+
+        if ($cmid === 0) {
+            return null;
+        }
+
+        $modinfo = get_fast_modinfo($course->id);
+        $cm = $modinfo->get_cm($cmid);
+
+        if ($cm->modname !== 'subsection') {
+            return null;
+        }
+
+        $section = $modinfo->get_section_info_by_component('mod_subsection', (int) $cm->instance);
+
+        return $section ? (int) $section->section : null;
     }
 }

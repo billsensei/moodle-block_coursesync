@@ -133,7 +133,11 @@ if (!$confirm) {
     $changedrows = array_map(
         static fn(activity $activity): array => [
             'activity' => $activity,
-            'status' => $candidates->is_new_edition($activity->cmid) ? 'changednewedition' : 'changedreplace',
+            'status' => match (true) {
+                $candidates->is_in_place($activity->cmid) => 'changedinplace',
+                $candidates->is_new_edition($activity->cmid) => 'changednewedition',
+                default => 'changedreplace',
+            },
         ],
         $candidates->changed
     );
@@ -155,6 +159,7 @@ if (!$confirm) {
             'new' => get_string('syncstatusnew', 'block_coursesync'),
             'changedreplace' => get_string('syncstatuschangedreplace', 'block_coursesync'),
             'changednewedition' => get_string('syncstatuschangednewedition', 'block_coursesync'),
+            'changedinplace' => get_string('syncstatuschangedinplace', 'block_coursesync'),
             'present' => get_string('syncstatuspresent', 'block_coursesync'),
             'collision' => get_string('syncstatuscollision', 'block_coursesync'),
         ];
@@ -177,7 +182,7 @@ if (!$confirm) {
 
             foreach ($rows as $row) {
                 $activity = $row['activity'];
-                $selectable = in_array($row['status'], ['new', 'changedreplace', 'changednewedition'], true);
+                $selectable = in_array($row['status'], ['new', 'changedreplace', 'changednewedition', 'changedinplace'], true);
                 $id = 'coursesync-cm-' . (int) $activity->cmid;
 
                 $checkbox = html_writer::empty_tag('input', [

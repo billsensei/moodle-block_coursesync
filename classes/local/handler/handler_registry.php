@@ -56,6 +56,9 @@ class handler_registry {
         qbank_handler::class,
         scorm_handler::class,
         imscp_handler::class,
+        lti_handler::class,
+        bigbluebuttonbn_handler::class,
+        subsection_handler::class,
     ];
 
     /**

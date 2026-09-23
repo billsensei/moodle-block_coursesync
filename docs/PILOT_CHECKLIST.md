@@ -59,11 +59,20 @@ read"*.
 
 ## What to tell teachers up front
 
-- Twenty activity types are copied: Page, URL, Label, File, Folder, Book,
-  Forum, Wiki, Assignment, Quiz, Choice, Glossary, Feedback, Database, Workshop,
-  Lesson, H5P, Question bank, SCORM package and IMS content package. A SCORM that
-  is only a link to a package elsewhere is refused with a message. Everything
-  else is listed as skipped
+- Every activity type in standard Moodle is copied - twenty-three: Page, URL,
+  Label, File, Folder, Book, Forum, Wiki, Assignment, Quiz, Choice, Glossary,
+  Feedback, Database, Workshop, Lesson, H5P, Question bank, SCORM package, IMS
+  content package, External tool, BigBlueButton and Subsection. A SCORM that is
+  only a link to a package elsewhere is refused with a message. An activity
+  type added to Moodle by a plugin is not offered; check for any before the
+  pilot
+- **Before the pilot, set up on the destination any external tools the pilot
+  courses use**, with the same addresses. An External tool activity is only
+  ever linked to a tool this site's administrator has set up; without one it is
+  refused, naming the tool, and comes across on the next sync once it is added
+- **BigBlueButton must be enabled on the destination** (it is off in a new
+  Moodle). Copied rooms get their own meeting and passwords; recordings stay on
+  the source
 - Forum, Wiki and Assignment **settings** come across; discussions, wiki pages
   and student submissions do not
 - A copied **Quiz brings its questions with it** — fixed slots and random

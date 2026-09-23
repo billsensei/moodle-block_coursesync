@@ -309,6 +309,9 @@ final class handlers_test extends advanced_testcase {
             'qbank',
             'scorm',
             'imscp',
+            'lti',
+            'bigbluebuttonbn',
+            'subsection',
         ];
 
         foreach ($expected as $modname) {
@@ -318,13 +321,18 @@ final class handlers_test extends advanced_testcase {
 
         $this->assertSame($expected, handler_registry::supported_modnames());
 
-        // Something nothing here handles, so the registry is known to be
-        // answering rather than agreeing with everything. It is looked up
-        // rather than named, because naming one goes stale the day it gains a
-        // handler.
-        $unsupported = handler_registry::first_unsupported_modname();
+        // Every activity module standard Moodle ships has a handler. A new
+        // Moodle version that adds one fails here, rather than its activities
+        // quietly being left off the sync page.
+        foreach (\core_plugin_manager::standard_plugins_list('mod') as $modname) {
+            $this->assertTrue(handler_registry::supports($modname), "standard module {$modname} has no handler");
+        }
 
-        $this->assertNotNull($unsupported, 'Every installed type has a handler; this check needs rethinking');
+        // Something nothing here handles, so the registry is known to be
+        // answering rather than agreeing with everything: a third-party
+        // module installed here if there is one, or one that is not.
+        $unsupported = handler_registry::first_unsupported_modname() ?? 'thirdpartymodule';
+
         $this->assertFalse(handler_registry::supports($unsupported));
         $this->assertNull(handler_registry::get($unsupported));
     }

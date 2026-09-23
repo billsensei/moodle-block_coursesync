@@ -179,16 +179,17 @@ class sync_result {
      * @param string $modname
      * @param int $remotecmid
      * @param string $reasonkey a language string identifier explaining why
+     * @param array $notes anything more a person needs to act on it, as for add_created()
      * @return void
      */
-    public function add_failed(string $name, string $modname, int $remotecmid, string $reasonkey): void {
+    public function add_failed(string $name, string $modname, int $remotecmid, string $reasonkey, array $notes = []): void {
         $this->items[] = [
             'outcome' => 'failed',
             'name' => $name,
             'modname' => $modname,
             'remotecmid' => $remotecmid,
             'localcmid' => 0,
-            'notes' => [],
+            'notes' => $notes,
             'detail' => $reasonkey,
         ];
     }

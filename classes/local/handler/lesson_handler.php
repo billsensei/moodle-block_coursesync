@@ -182,7 +182,7 @@ class lesson_handler extends activity_handler {
         require_once($CFG->dirroot . '/mod/lesson/lib.php');
         require_once($CFG->dirroot . '/mod/lesson/locallib.php');
 
-        $sectionnum = $this->resolve_section($course, $payload->sectionnum);
+        $sectionnum = $this->target_section($course, $payload);
         $cmid = $this->create_course_module($course, $payload, $idnumber);
 
         $data = $this->make_instance_data($course, $cmid, $payload, $idnumber);

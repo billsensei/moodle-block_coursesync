@@ -49,6 +49,9 @@ class activity_payload {
     /** @var int Section number the activity sits in on the source site. */
     public readonly int $sectionnum;
 
+    /** @var int Course module id on the source site of the subsection holding the activity, or 0. */
+    public readonly int $subsectioncmid;
+
     /** @var bool Whether the activity is visible on the source site. */
     public readonly bool $visible;
 
@@ -98,7 +101,8 @@ class activity_payload {
         int $timemodified,
         array $settings,
         array $files = [],
-        array $children = []
+        array $children = [],
+        int $subsectioncmid = 0
     ) {
         $this->cmid = $cmid;
         $this->modname = $modname;
@@ -112,6 +116,7 @@ class activity_payload {
         $this->settings = $settings;
         $this->files = $files;
         $this->children = $children;
+        $this->subsectioncmid = $subsectioncmid;
     }
 
     /**
@@ -156,7 +161,8 @@ class activity_payload {
             max(0, clean_param($data['timemodified'] ?? 0, PARAM_INT)),
             $settings,
             self::clean_files($data['files'] ?? []),
-            self::clean_children($data['children'] ?? [])
+            self::clean_children($data['children'] ?? []),
+            max(0, clean_param($data['subsectioncmid'] ?? 0, PARAM_INT))
         );
     }
 

@@ -134,7 +134,7 @@ other site but Course Sync did not put it there, you get a warning naming it.
 Nothing will be changed or copied over it — but it is worth a look, because it
 usually means two things have ended up with the same ID number.
 
-Course Sync currently copies twenty kinds:
+Course Sync copies every standard kind of activity - twenty-three:
 
 | Type | What comes across | What stays behind |
 | --- | --- | --- |
@@ -158,11 +158,21 @@ Course Sync currently copies twenty kinds:
 | **Question bank** | Its categories, and questions of every standard Moodle question type | Questions of a type added to Moodle by a plugin, attempts, and usage statistics |
 | **SCORM package** | The package, unpacked and checked that it opens here, and how it is shown and graded | Attempts and tracking data. A SCORM that is only a link to a package elsewhere cannot be copied — add it by hand with the same link |
 | **IMS content package** | The current package, unpacked and checked that it opens here | Older versions of the package kept on the other site |
+| **External tool** | The link and its settings, connected to the matching tool this site already has | The other site's keys and secrets. If this site has no matching tool, it is not copied and the results name the tool your administrator needs to add |
+| **Subsection** | The subsection, and - when you copy them too - the activities inside it, placed inside the copy | Nothing; it only has a name |
+| **BigBlueButton** | The room's settings, schedule, welcome message, presentation, and who joins as moderator by role | Recordings, the other site's passwords and dial-in number, and rules that named individual people |
 
 Most of these copy the activity as a teacher set it up, not what anyone did in
 it. That is on purpose: work students did belongs where they did it. Each copy
 says on the results page what was left behind, so you are never left to find out
 by opening it.
+
+**Activities inside a subsection go inside its copy.** Tick the subsection and
+what is in it in the same sync, or copy the subsection first - either way the
+activities land inside it. If you copy an activity without its subsection, it is
+put in the section the subsection is in, and the results page says so. A changed
+subsection is only ever renamed here, never replaced, so nothing inside it is
+disturbed.
 
 **A copied quiz brings its questions with it.** Both kinds of slot a quiz can
 hold come across: one that names an exact question, and one that draws

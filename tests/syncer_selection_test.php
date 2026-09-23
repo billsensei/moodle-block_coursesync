@@ -154,11 +154,10 @@ final class syncer_selection_test extends advanced_testcase {
      * @return string
      */
     protected function unsupported_modname(): string {
-        $modname = \block_coursesync\local\handler\handler_registry::first_unsupported_modname();
-
-        $this->assertNotNull($modname, 'Every installed type has a handler; this test needs rethinking');
-
-        return $modname;
+        // Every type in standard Moodle has a handler now, so this is a
+        // third-party module's name unless the site has one installed. The
+        // source only reports the name; it need not be installed here.
+        return \block_coursesync\local\handler\handler_registry::first_unsupported_modname() ?? 'thirdpartymodule';
     }
 
     /**

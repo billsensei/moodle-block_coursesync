@@ -63,6 +63,9 @@ class sync_candidates {
     /** @var activity[] Copied here by an earlier run, and changed on the source since. */
     public array $changed = [];
 
+    /** @var int[] Remote cmids of changed activities whose copy is updated where it stands. */
+    public array $inplace = [];
+
     /** @var int[] Remote cmids of changed activities whose local copy people have data in. */
     public array $neweditions = [];
 
@@ -109,6 +112,16 @@ class sync_candidates {
      */
     public function is_new_edition(int $remotecmid): bool {
         return in_array($remotecmid, $this->neweditions, true);
+    }
+
+    /**
+     * Would syncing this changed activity update its copy where it stands?
+     *
+     * @param int $remotecmid
+     * @return bool
+     */
+    public function is_in_place(int $remotecmid): bool {
+        return in_array($remotecmid, $this->inplace, true);
     }
 
     /**

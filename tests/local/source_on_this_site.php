@@ -19,6 +19,7 @@ namespace block_coursesync\local;
 use block_coursesync\activity_payload;
 use block_coursesync\external\get_activity;
 use block_coursesync\external\get_activity_file;
+use block_coursesync\external\get_modified_activities;
 use block_coursesync\local\handler\handler_registry;
 use core\http_client;
 use GuzzleHttp\Promise\Create;
@@ -30,8 +31,9 @@ use Psr\Http\Message\RequestInterface;
  *
  * The activity is exported as the source would export it, rebuilt as the
  * destination would, and its files fetched through file_sync from a "source"
- * that answers each request by running the real
- * block_coursesync_get_activity_file on this same site. So the source's
+ * that answers each request by running the real web service function on this
+ * same site - get_activity_file, and for a whole syncer::run(),
+ * get_modified_activities and get_activity too. So the source's
  * listing, its refusal rules, the transfer and the destination's filing and
  * post_files() all run together, as they do between two sites.
  *
@@ -52,25 +54,44 @@ trait source_on_this_site {
         return new http_client(['mock' => function (RequestInterface $request) {
             parse_str((string) $request->getBody(), $params);
 
-            $this->requested[] = ($params['component'] ?? '') . '/' . $params['filearea'] . '/' . $params['filename'];
-
             try {
-                $body = get_activity_file::execute(
-                    (int) $params['cmid'],
-                    (string) $params['filearea'],
-                    (int) $params['itemid'],
-                    (string) $params['filepath'],
-                    (string) $params['filename'],
-                    (int) $params['offset'],
-                    (int) $params['length'],
-                    (string) ($params['component'] ?? '')
-                );
+                $body = $this->answer((string) ($params['wsfunction'] ?? ''), $params);
             } catch (\moodle_exception $e) {
                 $body = ['exception' => get_class($e), 'errorcode' => $e->errorcode, 'message' => $e->getMessage()];
             }
 
             return Create::promiseFor(new Response(200, ['Content-Type' => 'application/json'], json_encode($body)));
         }]);
+    }
+
+    /**
+     * What this site's own web service function returns for one request.
+     *
+     * @param string $function
+     * @param array $params
+     * @return array
+     */
+    protected function answer(string $function, array $params): array {
+        if ($function === 'block_coursesync_get_modified_activities') {
+            return get_modified_activities::execute((int) $params['courseid'], (int) ($params['since'] ?? 0));
+        }
+
+        if ($function === 'block_coursesync_get_activity') {
+            return get_activity::execute((int) $params['cmid']);
+        }
+
+        $this->requested[] = ($params['component'] ?? '') . '/' . $params['filearea'] . '/' . $params['filename'];
+
+        return get_activity_file::execute(
+            (int) $params['cmid'],
+            (string) $params['filearea'],
+            (int) $params['itemid'],
+            (string) $params['filepath'],
+            (string) $params['filename'],
+            (int) $params['offset'],
+            (int) $params['length'],
+            (string) ($params['component'] ?? '')
+        );
     }
 
     /**

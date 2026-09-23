@@ -166,7 +166,9 @@ class syncer {
                 } else if (self::changed_since($activity, $pulledat) && handler_registry::supports($activity->modname)) {
                     $candidates->changed[] = $activity;
 
-                    if (copy_update::has_people_data($existing)) {
+                    if (handler_registry::get($activity->modname)->updates_in_place()) {
+                        $candidates->inplace[] = (int) $activity->cmid;
+                    } else if (copy_update::has_people_data($existing)) {
                         $candidates->neweditions[] = (int) $activity->cmid;
                     }
                 } else {
@@ -267,7 +269,16 @@ class syncer {
         // in the request.
         $chosen = $only === null ? null : array_map('intval', $only);
 
-        foreach ($found->activities as $activity) {
+        // Subsections first, so that anything inside one, copied in this
+        // same run, finds this course's copy of it already there. Otherwise
+        // the order is the source's: oldest change first.
+        $activities = $found->activities;
+        usort(
+            $activities,
+            static fn(activity $a, activity $b): int => ($b->modname === 'subsection') <=> ($a->modname === 'subsection')
+        );
+
+        foreach ($activities as $activity) {
             // Asked before the chosen set, and deliberately. Something this
             // plugin cannot handle was never on offer, so saying the teacher
             // chose to leave it out would be untrue - and worse, it would hold
@@ -415,7 +426,7 @@ class syncer {
             $payload->modname,
             $activity->cmid,
             (int) $cm->id,
-            self::notes_for($handler, $payload)
+            self::notes_for($handler, $payload, $course)
         );
     }
 
@@ -448,6 +459,14 @@ class syncer {
         global $CFG, $DB;
 
         require_once($CFG->dirroot . '/course/lib.php');
+
+        $handler = handler_registry::get($activity->modname);
+
+        if ($handler !== null && $handler->updates_in_place()) {
+            self::update_in_place($handler, $record, $token, $activity, $existingcmid, $result, $client);
+
+            return;
+        }
 
         $created = self::create_copy($course, $record, $token, $activity, $result, $client, '');
 
@@ -500,8 +519,54 @@ class syncer {
             $activity->cmid,
             (int) $cm->id,
             $newedition ? 'syncupdatednewedition' : 'syncupdatedreplaced',
-            self::notes_for($handler, $payload)
+            self::notes_for($handler, $payload, $course)
         );
+    }
+
+    /**
+     * Bring a copy up to date where it stands, for a type that is never
+     * replaced (activity_handler::updates_in_place()).
+     *
+     * @param activity_handler $handler
+     * @param \stdClass $record the connection
+     * @param string $token
+     * @param activity $activity
+     * @param int $existingcmid the copy here
+     * @param sync_result $result
+     * @param http_client|null $client
+     * @return void
+     */
+    protected static function update_in_place(
+        activity_handler $handler,
+        \stdClass $record,
+        string $token,
+        activity $activity,
+        int $existingcmid,
+        sync_result $result,
+        ?http_client $client = null
+    ): void {
+        global $DB;
+
+        $fetched = remote_client::get_activity($record->remoteurl, $token, $activity->cmid, $client);
+
+        if (!$fetched->success) {
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, $fetched->errorkey);
+
+            return;
+        }
+
+        $payload = $fetched->payload;
+        $problem = $handler->check_payload($payload);
+
+        if ($problem !== null) {
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, $problem);
+
+            return;
+        }
+
+        $handler->update_in_place($DB->get_record('course_modules', ['id' => $existingcmid], '*', MUST_EXIST), $payload);
+
+        $result->add_updated($payload->name, $payload->modname, $activity->cmid, $existingcmid, 'syncupdatedinplace');
     }
 
     /**
@@ -545,10 +610,16 @@ class syncer {
             return null;
         }
 
-        $problem = $handler->check_payload($payload);
+        $problem = $handler->check_payload($payload) ?? $handler->check_destination($course, $payload);
 
         if ($problem !== null) {
-            $result->add_failed($activity->name, $activity->modname, $activity->cmid, $problem);
+            $result->add_failed(
+                $activity->name,
+                $activity->modname,
+                $activity->cmid,
+                $problem,
+                $handler->failure_notes($payload, $problem)
+            );
 
             return null;
         }
@@ -582,7 +653,13 @@ class syncer {
                 ? $e->errorcode
                 : 'errorcreatefailed';
 
-            $result->add_failed($activity->name, $activity->modname, $activity->cmid, $reason);
+            $result->add_failed(
+                $activity->name,
+                $activity->modname,
+                $activity->cmid,
+                $reason,
+                $handler->failure_notes($payload, $reason)
+            );
 
             return null;
         }
@@ -595,10 +672,17 @@ class syncer {
      *
      * @param activity_handler $handler
      * @param activity_payload $payload
+     * @param \stdClass $course where it was copied to
      * @return array
      */
-    protected static function notes_for(activity_handler $handler, activity_payload $payload): array {
+    protected static function notes_for(activity_handler $handler, activity_payload $payload, \stdClass $course): array {
         $notes = [];
+
+        // It sits in a subsection on the other site that is not in this
+        // course, so it went in the section that subsection is in.
+        if ($payload->subsectioncmid > 0 && activity_handler::local_subsection_section($course, $payload) === null) {
+            $notes[] = 'syncsubsectionmissing';
+        }
 
         if ($payload->references_files()) {
             // Named, so a teacher knows which pictures to put back by hand.

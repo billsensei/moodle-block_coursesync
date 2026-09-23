@@ -608,6 +608,41 @@ and Behat each refuse to run against a site built for a different version.
   arrive, rather than created as something that cannot be opened. They test
   for the package's own area (`activity_payload::has_file_in()`), not
   `has_files()`, which a description image alone would now satisfy.
+- **Subsections and placement.** A subsection owns a delegated section,
+  numbered after the ordinary ones. `get_activity` reports an activity inside
+  one by the ordinary section its subsection is in (`sectionnum`) plus the
+  subsection's cmid (`subsectioncmid`, optional in the return structure).
+  Handlers place through `activity_handler::target_section()`: inside this
+  course's copy of that subsection if there is one, else
+  `resolve_section()`, which now only ever returns an ordinary section
+  (`component IS NULL`) - before this, clamping to the highest section number
+  could drop an activity into an unrelated subsection. `syncer::run()` handles
+  subsections before anything else. A changed subsection is never replaced -
+  `subsection_delete_instance()` force-deletes everything inside - so
+  `subsection_handler::updates_in_place()` is true and `update_in_place()`
+  renames it through `formatactions::cm()->rename()`, whose hook renames its
+  section too. Renaming either way on the source moves the subsection's
+  `timemodified` (`sectiondelegatemodule::preprocess_section_name()`), so
+  change detection needs nothing special.
+- **External tools (`lti_handler`) are only linked to a tool already set up
+  here.** `check_destination()` - a handler hook asked before anything is
+  created, for refusals that depend on the course - runs Moodle's own launch
+  matcher, `lti_get_tool_by_url_match()` (configured tools, site or this
+  course, by domain), on the activity's `toolurl` or else its source tool's
+  `baseurl`. No match refuses with `errorltinotool`, and `failure_notes()` - a
+  second new hook, for what a fixed failure message cannot say - names the
+  tool. `lti_add_instance()` then applies `lti_force_type_config_settings()`,
+  so this site's tool decides what is sent about people. Keys, secrets and
+  `servicesalt` never travel; an activity with its own key/secret and no tool
+  (`typeid` 0) is refused (`errorltiownsecret`). Test note: the `mod_lti`
+  generator's site tools are pending with no domain, unlike any saved through
+  the admin screens, so tests pass `state` and `lti_toolurl`.
+- **BigBlueButton (`bigbluebuttonbn_handler`) is set up afresh.**
+  `bigbluebuttonbn_add_instance()` generates the meeting id and moderator,
+  viewer and guest credentials; none of the source's travel. Participant rules
+  travel with role ids turned into shortnames and back; `user` rules and
+  unknown roles are dropped and counted. `voicebridge` is reset to 0. Refused
+  (`errorbbbnotenabled`) where the module is not enabled.
 - **SCORM and IMS packages are unpacked and parsed here, then checked to
   open** (LEARNFROMME P11.2). Only the zip travels, never the unpacked
   `content` area or the parsed tables. Their `post_files()` runs what

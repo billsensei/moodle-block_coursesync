@@ -106,11 +106,14 @@ final class get_activity_test extends advanced_testcase {
         $this->setAdminUser();
 
         $course = $this->getDataGenerator()->create_course();
-        // Something with no handler. An external tool is a fair bet to stay
-        // that way: its settings point at site-level tool configuration, which
-        // means nothing on another site.
+        // Something installed here with no handler. Every type in standard
+        // Moodle has one now, so this needs a third-party module; without one
+        // there is nothing real to refuse, and saying so beats passing vacuously.
         $modname = handler_registry::first_unsupported_modname();
-        $this->assertNotNull($modname, 'Every installed type has a handler; this test needs rethinking');
+
+        if ($modname === null) {
+            $this->markTestSkipped('Every installed activity type has a handler; this needs a third-party module installed.');
+        }
 
         $module = $this->getDataGenerator()->create_module($modname, ['course' => $course->id]);
 

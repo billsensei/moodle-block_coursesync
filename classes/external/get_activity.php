@@ -124,12 +124,21 @@ class get_activity extends external_api {
 
         $files = self::list_files($context, $cminfo->modname, $handler->file_areas());
 
+        // An activity inside a subsection sits in that subsection's own,
+        // delegated section, whose number means nothing on another site - it
+        // is not even one of the course's ordinary sections. What travels is
+        // which subsection holds it, and, for a destination that cannot find
+        // that subsection (or predates this), the ordinary section the
+        // subsection itself is in.
+        [$sectionnum, $subsectioncmid] = self::placement($cminfo);
+
         return [
             'cmid' => (int) $cminfo->id,
             'modname' => $cminfo->modname,
             'name' => external_util::format_string($cminfo->name, $coursecontext, true),
             'idnumber' => (string) $cminfo->idnumber,
-            'sectionnum' => (int) $cminfo->sectionnum,
+            'sectionnum' => $sectionnum,
+            'subsectioncmid' => $subsectioncmid,
             'visible' => (bool) $cminfo->visible,
             'intro' => (string) ($instance->intro ?? ''),
             'introformat' => (int) ($instance->introformat ?? FORMAT_HTML),
@@ -138,6 +147,30 @@ class get_activity extends external_api {
             'children' => $children,
             'files' => $files,
         ];
+    }
+
+    /**
+     * Where an activity sits: its ordinary section, and its subsection if any.
+     *
+     * @param \cm_info $cminfo
+     * @return int[] [ordinary section number, subsection course module id or 0]
+     */
+    protected static function placement(\cm_info $cminfo): array {
+        $section = $cminfo->get_section_info();
+
+        if ($section->component !== 'mod_subsection') {
+            return [(int) $cminfo->sectionnum, 0];
+        }
+
+        $subsection = get_coursemodule_from_instance('subsection', (int) $section->itemid, $cminfo->course);
+
+        if (!$subsection) {
+            return [(int) $cminfo->sectionnum, 0];
+        }
+
+        $parent = $cminfo->get_modinfo()->get_cm($subsection->id);
+
+        return [(int) $parent->sectionnum, (int) $subsection->id];
     }
 
     /**
@@ -200,6 +233,11 @@ class get_activity extends external_api {
             'name' => new external_value(PARAM_TEXT, 'Activity name.'),
             'idnumber' => new external_value(PARAM_RAW, 'ID number on the source site, often empty.'),
             'sectionnum' => new external_value(PARAM_INT, 'Section number the activity sits in.'),
+            'subsectioncmid' => new external_value(
+                PARAM_INT,
+                'Course module id of the subsection holding the activity, or 0.',
+                VALUE_OPTIONAL
+            ),
             'visible' => new external_value(PARAM_BOOL, 'Whether the activity is visible on the source site.'),
             'intro' => new external_value(PARAM_RAW, 'Activity description.'),
             'introformat' => new external_value(PARAM_INT, 'Format of the description.'),
