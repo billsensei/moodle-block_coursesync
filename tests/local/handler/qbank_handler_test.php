@@ -94,7 +94,7 @@ final class qbank_handler_test extends advanced_testcase {
 
         // A type this handler does not rebuild: present in the bank, left
         // out of the copy, counted rather than silently dropped.
-        $qgen->create_question('description', null, ['category' => $parent->id]);
+        $qgen->create_question('calculated', 'sum', ['category' => $parent->id]);
 
         // A question whose text carries an embedded image, to prove the file
         // travels inline through the XML with no file_sync involvement.
@@ -151,7 +151,7 @@ final class qbank_handler_test extends advanced_testcase {
 
         // Seven of the supported types plus the superseded question's current
         // version plus the one with an image: nine questions in total.
-        // The unsupported "description" question and the first version of
+        // The unsupported "calculated" question and the first version of
         // the superseded one are not among them.
         $questionids = \question_bank::get_finder()->get_questions_from_categories(
             [$newparent->id, $newchild->id],
@@ -170,7 +170,7 @@ final class qbank_handler_test extends advanced_testcase {
 
         foreach ($questionids as $questionid) {
             $this->assertNotSame(
-                'description',
+                'calculated',
                 $DB->get_field('question', 'qtype', ['id' => $questionid]),
                 'an unsupported type should never have been created'
             );
@@ -378,6 +378,171 @@ final class qbank_handler_test extends advanced_testcase {
             $ddmarker->id,
             $newddmarker->id
         );
+    }
+
+    /**
+     * Select missing words, ordering, random short-answer matching and
+     * description round-trip. None needs code of its own in the handler;
+     * this is what proves it. Random short-answer matching gets the closest
+     * look, because it holds only settings: it draws short-answer questions
+     * from its own category when attempted, so the copy is loaded as a real
+     * question to show that draw works on this side too.
+     */
+    public function test_select_order_random_matching_and_description_round_trip(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $qbank = $this->getDataGenerator()->create_module('qbank', ['course' => $source->id]);
+        $qbankcontext = \context_module::instance($qbank->cmid);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $category = $qgen->create_question_category([
+            'contextid' => $qbankcontext->id,
+            'name' => 'Mixed',
+        ]);
+
+        $gapselect = $qgen->create_question('gapselect', 'missingchoiceno', ['category' => $category->id]);
+        $ordering = $qgen->create_question('ordering', 'moodle', ['category' => $category->id]);
+        $description = $qgen->create_question('description', 'info', ['category' => $category->id]);
+
+        // The short-answer questions a random matching question draws from,
+        // in the same category, as a teacher would set it up.
+        foreach (['Dog' => 'Mammal', 'Frog' => 'Amphibian', 'Toad' => 'Amphibian'] as $stem => $answer) {
+            $qgen->create_question('shortanswer', null, [
+                'category' => $category->id,
+                'name' => $stem,
+                'questiontext' => ['text' => $stem, 'format' => FORMAT_HTML],
+                'answer' => [$answer],
+                'fraction' => ['1.0'],
+                'feedback' => [['text' => '', 'format' => FORMAT_HTML]],
+            ]);
+        }
+
+        $randomsamatch = $this->create_randomsamatch($qgen, $category->id);
+
+        [$cm, $payload, $handler] = $this->round_trip($qbank->cmid, $target);
+        $targetcontext = \context_module::instance($cm->id);
+
+        $this->assertSame(['syncqbanknoattempts'], $handler->notes($payload), 'all four types are supported');
+
+        $newcategory = $DB->get_record(
+            'question_categories',
+            ['contextid' => $targetcontext->id, 'name' => 'Mixed'],
+            '*',
+            MUST_EXIST
+        );
+
+        // Select missing words: options row, and its choices with their groups.
+        $newgapselect = $this->find_copy($DB, $newcategory->id, $gapselect->name);
+        $this->assertSame('gapselect', $newgapselect->qtype);
+        $this->assertTrue($DB->record_exists('question_gapselect', ['questionid' => $newgapselect->id]));
+        // Compared with what was saved, not what the generator was given:
+        // saving renumbers the gaps round any empty choice, on both sites.
+        $this->assertSame(
+            $DB->get_field('question', 'questiontext', ['id' => $gapselect->id]),
+            $newgapselect->questiontext
+        );
+        $this->assert_same_answers($DB, (int) $gapselect->id, (int) $newgapselect->id, 'answer, feedback');
+
+        // Ordering: options row, and the items in their correct order.
+        $newordering = $this->find_copy($DB, $newcategory->id, $ordering->name);
+        $this->assertSame('ordering', $newordering->qtype);
+        $options = $DB->get_record('qtype_ordering_options', ['questionid' => $ordering->id], '*', MUST_EXIST);
+        $newoptions = $DB->get_record('qtype_ordering_options', ['questionid' => $newordering->id], '*', MUST_EXIST);
+        foreach (['layouttype', 'selecttype', 'selectcount', 'gradingtype', 'showgrading', 'numberingstyle'] as $field) {
+            $this->assertEquals($options->$field, $newoptions->$field, "ordering {$field} should have copied");
+        }
+        $this->assert_same_answers($DB, (int) $ordering->id, (int) $newordering->id, 'answer, fraction');
+
+        // Description: just its text, and no mark.
+        $newdescription = $this->find_copy($DB, $newcategory->id, $description->name);
+        $this->assertSame('description', $newdescription->qtype);
+        $this->assertSame(
+            $DB->get_field('question', 'questiontext', ['id' => $description->id]),
+            $newdescription->questiontext
+        );
+        $this->assertEquals(0, $newdescription->defaultmark);
+
+        // Random short-answer matching: its settings travelled, and loading
+        // it here draws the short-answer questions that travelled with it.
+        $newrandomsamatch = $this->find_copy($DB, $newcategory->id, $randomsamatch->name);
+        $this->assertSame('randomsamatch', $newrandomsamatch->qtype);
+        $newsettings = $DB->get_record('qtype_randomsamatch_options', ['questionid' => $newrandomsamatch->id], '*', MUST_EXIST);
+        $this->assertEquals(2, $newsettings->choose);
+        $this->assertEquals(0, $newsettings->subcats);
+
+        $loaded = \question_bank::load_question((int) $newrandomsamatch->id);
+        $loaded->start_attempt(new \question_attempt_step(), 1);
+        $this->assertCount(2, $loaded->stems, 'the copy should draw two short-answer questions from its own category');
+        $this->assertEqualsCanonicalizing(['Mammal', 'Amphibian'], array_values(array_unique($loaded->choices)));
+    }
+
+    /**
+     * A random short-answer matching question, drawing two from the given category.
+     *
+     * There is no generator for this type, so it starts as a short-answer
+     * question and is given this type's own options row instead - the same
+     * shape its save_question_options() leaves behind.
+     *
+     * @param \core_question_generator $qgen
+     * @param int $categoryid
+     * @return \stdClass the question record
+     */
+    protected function create_randomsamatch(\core_question_generator $qgen, int $categoryid): \stdClass {
+        global $DB;
+
+        $question = $qgen->create_question('shortanswer', null, [
+            'category' => $categoryid,
+            'name' => 'Classify the animals',
+            'questiontext' => ['text' => 'Classify the animals.', 'format' => FORMAT_HTML],
+        ]);
+
+        $DB->delete_records('question_answers', ['question' => $question->id]);
+        $DB->delete_records('qtype_shortanswer_options', ['questionid' => $question->id]);
+        $DB->set_field('question', 'qtype', 'randomsamatch', ['id' => $question->id]);
+        $DB->insert_record('qtype_randomsamatch_options', (object) [
+            'questionid' => $question->id,
+            'choose' => 2,
+            'subcats' => 0,
+            'correctfeedback' => 'Well done.',
+            'correctfeedbackformat' => FORMAT_HTML,
+            'partiallycorrectfeedback' => 'Partly.',
+            'partiallycorrectfeedbackformat' => FORMAT_HTML,
+            'incorrectfeedback' => 'No.',
+            'incorrectfeedbackformat' => FORMAT_HTML,
+            'shownumcorrect' => 1,
+        ]);
+
+        return $DB->get_record('question', ['id' => $question->id], '*', MUST_EXIST);
+    }
+
+    /**
+     * A question's answers match between the original and its copy, in order,
+     * compared on the given columns only.
+     */
+    protected function assert_same_answers(\moodle_database $db, int $originalid, int $copyid, string $fields): void {
+        $original = array_values(array_map(
+            fn($row) => (array) $row,
+            $db->get_records('question_answers', ['question' => $originalid], 'id ASC', 'id, ' . $fields)
+        ));
+        $copy = array_values(array_map(
+            fn($row) => (array) $row,
+            $db->get_records('question_answers', ['question' => $copyid], 'id ASC', 'id, ' . $fields)
+        ));
+
+        $strip = fn(array $rows) => array_map(function (array $row): array {
+            unset($row['id']);
+
+            return $row;
+        }, $rows);
+
+        $this->assertNotEmpty($original, 'the original should have answers to compare');
+        $this->assertEquals($strip($original), $strip($copy), 'answers should have copied unchanged, in order');
     }
 
     /**

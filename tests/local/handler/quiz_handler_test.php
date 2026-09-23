@@ -91,8 +91,8 @@ final class quiz_handler_test extends advanced_testcase {
         \quiz_add_quiz_question($shortanswer->id, $quiz, 0, 2.5);
 
         // A fixed slot of a type this handler does not rebuild.
-        $description = $qgen->create_question('description', null, ['category' => $parent->id]);
-        \quiz_add_quiz_question($description->id, $quiz, 0, 0);
+        $calculated = $qgen->create_question('calculated', 'sum', ['category' => $parent->id]);
+        \quiz_add_quiz_question($calculated->id, $quiz, 0, 1.0);
 
         // Random slot: one category, no subcategories, two questions in the pool.
         $qgen->create_question('shortanswer', null, ['category' => $randomcat->id, 'name' => 'Pool Q1']);
@@ -114,7 +114,7 @@ final class quiz_handler_test extends advanced_testcase {
 
         $newquiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
         $newslots = $DB->get_records('quiz_slots', ['quizid' => $newquiz->id], 'slot ASC');
-        $this->assertCount(5, $newslots, 'two fixed slots plus three random slots, description slot skipped');
+        $this->assertCount(5, $newslots, 'two fixed slots plus three random slots, calculated slot skipped');
 
         $bankcm = question_bank_helper::get_default_open_instance_system_type($target, false);
         $this->assertNotNull($bankcm, 'the System Bank should have been created');

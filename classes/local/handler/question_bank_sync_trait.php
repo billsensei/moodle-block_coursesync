@@ -47,7 +47,7 @@ trait question_bank_sync_trait {
     /** @var string[] The question types this handler knows how to rebuild. */
     protected const SUPPORTED_QTYPES = [
         'multichoice', 'truefalse', 'shortanswer', 'match', 'essay', 'numerical', 'multianswer',
-        'ddwtos', 'ddimageortext', 'ddmarker',
+        'ddwtos', 'ddimageortext', 'ddmarker', 'gapselect', 'ordering', 'randomsamatch', 'description',
     ];
 
     /** @var int Questions that arrived as a type this handler does not rebuild. */

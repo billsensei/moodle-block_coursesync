@@ -210,6 +210,28 @@ class behat_block_coursesync extends behat_base {
     }
 
     /**
+     * Move every Course Sync run in a course a minute into the past.
+     *
+     * Whether a copy has changed since it was pulled is measured to the
+     * second, from the start of the run that pulled it. A scenario that
+     * copies something and then edits it on the source can easily do both
+     * within one second, which is not a change at all by that measure. This
+     * makes "edited after it was copied" unambiguous without waiting.
+     *
+     * @Given /^the Course Sync runs in course "(?P<shortname>(?:[^"]|\\")*)" happened a minute ago$/
+     * @param string $shortname
+     */
+    public function the_course_sync_runs_happened_a_minute_ago(string $shortname) {
+        global $DB;
+
+        $DB->execute(
+            'UPDATE {block_coursesync_run} SET timestarted = timestarted - 60, timefinished = timefinished - 60
+              WHERE courseid = ?',
+            [$this->get_course_id($shortname)]
+        );
+    }
+
+    /**
      * Type the token this site issued into the token field.
      *
      * @When /^I enter the Course Sync token$/

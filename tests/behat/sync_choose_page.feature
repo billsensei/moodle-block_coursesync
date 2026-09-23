@@ -62,7 +62,8 @@ Feature: The Choose what to copy page groups activities by whether they can be c
 
   Scenario: An activity changed on the source since it was copied can be ticked to replace the copy
     # Edited on the source after the Background's run copied it.
-    Given I am on the "SRCWEEK" "page activity editing" page logged in as "admin"
+    Given the Course Sync runs in course "DEST" happened a minute ago
+    And I am on the "SRCWEEK" "page activity editing" page logged in as "admin"
     And I set the field "Page content" to "Rewritten on the source"
     And I press "Save and return to course"
 

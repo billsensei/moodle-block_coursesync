@@ -35,8 +35,8 @@ use block_coursesync\activity_payload;
  *    transfer mechanism would be strictly more code for nothing.
  *
  * 2. A question travels as one opaque XML fragment (the 'xml' field on a
- *    'question' child), not as flattened settings. Ten supported types
- *    means ten different column layouts - true/false points at two of its
+ *    'question' child), not as flattened settings. Fourteen supported
+ *    types means fourteen different column layouts - true/false points at two of its
  *    own answer rows, matching has no answer rows at all, numerical spans
  *    four tables. qformat_xml already solves exactly this, tags and answer
  *    files included, so this handler serialises with it rather than
@@ -52,9 +52,10 @@ use block_coursesync\activity_payload;
  *    that now does check something extra, and for a different reason - see
  *    that class and SECURITY.md.
  *
- * Only ten question types are rebuilt - multiple choice, true/false,
- * short answer, matching, essay, numerical, multianswer (cloze), and the
- * three drag and drop types (into text, onto image, markers) - because
+ * Only fourteen question types are rebuilt - multiple choice, true/false,
+ * short answer, matching, essay, numerical, multianswer (cloze), the three
+ * drag and drop types (into text, onto image, markers), select missing
+ * words, ordering, random short-answer matching and description - because
  * those cover most real question banks and each one's shape has actually
  * been checked against this handler. Multianswer needs nothing special
  * here despite its embedded sub-questions: qformat_xml's own reader
@@ -66,7 +67,13 @@ use block_coursesync\activity_payload;
  * any drag images as base64, their import_from_xml() turns those back into
  * draft areas, and their save_question_options() files them under the new
  * question - point 1 above, applied to a qtype's own file areas rather than
- * the question's text. A question of any other type is left out and counted;
+ * the question's text. Random short-answer matching carries only its
+ * settings, not its sub-questions: it draws short-answer questions from its
+ * own category each time it is attempted, so it works here once those arrive
+ * too - which they do, because every question in a synced category travels,
+ * but only from that one category: with "include subcategories" on, a quiz
+ * sync brings no subcategory the quiz does not otherwise reference.
+ * A question of any other type is left out and counted;
  * see notes(). Only the current ready version of each question is copied -
  * no drafts, no hidden versions, no history - matching how every other
  * type in this plugin carries current state rather than a log of changes.
