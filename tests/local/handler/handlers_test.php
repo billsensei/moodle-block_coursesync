@@ -307,6 +307,8 @@ final class handlers_test extends advanced_testcase {
             'lesson',
             'h5pactivity',
             'qbank',
+            'scorm',
+            'imscp',
         ];
 
         foreach ($expected as $modname) {

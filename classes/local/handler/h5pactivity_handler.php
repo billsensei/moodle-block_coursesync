@@ -150,7 +150,8 @@ class h5pactivity_handler extends activity_handler {
             return $problem;
         }
 
-        return $payload->has_files() ? null : 'errornopackage';
+        // Its own package, specifically: a description image is a file too.
+        return $payload->has_file_in('package', 0) ? null : 'errornopackage';
     }
 
     /**

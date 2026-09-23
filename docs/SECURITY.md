@@ -353,6 +353,10 @@ do. Table cells use `s()`.
   A site that grants `block/coursesync:sync` to a role without
   `moodle/course:manageactivities` should know that role can now replace
   synced activities.
+- A SCORM or IMS package from the source is unpacked on this site with
+  Moodle's own zip packer, exactly as an uploaded package is, and served by
+  the module's own pluginfile rules. Its content is as trusted as a package a
+  teacher uploads; nothing about it is cleaned, as nothing is for an upload.
 - A source site is trusted not to send an enormous file. `file_sync::MAX_CHUNKS`
   caps a single file at 1 GB.
 - A question's own files (its text, feedback, answers) do not go through

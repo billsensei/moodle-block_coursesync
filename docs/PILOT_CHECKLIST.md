@@ -59,9 +59,10 @@ read"*.
 
 ## What to tell teachers up front
 
-- Only eighteen activity types are copied: Page, URL, Label, File, Folder, Book,
+- Twenty activity types are copied: Page, URL, Label, File, Folder, Book,
   Forum, Wiki, Assignment, Quiz, Choice, Glossary, Feedback, Database, Workshop,
-  Lesson, H5P, Question bank. Everything
+  Lesson, H5P, Question bank, SCORM package and IMS content package. A SCORM that
+  is only a link to a package elsewhere is refused with a message. Everything
   else is listed as skipped
 - Forum, Wiki and Assignment **settings** come across; discussions, wiki pages
   and student submissions do not

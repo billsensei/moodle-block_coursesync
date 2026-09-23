@@ -54,6 +54,8 @@ class handler_registry {
         lesson_handler::class,
         h5pactivity_handler::class,
         qbank_handler::class,
+        scorm_handler::class,
+        imscp_handler::class,
     ];
 
     /**

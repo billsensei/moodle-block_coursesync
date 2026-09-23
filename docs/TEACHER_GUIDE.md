@@ -134,7 +134,7 @@ other site but Course Sync did not put it there, you get a warning naming it.
 Nothing will be changed or copied over it — but it is worth a look, because it
 usually means two things have ended up with the same ID number.
 
-Course Sync currently copies eighteen kinds:
+Course Sync currently copies twenty kinds:
 
 | Type | What comes across | What stays behind |
 | --- | --- | --- |
@@ -156,6 +156,8 @@ Course Sync currently copies eighteen kinds:
 | **Lesson** | Every page, and every path between them, including where each answer leads | What students did in it, and the password |
 | **H5P** | The interactive content itself and all its settings | Attempts and results |
 | **Question bank** | Its categories, and questions of every standard Moodle question type | Questions of a type added to Moodle by a plugin, attempts, and usage statistics |
+| **SCORM package** | The package, unpacked and checked that it opens here, and how it is shown and graded | Attempts and tracking data. A SCORM that is only a link to a package elsewhere cannot be copied — add it by hand with the same link |
+| **IMS content package** | The current package, unpacked and checked that it opens here | Older versions of the package kept on the other site |
 
 Most of these copy the activity as a teacher set it up, not what anyone did in
 it. That is on purpose: work students did belongs where they did it. Each copy

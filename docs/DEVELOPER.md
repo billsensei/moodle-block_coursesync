@@ -604,9 +604,24 @@ and Behat each refuse to run against a site built for a different version.
 - A lesson's password is not carried, and `usepassword` is turned off with it.
 - A lesson's `dependency` and `activitylink` name another activity by a local id,
   so the copy has neither.
-- An H5P activity is refused outright if its package did not arrive, rather than
-  created as something that cannot be opened. It is the only handler that
-  overrides `check_payload()` to insist on a file.
+- An H5P, SCORM or IMS activity is refused outright if its package did not
+  arrive, rather than created as something that cannot be opened. They test
+  for the package's own area (`activity_payload::has_file_in()`), not
+  `has_files()`, which a description image alone would now satisfy.
+- **SCORM and IMS packages are unpacked and parsed here, then checked to
+  open** (LEARNFROMME P11.2). Only the zip travels, never the unpacked
+  `content` area or the parsed tables. Their `post_files()` runs what
+  `scorm_add_instance()` / `imscp_add_instance()` run for an upload -
+  `scorm_parse($scorm, true)`, or `extract_to_storage()` plus
+  `imscp_parse_structure()` - because the package only exists once the
+  context does. A SCORM that parsed as `ERROR` or has no launch SCO, or an IMS
+  package with no table of contents or whose first page is missing, throws
+  `errorpackagenotdeployed`, and `syncer::create_copy()` removes it. Only
+  `local` SCORMs have a package; `localsync` is copied as `local` (noted),
+  `external`/`aiccurl` are refused (`errorscormnotuploaded`). An IMS source
+  may keep old revisions in `backup`; only the current one is kept, as
+  revision 1. The popup `options` string travels as separate `popup_*`
+  settings so `scorm_option2text()` rebuilds it in this site's format.
 - **A synced Question bank, and a synced quiz's questions, cover all
   seventeen of Moodle's standard question types** — multiple choice,
   true/false, short answer, matching, essay, numerical, multianswer (cloze),

@@ -22,11 +22,11 @@ use block_coursesync\external\get_activity;
 use block_coursesync\external\get_activity_file;
 use block_coursesync\local\handler\activity_handler;
 use block_coursesync\local\handler\handler_registry;
-use core\http_client;
-use GuzzleHttp\Promise\Create;
-use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\CoversClass;
-use Psr\Http\Message\RequestInterface;
+
+defined('MOODLE_INTERNAL') || die();
+
+require_once(__DIR__ . '/source_on_this_site.php');
 
 /**
  * Tests for files embedded in text fields: an image in a description, in a
@@ -50,57 +50,7 @@ use Psr\Http\Message\RequestInterface;
 #[CoversClass(get_activity::class)]
 #[CoversClass(get_activity_file::class)]
 final class embedded_files_test extends advanced_testcase {
-    /** @var string[] Every file the fake source was asked for, as component/area/name. */
-    protected array $requested = [];
-
-    /**
-     * A client whose "source site" is this test site: each file request is
-     * answered by the real web service function, as the remote end would.
-     *
-     * @return http_client
-     */
-    protected function local_source(): http_client {
-        return new http_client(['mock' => function (RequestInterface $request) {
-            parse_str((string) $request->getBody(), $params);
-
-            $this->requested[] = ($params['component'] ?? '') . '/' . $params['filearea'] . '/' . $params['filename'];
-
-            try {
-                $body = get_activity_file::execute(
-                    (int) $params['cmid'],
-                    (string) $params['filearea'],
-                    (int) $params['itemid'],
-                    (string) $params['filepath'],
-                    (string) $params['filename'],
-                    (int) $params['offset'],
-                    (int) $params['length'],
-                    (string) ($params['component'] ?? '')
-                );
-            } catch (\moodle_exception $e) {
-                $body = ['exception' => get_class($e), 'errorcode' => $e->errorcode, 'message' => $e->getMessage()];
-            }
-
-            return Create::promiseFor(new Response(200, ['Content-Type' => 'application/json'], json_encode($body)));
-        }]);
-    }
-
-    /**
-     * Copy an activity into another course, files and all.
-     *
-     * @param int $cmid the activity on the "source"
-     * @param \stdClass $target the course to copy it into
-     * @return array [the new course_modules record, the payload]
-     */
-    protected function copy(int $cmid, \stdClass $target): array {
-        $payload = activity_payload::from_response(get_activity::execute($cmid));
-        $handler = handler_registry::get($payload->modname);
-
-        $cm = $handler->create_from_remote_data($target, $payload, 'coursesync-' . $cmid);
-        file_sync::copy_files($cm, $handler, $payload, 'https://source.example.edu', 'token', $this->local_source());
-        $handler->post_files($cm, $payload);
-
-        return [$cm, $payload];
-    }
+    use source_on_this_site;
 
     /**
      * Store a file against an activity.

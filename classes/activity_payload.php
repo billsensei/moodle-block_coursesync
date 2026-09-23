@@ -403,6 +403,32 @@ class activity_payload {
     }
 
     /**
+     * Is there a file in one particular area of the activity's own component?
+     *
+     * has_files() is no test of whether an activity's package came, now that
+     * the images in any activity's description travel too.
+     *
+     * @param string $filearea
+     * @param int|null $itemid null for any item id
+     * @return bool
+     */
+    public function has_file_in(string $filearea, ?int $itemid = null): bool {
+        foreach ($this->files as $file) {
+            $component = (string) ($file['component'] ?? '');
+
+            if ($component !== '' && $component !== 'mod_' . $this->modname) {
+                continue;
+            }
+
+            if ($file['filearea'] === $filearea && ($itemid === null || (int) $file['itemid'] === $itemid)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Does any text in this payload point at a file that is not coming with it?
      *
      * A file embedded in a text field arrives as an @@PLUGINFILE@@ link, and
