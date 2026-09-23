@@ -147,7 +147,7 @@ Course Sync currently copies eighteen kinds:
 | **Forum** | The forum and its settings | Existing discussions and posts |
 | **Wiki** | The wiki and its settings | The pages people wrote in it |
 | **Assignment** | The task, dates, grading and marking settings, and which submission and feedback types are switched on | Student submissions, grades, feedback and extensions |
-| **Quiz** | All the settings: timing, attempts, review rules, grading — and its questions, of every standard Moodle question type | Questions of a type added to Moodle by a plugin, student attempts, and usage statistics |
+| **Quiz** | All the settings: timing, attempts, review rules, grading, the overall feedback for each grade range — and its questions, of every standard Moodle question type | Questions of a type added to Moodle by a plugin, student attempts, and usage statistics |
 | **Choice** | The question and every option, including any limits | The answers people gave |
 | **Glossary** | All the settings | The entries people wrote |
 | **Feedback** | Every question, in order, including questions that only appear depending on an earlier answer | The responses people gave |
@@ -246,7 +246,8 @@ tell whether a sync was tried.
 
 **Pictures and files inside text come across.** An image in an activity's
 description, in a page, in a text and media area, in a book chapter, a lesson
-page, a feedback label, or a workshop's instructions and assessment criteria
+page, a feedback label, a quiz's overall feedback, or a workshop's instructions
+and assessment criteria
 arrives with it, as do files attached to a **File** or **Folder** activity. If a
 link in some text points at a file that could not be brought across, the results
 page names that file, so you know which picture to put back by hand.

@@ -56,6 +56,63 @@ final class quiz_handler_test extends advanced_testcase {
     }
 
     /**
+     * The overall feedback arrives band for band: each band's text, and its
+     * grade range exactly as stored - not re-derived from the percentages the
+     * teacher typed. A quiz with no feedback gets none.
+     */
+    public function test_overall_feedback_is_copied_band_for_band(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        // As the edit form sends it: two boundaries make three bands.
+        $quiz = $this->getDataGenerator()->create_module('quiz', [
+            'course' => $source->id,
+            'grade' => 10,
+            'feedbackboundaries' => ['70%', '40%'],
+            'feedbacktext' => [
+                ['text' => '<p>Excellent.</p>', 'format' => FORMAT_HTML, 'itemid' => 0],
+                ['text' => '<p>Good - review chapter 3.</p>', 'format' => FORMAT_HTML, 'itemid' => 0],
+                ['text' => '<p>Please see your tutor.</p>', 'format' => FORMAT_HTML, 'itemid' => 0],
+            ],
+        ]);
+
+        $bands = fn(int $quizid) => array_values(array_map(
+            fn($row) => [
+                (string) $row->feedbacktext,
+                (int) $row->feedbacktextformat,
+                (float) $row->mingrade,
+                (float) $row->maxgrade,
+            ],
+            $DB->get_records('quiz_feedback', ['quizid' => $quizid], 'mingrade DESC')
+        ));
+
+        $original = $bands((int) $quiz->id);
+        $this->assertCount(3, $original, 'the generator should have made three bands');
+        $this->assertSame([7.0, 11.0], array_slice($original[0], 2), 'top band: 70% up to one more than the grade');
+
+        [$cm] = $this->round_trip((int) $quiz->cmid, $target);
+        $this->assertEquals($original, $bands((int) $cm->instance));
+
+        // And what a copied quiz shows a student at 5 out of 10 is the same.
+        $this->assertSame('<p>Good - review chapter 3.</p>', $DB->get_field_select(
+            'quiz_feedback',
+            'feedbacktext',
+            'quizid = ? AND mingrade <= ? AND maxgrade > ?',
+            [$cm->instance, 5, 5]
+        ));
+
+        // No feedback on the source, none here.
+        $plain = $this->getDataGenerator()->create_module('quiz', ['course' => $source->id]);
+        [$plaincm] = $this->round_trip((int) $plain->cmid, $target, 'coursesync-2');
+        $this->assertSame(0, $DB->count_records('quiz_feedback', ['quizid' => $plaincm->instance]));
+    }
+
+    /**
      * A quiz with fixed slots across several supported types, one
      * unsupported-type fixed slot, a random slot without subcategories, one
      * with subcategories, and one filtered by tags - all copied in one sync.

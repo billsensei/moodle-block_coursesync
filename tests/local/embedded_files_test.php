@@ -323,6 +323,44 @@ final class embedded_files_test extends advanced_testcase {
     }
 
     /**
+     * An image in a quiz's overall feedback is filed under the band created
+     * here for it, not under the source's band id.
+     */
+    public function test_a_quiz_feedback_bands_image_follows_the_band(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $quiz = $this->getDataGenerator()->create_module('quiz', [
+            'course' => $source->id,
+            'grade' => 10,
+            'feedbackboundaries' => ['50%'],
+            'feedbacktext' => [
+                ['text' => '<p>Well done <img src="@@PLUGINFILE@@/trophy.png"></p>', 'format' => FORMAT_HTML, 'itemid' => 0],
+                ['text' => '<p>Try again.</p>', 'format' => FORMAT_HTML, 'itemid' => 0],
+            ],
+        ]);
+        $top = $DB->get_record('quiz_feedback', ['quizid' => $quiz->id, 'mingrade' => 5], '*', MUST_EXIST);
+        $this->store((int) $quiz->cmid, 'mod_quiz', 'feedback', (int) $top->id, 'trophy.png');
+
+        [$cm, $payload] = $this->copy((int) $quiz->cmid, $target);
+
+        $this->assertFalse($payload->references_files());
+
+        $localtop = $DB->get_record('quiz_feedback', ['quizid' => $cm->instance, 'mingrade' => 5], '*', MUST_EXIST);
+        $this->assertNotEquals($top->id, $localtop->id);
+        $this->assertStringContainsString('@@PLUGINFILE@@/trophy.png', $localtop->feedbacktext);
+        $this->assertSame(
+            'bytes of trophy.png',
+            $this->stored((int) $cm->id, 'mod_quiz', 'feedback', (int) $localtop->id, 'trophy.png')
+        );
+    }
+
+    /**
      * A link whose file is not coming is named, and only that one - not every
      * link in the activity, as the old warning was.
      */

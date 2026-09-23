@@ -591,8 +591,11 @@ and Behat each refuse to run against a site built for a different version.
   whatever the source listed. A link whose file does not arrive is named in
   `syncfilesmissing` (`activity_payload::missing_files()`), matched by path
   and name; runs before this recorded the unnamed `syncfilewarning`.
-- A quiz's overall feedback (the grade-boundary texts in `quiz_feedback`) is
-  not carried at all, embedded files or not.
+- A quiz's overall feedback (`quiz_feedback`) is carried as
+  `overallfeedback` children, one per band, and recreated row for row with its
+  exact `mingrade`/`maxgrade` rather than through `quiz_add_instance()`'s form
+  shape, which would re-derive boundaries from percentages. Images in a band
+  are in `mod_quiz`/`feedback` under the band's id, mapped to the new band.
 - Forum discussions, wiki pages, glossary entries, feedback responses, database
   entries, workshop submissions, choice answers and lesson attempts are not
   synced. Those activities carry what a teacher set up, not what anyone did.

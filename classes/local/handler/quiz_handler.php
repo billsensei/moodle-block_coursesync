@@ -260,10 +260,105 @@ class quiz_handler extends activity_handler {
             ];
         }
 
-        return array_merge(
-            $slotchildren,
-            $this->export_question_bank_children(array_keys($neededcategoryids), $order)
-        );
+        $bankchildren = $this->export_question_bank_children(array_keys($neededcategoryids), $order);
+        $order += count($bankchildren);
+
+        return array_merge($slotchildren, $bankchildren, self::export_overall_feedback((int) $instance->id, $order));
+    }
+
+    /**
+     * SOURCE SIDE. The quiz's overall feedback: one text per grade band.
+     *
+     * Each band is carried exactly as stored - its text and its lower
+     * (inclusive) and upper (exclusive) grade - rather than as the edit form's
+     * list of boundaries, which quiz_process_options() would re-derive from
+     * percentages and re-validate. The top band's upper limit is one more
+     * than the quiz's grade, as Moodle stores it; the grade travels with the
+     * quiz, so that stays true.
+     *
+     * The band's own id travels so that images in its text, which are filed
+     * under that id, can be filed under the band made for it here.
+     *
+     * @param int $quizid
+     * @param int $order sortorder to start counting from
+     * @return array[]
+     */
+    protected static function export_overall_feedback(int $quizid, int $order): array {
+        global $DB;
+
+        $children = [];
+
+        foreach ($DB->get_records('quiz_feedback', ['quizid' => $quizid], 'mingrade DESC, id ASC') as $feedback) {
+            $children[] = [
+                'type' => 'overallfeedback',
+                'sortorder' => $order++,
+                'fields' => [
+                    'remoteid' => (int) $feedback->id,
+                    'feedbacktext' => (string) $feedback->feedbacktext,
+                    'feedbacktextformat' => (int) $feedback->feedbacktextformat,
+                    'mingrade' => (string) (float) $feedback->mingrade,
+                    'maxgrade' => (string) (float) $feedback->maxgrade,
+                ],
+            ];
+        }
+
+        return $children;
+    }
+
+    /**
+     * DESTINATION SIDE. Recreate the overall feedback bands, as they were.
+     *
+     * quiz_add_instance() was given no feedback, so it made none; these are
+     * the only rows the quiz has.
+     *
+     * @param int $quizid the new quiz
+     * @param activity_payload $payload
+     * @return void
+     */
+    protected function create_overall_feedback(int $quizid, activity_payload $payload): void {
+        global $DB;
+
+        foreach ($payload->children('overallfeedback') as $child) {
+            $format = activity_payload::child_int($child, 'feedbacktextformat', FORMAT_HTML);
+
+            $localid = (int) $DB->insert_record('quiz_feedback', (object) [
+                'quizid' => $quizid,
+                'feedbacktext' => activity_payload::child_html($child, 'feedbacktext', $format),
+                'feedbacktextformat' => $format,
+                'mingrade' => (float) activity_payload::child_field($child, 'mingrade', '0'),
+                'maxgrade' => (float) activity_payload::child_field($child, 'maxgrade', '0'),
+            ]);
+
+            $this->remember_id('feedback', activity_payload::child_int($child, 'remoteid', 0), $localid);
+        }
+    }
+
+    /**
+     * A quiz's own files: the images in its overall feedback, each band's
+     * filed under that band's id.
+     *
+     * @return array[]
+     */
+    public function get_file_areas(): array {
+        return [
+            ['filearea' => 'feedback', 'anyitemid' => true],
+        ];
+    }
+
+    /**
+     * DESTINATION SIDE. A band's files go under the band created here for it.
+     *
+     * @param activity_payload $payload
+     * @param array $file
+     * @param \stdClass $cm
+     * @return int|null
+     */
+    public function map_file_itemid(activity_payload $payload, array $file, \stdClass $cm): ?int {
+        if (($file['filearea'] ?? '') === 'feedback') {
+            return $this->local_id('feedback', (int) ($file['itemid'] ?? 0));
+        }
+
+        return 0;
     }
 
     /**
@@ -333,6 +428,10 @@ class quiz_handler extends activity_handler {
         }
 
         $DB->set_field('course_modules', 'instance', $instanceid, ['id' => $cmid]);
+
+        // Before the questions, which can fail partway without undoing the
+        // quiz: its feedback does not depend on them.
+        $this->create_overall_feedback((int) $instanceid, $payload);
 
         // The quiz has to be a real, findable course module - placed in its
         // section, with the course's module cache rebuilt - before anything
