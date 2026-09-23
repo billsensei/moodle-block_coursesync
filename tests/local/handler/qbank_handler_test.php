@@ -94,7 +94,7 @@ final class qbank_handler_test extends advanced_testcase {
 
         // A type this handler does not rebuild: present in the bank, left
         // out of the copy, counted rather than silently dropped.
-        $qgen->create_question('calculated', 'sum', ['category' => $parent->id]);
+        $this->create_uninstalled_type_question($qgen, $parent->id);
 
         // A question whose text carries an embedded image, to prove the file
         // travels inline through the XML with no file_sync involvement.
@@ -151,7 +151,7 @@ final class qbank_handler_test extends advanced_testcase {
 
         // Seven of the supported types plus the superseded question's current
         // version plus the one with an image: nine questions in total.
-        // The unsupported "calculated" question and the first version of
+        // The question of an uninstalled type and the first version of
         // the superseded one are not among them.
         $questionids = \question_bank::get_finder()->get_questions_from_categories(
             [$newparent->id, $newchild->id],
@@ -170,7 +170,7 @@ final class qbank_handler_test extends advanced_testcase {
 
         foreach ($questionids as $questionid) {
             $this->assertNotSame(
-                'calculated',
+                'notinstalled',
                 $DB->get_field('question', 'qtype', ['id' => $questionid]),
                 'an unsupported type should never have been created'
             );
@@ -479,7 +479,235 @@ final class qbank_handler_test extends advanced_testcase {
         $loaded = \question_bank::load_question((int) $newrandomsamatch->id);
         $loaded->start_attempt(new \question_attempt_step(), 1);
         $this->assertCount(2, $loaded->stems, 'the copy should draw two short-answer questions from its own category');
-        $this->assertEqualsCanonicalizing(['Mammal', 'Amphibian'], array_values(array_unique($loaded->choices)));
+        // Which two it draws is random, so what can be asserted is that
+        // each answer it offers belongs to a short-answer question that
+        // travelled with it - Frog and Toad share one, so there may be one.
+        $this->assertEmpty(array_diff($loaded->choices, ['Mammal', 'Amphibian']));
+    }
+
+    /**
+     * The three calculated types round-trip with their datasets - the
+     * variables their formulas use, and the values each attempt draws - and
+     * each copy is answered correctly to prove those values arrived: a copy
+     * with its formulas but no dataset cannot be attempted at all.
+     *
+     * A dataset shared across a category stays shared: two questions that
+     * used one definition on the source use one definition here too, in the
+     * new category.
+     */
+    public function test_calculated_types_round_trip_with_their_datasets(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+
+        $qbank = $this->getDataGenerator()->create_module('qbank', ['course' => $source->id]);
+        $qbankcontext = \context_module::instance($qbank->cmid);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $category = $qgen->create_question_category([
+            'contextid' => $qbankcontext->id,
+            'name' => 'Calculations',
+        ]);
+
+        $calculated = $qgen->create_question('calculated', 'sum', [
+            'category' => $category->id,
+            'name' => 'Calculated',
+        ]);
+        $simple = $qgen->create_question('calculatedsimple', 'sumwithvariants', [
+            'category' => $category->id,
+            'name' => 'Calculated simple',
+        ]);
+        $multi = $qgen->create_question('calculatedmulti', 'singleresponse', [
+            'category' => $category->id,
+            'name' => 'Calculated multichoice',
+        ]);
+
+        // The generator stops where the editing form's first page does, so
+        // these two have their variables but no values yet - a teacher would
+        // fill them in on the wizard's last page.
+        $this->give_dataset_values((int) $calculated->id);
+        $this->give_dataset_values((int) $multi->id);
+
+        // A second question using the first one's {a} and {b}, shared across
+        // the category - the "use a shared dataset" choice in the editor.
+        $sharing = $qgen->create_question('calculated', 'sum', [
+            'category' => $category->id,
+            'name' => 'Shares its datasets',
+        ]);
+        $this->share_datasets($category->id, (int) $calculated->id, (int) $sharing->id);
+
+        [$cm, $payload, $handler] = $this->round_trip($qbank->cmid, $target);
+        $targetcontext = \context_module::instance($cm->id);
+
+        $this->assertSame(['syncqbanknoattempts'], $handler->notes($payload), 'all three types are supported');
+
+        $newcategory = $DB->get_record(
+            'question_categories',
+            ['contextid' => $targetcontext->id, 'name' => 'Calculations'],
+            '*',
+            MUST_EXIST
+        );
+
+        foreach ([$calculated, $simple, $multi, $sharing] as $original) {
+            $copy = $this->find_copy($DB, $newcategory->id, $original->name);
+            $this->assertSame($original->qtype, $copy->qtype);
+
+            $this->assertEquals(
+                $this->dataset_shape($DB, (int) $original->id),
+                $this->dataset_shape($DB, (int) $copy->id),
+                "{$original->name}: its datasets should have copied unchanged"
+            );
+            $this->assertEquals(
+                $this->calculated_answer_shape($DB, (int) $original->id),
+                $this->calculated_answer_shape($DB, (int) $copy->id),
+                "{$original->name}: its answer formulas and tolerances should have copied unchanged"
+            );
+
+            // Attempt the copy and give the right answer for whichever
+            // dataset values it drew.
+            $question = \question_bank::load_question((int) $copy->id);
+            $question->start_attempt(new \question_attempt_step(), 1);
+            [$fraction] = $question->grade_response($question->get_correct_response());
+            $this->assertEquals(1.0, $fraction, "{$original->name}: the copy should be answerable and mark correctly");
+        }
+
+        // Shared on the source, shared here - one definition per variable,
+        // belonging to the new category, used by both copies.
+        $copyone = $this->find_copy($DB, $newcategory->id, $calculated->name);
+        $copytwo = $this->find_copy($DB, $newcategory->id, $sharing->name);
+        $definitions = $DB->get_fieldset_select(
+            'question_datasets',
+            'datasetdefinition',
+            'question = ?',
+            [$copyone->id]
+        );
+        sort($definitions);
+        $sharedtoo = $DB->get_fieldset_select('question_datasets', 'datasetdefinition', 'question = ?', [$copytwo->id]);
+        sort($sharedtoo);
+        $this->assertSame($definitions, $sharedtoo, 'the two copies should share one set of dataset definitions');
+
+        [$insql, $inparams] = $DB->get_in_or_equal($definitions);
+        $categories = $DB->get_fieldset_select('question_dataset_definitions', 'category', "id {$insql}", $inparams);
+        $this->assertEquals([$newcategory->id], array_values(array_unique($categories)));
+    }
+
+    /**
+     * Fill in the values for every variable of a calculated question.
+     *
+     * @param int $questionid
+     * @return void
+     */
+    protected function give_dataset_values(int $questionid): void {
+        global $DB;
+
+        $definitions = $DB->get_fieldset_select('question_datasets', 'datasetdefinition', 'question = ?', [$questionid]);
+
+        foreach ($definitions as $offset => $definitionid) {
+            foreach ([1, 2, 3] as $itemnumber) {
+                $DB->insert_record('question_dataset_items', (object) [
+                    'definition' => $definitionid,
+                    'itemnumber' => $itemnumber,
+                    'value' => (string) ($itemnumber * 10 + $offset + 0.5),
+                ]);
+            }
+
+            $DB->set_field('question_dataset_definitions', 'itemcount', 3, ['id' => $definitionid]);
+        }
+
+        \question_bank::notify_question_edited($questionid);
+    }
+
+    /**
+     * Make one calculated question use another's dataset definitions, shared
+     * across their category, and drop its own.
+     *
+     * @param int $categoryid
+     * @param int $ownerid the question whose definitions become shared
+     * @param int $sharerid the question that starts using them
+     * @return void
+     */
+    protected function share_datasets(int $categoryid, int $ownerid, int $sharerid): void {
+        global $DB;
+
+        $shared = $DB->get_fieldset_select('question_datasets', 'datasetdefinition', 'question = ?', [$ownerid]);
+        [$insql, $inparams] = $DB->get_in_or_equal($shared);
+        $DB->set_field_select('question_dataset_definitions', 'category', $categoryid, "id {$insql}", $inparams);
+
+        $own = $DB->get_fieldset_select('question_datasets', 'datasetdefinition', 'question = ?', [$sharerid]);
+        [$insql, $inparams] = $DB->get_in_or_equal($own);
+        $DB->delete_records_select('question_dataset_items', "definition {$insql}", $inparams);
+        $DB->delete_records_select('question_dataset_definitions', "id {$insql}", $inparams);
+        $DB->delete_records('question_datasets', ['question' => $sharerid]);
+
+        foreach ($shared as $definitionid) {
+            $DB->insert_record('question_datasets', (object) ['question' => $sharerid, 'datasetdefinition' => $definitionid]);
+        }
+
+        \question_bank::notify_question_edited($ownerid);
+        \question_bank::notify_question_edited($sharerid);
+    }
+
+    /**
+     * A calculated question's datasets, by variable name, in a form two
+     * sites can compare: shared or private, the generation options, and every
+     * value in order.
+     *
+     * @param \moodle_database $db
+     * @param int $questionid
+     * @return array
+     */
+    protected function dataset_shape(\moodle_database $db, int $questionid): array {
+        $definitions = $db->get_records_sql(
+            "SELECT d.*
+               FROM {question_dataset_definitions} d
+               JOIN {question_datasets} qd ON qd.datasetdefinition = d.id
+              WHERE qd.question = ?",
+            [$questionid]
+        );
+
+        $shape = [];
+
+        foreach ($definitions as $definition) {
+            $shape[$definition->name] = [
+                'shared' => (int) $definition->category !== 0,
+                'options' => $definition->options,
+                'itemcount' => (int) $definition->itemcount,
+                'values' => array_values($db->get_records_menu(
+                    'question_dataset_items',
+                    ['definition' => $definition->id],
+                    'itemnumber ASC',
+                    'itemnumber, value'
+                )),
+            ];
+        }
+
+        ksort($shape);
+        $this->assertNotEmpty($shape, "question {$questionid} should have datasets");
+
+        return $shape;
+    }
+
+    /**
+     * A calculated question's answers with their tolerances, in order.
+     *
+     * @param \moodle_database $db
+     * @param int $questionid
+     * @return array
+     */
+    protected function calculated_answer_shape(\moodle_database $db, int $questionid): array {
+        // Ordered by id, then compared without it: ids differ between sites.
+        return array_values(array_map(fn($row) => array_diff_key((array) $row, ['id' => 0]), $db->get_records_sql(
+            "SELECT a.id, a.answer, a.fraction, c.tolerance, c.tolerancetype, c.correctanswerlength, c.correctanswerformat
+               FROM {question_answers} a
+               JOIN {question_calculated} c ON c.answer = a.id
+              WHERE a.question = ?
+           ORDER BY a.id ASC",
+            [$questionid]
+        )));
     }
 
     /**
@@ -591,6 +819,26 @@ final class qbank_handler_test extends advanced_testcase {
         $copy = reset($copies);
         $this->assertSame($original->get_filename(), $copy->get_filename());
         $this->assertSame($original->get_contenthash(), $copy->get_contenthash());
+    }
+
+    /**
+     * A question of a type this site does not have installed - what a
+     * third-party question type looks like to a site without that plugin,
+     * and the one kind of question every core type being supported leaves
+     * unsupported. It starts as a short-answer question and is relabelled.
+     *
+     * @param \core_question_generator $qgen
+     * @param int $categoryid
+     * @return \stdClass the question record
+     */
+    protected function create_uninstalled_type_question(\core_question_generator $qgen, int $categoryid): \stdClass {
+        global $DB;
+
+        $question = $qgen->create_question('shortanswer', null, ['category' => $categoryid]);
+        $DB->set_field('question', 'qtype', 'notinstalled', ['id' => $question->id]);
+        \question_bank::notify_question_edited($question->id);
+
+        return $DB->get_record('question', ['id' => $question->id], '*', MUST_EXIST);
     }
 
     /**

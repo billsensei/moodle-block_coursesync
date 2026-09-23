@@ -246,7 +246,7 @@ own restore does.
 
 `qbank_handler` bends the "flat map of fields" rule on purpose for its
 `'question'` children: rather than flattening each question type's own
-columns (fourteen types means fourteen different, unrelated shapes), one field
+columns (seventeen types means seventeen different, unrelated shapes), one field
 holds the whole question as a `qformat_xml`-serialised fragment - Moodle's
 own question export format, reused rather than re-derived. `'category'`
 children stay flat, because a category's own fields are the same regardless
@@ -591,12 +591,14 @@ and Behat each refuse to run against a site built for a different version.
 - An H5P activity is refused outright if its package did not arrive, rather than
   created as something that cannot be opened. It is the only handler that
   overrides `check_payload()` to insist on a file.
-- **A synced Question bank, and a synced quiz's questions, cover fourteen
-  question types** — multiple choice, true/false, short answer, matching,
-  essay, numerical, multianswer (cloze), drag and drop into text
-  (`ddwtos`), onto image (`ddimageortext`) and markers (`ddmarker`), select
-  missing words (`gapselect`), `ordering`, random short-answer matching
-  (`randomsamatch`) and `description`
+- **A synced Question bank, and a synced quiz's questions, cover all
+  seventeen of Moodle's standard question types** — multiple choice,
+  true/false, short answer, matching, essay, numerical, multianswer (cloze),
+  drag and drop into text (`ddwtos`), onto image (`ddimageortext`) and
+  markers (`ddmarker`), select missing words (`gapselect`), `ordering`,
+  random short-answer matching (`randomsamatch`), `description`, and the
+  three calculated types (`calculated`, `calculatedsimple`,
+  `calculatedmulti`). Only a third-party type is ever left out
   (`question_bank_sync_trait::SUPPORTED_QTYPES`, shared by both
   `qbank_handler` and `quiz_handler`). Multianswer's embedded sub-questions
   need no special handling here — `qformat_xml` resolves them from the
@@ -613,7 +615,18 @@ and Behat each refuse to run against a site built for a different version.
   exported category travels. With `subcats` on, a quiz sync brings only the
   subcategories the quiz otherwise references. `gapselect` renumbers its
   `[[n]]` placeholders round any empty choice when saved, on both sites, so
-  compare a copy with the saved source, not with form data. A question of
+  compare a copy with the saved source, not with form data. The calculated
+  types' dataset definitions and values are only loaded when a question has
+  `export_process` set, which `question_bank::load_question_data()` never
+  does - so `question_bank_sync_trait::with_export_data()` sets it on a copy
+  of the cached question and adds them, as Moodle's own export does. The
+  destination needs nothing extra: `qformat_xml`'s reader sets
+  `import_process` on every question it parses, which is what makes their
+  `save_question_options()` save the datasets. A shared dataset stays shared,
+  created in the new category by the first question and found there by name
+  by the rest (`qtype_calculated::import_datasets()`). Core's generator makes
+  `calculated` and `calculatedmulti` questions with no dataset values, so a
+  test must add some before either original can even be attempted. A question of
   any other type is left out and counted, not
   attempted; see `notes()` on either handler. Only the current ready
   version of each question is copied — no drafts, no hidden versions, no

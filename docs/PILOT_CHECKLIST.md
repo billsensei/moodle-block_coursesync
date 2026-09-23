@@ -70,13 +70,11 @@ read"*.
   question bank alongside anything already there. A question used by more
   than one quiz, or also synced via a separate Question bank activity, is
   only ever added once
-- Both **Quiz** and **Question bank** are limited to fourteen question types
-  (multiple choice, true/false, short answer, matching, essay, numerical,
-  embedded answers/Cloze, the three drag and drop types: into text, onto
-  image, markers, select missing words, ordering, random short-answer
-  matching, and description) and only each question's current version. A slot
-  or question of any other type is named in the results, not silently
-  dropped. Tell pilot teachers this before they open a copied quiz, not
+- Both **Quiz** and **Question bank** carry every standard Moodle question
+  type, calculated ones included, and only each question's current version.
+  A question of a type added by a plugin (a third-party question type) is
+  named in the results, not silently dropped. If the pilot site uses any,
+  check them before the pilot. Tell pilot teachers this before they open a copied quiz, not
   after
 - A copied **Database has no custom CSS or JavaScript**, and a copied **Lesson
   has no password**. Both are deliberate and both are reported on the results

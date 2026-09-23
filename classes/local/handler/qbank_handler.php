@@ -35,8 +35,8 @@ use block_coursesync\activity_payload;
  *    transfer mechanism would be strictly more code for nothing.
  *
  * 2. A question travels as one opaque XML fragment (the 'xml' field on a
- *    'question' child), not as flattened settings. Fourteen supported
- *    types means fourteen different column layouts - true/false points at two of its
+ *    'question' child), not as flattened settings. Seventeen supported
+ *    types means seventeen different column layouts - true/false points at two of its
  *    own answer rows, matching has no answer rows at all, numerical spans
  *    four tables. qformat_xml already solves exactly this, tags and answer
  *    files included, so this handler serialises with it rather than
@@ -52,10 +52,11 @@ use block_coursesync\activity_payload;
  *    that now does check something extra, and for a different reason - see
  *    that class and SECURITY.md.
  *
- * Only fourteen question types are rebuilt - multiple choice, true/false,
+ * Only seventeen question types are rebuilt - multiple choice, true/false,
  * short answer, matching, essay, numerical, multianswer (cloze), the three
  * drag and drop types (into text, onto image, markers), select missing
- * words, ordering, random short-answer matching and description - because
+ * words, ordering, random short-answer matching, description, and the three
+ * calculated types (calculated, simple, multichoice) - because
  * those cover most real question banks and each one's shape has actually
  * been checked against this handler. Multianswer needs nothing special
  * here despite its embedded sub-questions: qformat_xml's own reader
@@ -73,6 +74,15 @@ use block_coursesync\activity_payload;
  * too - which they do, because every question in a synced category travels,
  * but only from that one category: with "include subcategories" on, a quiz
  * sync brings no subcategory the quiz does not otherwise reference.
+ * The calculated types are the one place the shared trait does anything
+ * type-specific: their dataset values are only loaded for export when
+ * export_process is set, as Moodle's own export sets it - see
+ * question_bank_sync_trait::with_export_data(). The import side needs
+ * nothing, because qformat_xml's reader already sets import_process on every
+ * question it parses, which is what makes their save_question_options() save
+ * the datasets that arrived. A dataset shared across a category stays shared: the
+ * first question to arrive creates it in the new category, and the rest
+ * find it there by name.
  * A question of any other type is left out and counted;
  * see notes(). Only the current ready version of each question is copied -
  * no drafts, no hidden versions, no history - matching how every other

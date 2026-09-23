@@ -48,6 +48,7 @@ trait question_bank_sync_trait {
     protected const SUPPORTED_QTYPES = [
         'multichoice', 'truefalse', 'shortanswer', 'match', 'essay', 'numerical', 'multianswer',
         'ddwtos', 'ddimageortext', 'ddmarker', 'gapselect', 'ordering', 'randomsamatch', 'description',
+        'calculated', 'calculatedsimple', 'calculatedmulti',
     ];
 
     /** @var int Questions that arrived as a type this handler does not rebuild. */
@@ -104,7 +105,7 @@ trait question_bank_sync_trait {
                 // Already carries contextid and a fully loaded ->options,
                 // which is everything writequestion() needs; tags travel
                 // inside the XML it produces, with no extra code here.
-                $question = \question_bank::load_question_data($questionid);
+                $question = self::with_export_data(\question_bank::load_question_data($questionid));
 
                 $children[] = [
                     'type' => 'question',
@@ -120,6 +121,38 @@ trait question_bank_sync_trait {
         }
 
         return $children;
+    }
+
+    /**
+     * SOURCE SIDE. Anything a question type only loads when told the question
+     * is being exported.
+     *
+     * The calculated types are the ones this matters for: their dataset
+     * definitions and the values in them - what {a} and {b} can be - are only
+     * read when export_process is set, the way Moodle's own export loads a
+     * question (get_questions_category() in question/editlib.php). Without
+     * them the XML carries the formulas but nothing to calculate them from.
+     *
+     * The question comes from the question cache, so it is copied before
+     * anything is added to it rather than changing what every later reader of
+     * that cache would see.
+     *
+     * @param \stdClass $question as question_bank::load_question_data() returns it
+     * @return \stdClass
+     */
+    protected static function with_export_data(\stdClass $question): \stdClass {
+        $qtype = \question_bank::get_qtype($question->qtype, false);
+
+        if (!method_exists($qtype, 'get_datasets_for_export')) {
+            return $question;
+        }
+
+        $question = clone $question;
+        $question->options = clone $question->options;
+        $question->export_process = true;
+        $question->options->datasets = $qtype->get_datasets_for_export($question);
+
+        return $question;
     }
 
     /**

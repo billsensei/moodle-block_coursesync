@@ -232,6 +232,25 @@ class behat_block_coursesync extends behat_base {
     }
 
     /**
+     * Turn a question into one of a type this site does not have installed.
+     *
+     * Every core question type is supported, so the only question a sync
+     * leaves out is one of a third-party type the destination lacks. This
+     * stands one in: it starts as whatever type the scenario created it as,
+     * and is relabelled here.
+     *
+     * @Given /^the question "(?P<name>(?:[^"]|\\")*)" is of a question type this site does not have$/
+     * @param string $name
+     */
+    public function the_question_is_of_an_uninstalled_type(string $name) {
+        global $DB;
+
+        $questionid = $DB->get_field('question', 'id', ['name' => $name], MUST_EXIST);
+        $DB->set_field('question', 'qtype', 'notinstalled', ['id' => $questionid]);
+        \question_bank::notify_question_edited($questionid);
+    }
+
+    /**
      * Type the token this site issued into the token field.
      *
      * @When /^I enter the Course Sync token$/

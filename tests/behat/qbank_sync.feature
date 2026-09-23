@@ -21,7 +21,8 @@ Feature: Syncing a question bank
       | questioncategory | qtype       | name             | questiontext                 |
       | Week 1           | truefalse   | River question   | The Nile flows north.        |
       | Week 1           | shortanswer | Capital question | What is the capital of Peru? |
-      | Week 1           | calculated  | Reading notes    | This type is not supported.  |
+      | Week 1           | shortanswer | Reading notes    | This type is not supported.  |
+    And the question "Reading notes" is of a question type this site does not have
     And the following "users" exist:
       | username | firstname | lastname | email                |
       | teacher1 | Tina      | Teacher  | teacher1@example.com |

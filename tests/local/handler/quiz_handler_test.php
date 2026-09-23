@@ -91,8 +91,12 @@ final class quiz_handler_test extends advanced_testcase {
         \quiz_add_quiz_question($shortanswer->id, $quiz, 0, 2.5);
 
         // A fixed slot of a type this handler does not rebuild.
-        $calculated = $qgen->create_question('calculated', 'sum', ['category' => $parent->id]);
-        \quiz_add_quiz_question($calculated->id, $quiz, 0, 1.0);
+        // Added as the short-answer question it starts as: a quiz refuses a
+        // type it does not know, so it becomes one only once it is in a slot,
+        // as a quiz on a site that later lost the plugin would be.
+        $uninstalled = $qgen->create_question('shortanswer', null, ['category' => $parent->id]);
+        \quiz_add_quiz_question($uninstalled->id, $quiz, 0, 1.0);
+        $this->relabel_as_uninstalled_type((int) $uninstalled->id);
 
         // Random slot: one category, no subcategories, two questions in the pool.
         $qgen->create_question('shortanswer', null, ['category' => $randomcat->id, 'name' => 'Pool Q1']);
@@ -114,7 +118,7 @@ final class quiz_handler_test extends advanced_testcase {
 
         $newquiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
         $newslots = $DB->get_records('quiz_slots', ['quizid' => $newquiz->id], 'slot ASC');
-        $this->assertCount(5, $newslots, 'two fixed slots plus three random slots, calculated slot skipped');
+        $this->assertCount(5, $newslots, 'two fixed slots plus three random slots, uninstalled-type slot skipped');
 
         $bankcm = question_bank_helper::get_default_open_instance_system_type($target, false);
         $this->assertNotNull($bankcm, 'the System Bank should have been created');
@@ -477,6 +481,22 @@ final class quiz_handler_test extends advanced_testcase {
             MUST_EXIST
         );
         $this->assertSame($entryid, (int) $referenced->questionbankentryid);
+    }
+
+    /**
+     * Turn a question into one of a type this site does not have installed -
+     * what a third-party question type looks like to a site without that
+     * plugin, and the one kind of question every core type being supported
+     * leaves unsupported.
+     *
+     * @param int $questionid
+     * @return void
+     */
+    protected function relabel_as_uninstalled_type(int $questionid): void {
+        global $DB;
+
+        $DB->set_field('question', 'qtype', 'notinstalled', ['id' => $questionid]);
+        \question_bank::notify_question_edited($questionid);
     }
 
     /**
