@@ -186,6 +186,7 @@ activity:
 | --- | --- |
 | No handler for that type | Skipped, and reported as skipped |
 | Something already carries this identity | **Flagged for review.** Never overwritten, never duplicated |
+| Copied here before, changed on the source since, and ticked by the teacher | **Updated.** Replaced in place if nobody has data in the copy, otherwise added beside it as a "(New edition)" — see `docs/DEVELOPER.md`, "Updating a copy" |
 | New, with a handler | Full payload fetched and the activity rebuilt locally |
 
 ### Conflicts

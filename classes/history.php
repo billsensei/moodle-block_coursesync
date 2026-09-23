@@ -55,7 +55,12 @@ class history {
     ): int {
         global $DB;
 
-        $pulled = self::items_with_outcome($result, 'created');
+        // An update leaves a new local copy behind just as a create does, and
+        // is what was_pulled_here() and pulled_at() must find from then on.
+        $pulled = array_merge(
+            self::items_with_outcome($result, 'created'),
+            self::items_with_outcome($result, 'updated')
+        );
         $conflicts = self::items_with_outcome($result, 'conflict');
         $others = array_merge(
             self::items_with_outcome($result, 'skipped'),
@@ -175,13 +180,29 @@ class history {
      * @return bool
      */
     public static function was_pulled_here(int $blockinstanceid, int $remotecmid, int $localcmid): bool {
+        return self::pulled_at($blockinstanceid, $remotecmid, $localcmid) !== null;
+    }
+
+    /**
+     * When did the run that pulled this local copy start?
+     *
+     * That is what a copy is compared against to tell whether the source has
+     * changed since: the run asked the source for it after this time, so
+     * anything modified later is newer than the copy.
+     *
+     * @param int $blockinstanceid
+     * @param int $remotecmid course module id on the source site
+     * @param int $localcmid course module id on this site
+     * @return int|null null when no run pulled it
+     */
+    public static function pulled_at(int $blockinstanceid, int $remotecmid, int $localcmid): ?int {
         global $DB;
 
         $records = $DB->get_records(
             'block_coursesync_run',
             ['blockinstanceid' => $blockinstanceid],
             'timestarted DESC, id DESC',
-            'id, pulled',
+            'id, timestarted, pulled',
             0,
             200
         );
@@ -192,12 +213,12 @@ class history {
                     (int) ($item['remotecmid'] ?? 0) === $remotecmid
                         && (int) ($item['localcmid'] ?? 0) === $localcmid
                 ) {
-                    return true;
+                    return (int) $record->timestarted;
                 }
             }
         }
 
-        return false;
+        return null;
     }
 
     /**

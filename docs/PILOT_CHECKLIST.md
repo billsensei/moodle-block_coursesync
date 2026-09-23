@@ -82,7 +82,10 @@ read"*.
   page; see `SECURITY.md`
 - Images embedded inside a page do not come across yet; files attached to a File
   activity do
-- Nothing is ever overwritten. Anything in the way is flagged
+- Nothing is overwritten unless a teacher ticks it. A copy changed on the
+  source is offered for updating, unticked; it is replaced only if nobody has
+  anything in it, and otherwise added beside the old one as a "(New edition)".
+  Tell pilot teachers a replaced copy loses any edits they made to it
 - Nothing happens automatically — a sync only runs when someone asks for it
 
 ## Known limitations to set expectations on
@@ -90,7 +93,8 @@ read"*.
 | Limitation | Effect on a pilot |
 | --- | --- |
 | Embedded files in text are not transferred | Pages with inline images arrive with those images missing, and say so |
-| Activities cannot be updated, only created | A changed source activity is flagged for manual work |
+| Updates are a fresh copy, never an in-place edit | A copy with people's work in it gets a "(New edition)" beside it rather than an update |
+| Quiz question edits are not picked up | Editing a question on the source does not mark the quiz as changed, and a replaced quiz reuses the questions already here |
 | Deletions are not detected | An activity removed from the source simply stops being offered |
 | Hidden activities are reported | Teachers see the names of hidden activities on the source |
 | Third-party activity types with no `timemodified` | Edits to them are not detected, only their creation |

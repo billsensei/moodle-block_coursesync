@@ -89,6 +89,36 @@ class sync_result {
     }
 
     /**
+     * Record an activity whose local copy was brought up to date.
+     *
+     * @param string $name
+     * @param string $modname
+     * @param int $remotecmid
+     * @param int $localcmid the fresh copy, which carries the identity from now on
+     * @param string $howkey a language string identifier: replaced, or added as a new edition
+     * @param string[] $notes language string identifiers for anything the user should know
+     * @return void
+     */
+    public function add_updated(
+        string $name,
+        string $modname,
+        int $remotecmid,
+        int $localcmid,
+        string $howkey,
+        array $notes = []
+    ): void {
+        $this->items[] = [
+            'outcome' => 'updated',
+            'name' => $name,
+            'modname' => $modname,
+            'remotecmid' => $remotecmid,
+            'localcmid' => $localcmid,
+            'notes' => $notes,
+            'detail' => $howkey,
+        ];
+    }
+
+    /**
      * Record an activity that was left alone.
      *
      * @param string $name
@@ -166,7 +196,7 @@ class sync_result {
     /**
      * How many activities had a given outcome.
      *
-     * @param string $outcome one of created, skipped, failed
+     * @param string $outcome one of created, updated, conflict, skipped, failed
      * @return int
      */
     public function count(string $outcome): int {
@@ -231,6 +261,7 @@ class sync_result {
 
         return get_string('syncsummary', 'block_coursesync', (object) [
             'created' => $this->count('created'),
+            'updated' => $this->count('updated'),
             'conflicts' => $this->count('conflict'),
             'skipped' => $this->count('skipped'),
             'failed' => $this->count('failed'),

@@ -405,6 +405,41 @@ overwritten and never duplicated.
 `history::was_pulled_here()` then decides which kind of conflict it is by looking
 for a past run that recorded creating that exact remote/local pair.
 
+### Updating a copy
+
+`syncer::list_candidates()` puts an activity in `changed` rather than `present`
+when the source's `timemodified` is later than the start of the run that pulled
+the local copy (`history::pulled_at()`, read from the same `pulled` JSON as
+`was_pulled_here()`). Changed activities are offered unticked. Only a run given
+an explicit choice (`$only !== null`) ever updates; a run without one keeps the
+old behaviour and flags `conflictchangedupstream`.
+
+`syncer::handle_update()` never edits the existing copy. It creates a fresh one
+through the ordinary `create_copy()` path with an **empty** idnumber, so a
+failure leaves the old copy exactly as it was, and only then:
+
+- **Nobody has data in the old copy** (`copy_update::has_people_data()`): the
+  fresh copy takes the old one's section, position, visibility, availability,
+  completion settings and grade categories; other activities' availability and
+  course completion criteria are repointed to it; it takes the identity; and
+  the old copy is deleted **last**, so nothing after the delete can fail and
+  leave neither.
+- **Somebody has**: the old copy's idnumber is cleared (course module and grade
+  item) and nothing else about it changes; the fresh copy goes straight after
+  it, named with `synceditionname`, and takes the identity.
+
+"Somebody has data" asks the activity's own privacy provider
+(`core_userlist_provider::get_users_in_context()`), so it needs no code per
+type; completion states are checked separately because they belong to the
+course module, and a Question bank also counts as used when it holds questions
+added locally or referenced by a quiz. History records the outcome as
+`updated`, stored among `pulled` so the fresh copy is recognised as this
+plugin's from then on.
+
+A quiz's questions are reused by idnumber when it is replaced, so an edit to a
+question on the source (a new version of the same bank entry) is not picked up,
+and editing a question does not change the quiz's own `timemodified` either.
+
 ### What the candidate list changed about conflicts
 
 Conflicts used to be how a teacher learned an activity was already here: the run
@@ -602,4 +637,6 @@ and Behat each refuse to run against a site built for a different version.
   appearing. A real sync will eventually need to decide what to do about that.
 - Hidden activities on the source are reported to the destination; the capability
   check is the gate, not per-activity visibility.
-- Updating an activity already copied is not implemented. It is flagged instead.
+- Updating an activity already copied is never done in place — no handler has
+  an update path. It is a fresh copy that either replaces the old one or sits
+  beside it as a new edition; see "Updating a copy" above.

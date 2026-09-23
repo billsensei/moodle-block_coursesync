@@ -13,10 +13,10 @@ Feature: The Choose what to copy page groups activities by whether they can be c
       | Destination Course | DEST      | 0        | 3           |
       | Source Course      | SRC       | 0        | 3           |
     And the following "activities" exist:
-      | activity | course | name              | intro                  | section |
-      | page     | SRC    | Existing week page | Copied last time       | 1       |
-      | page     | SRC    | Brand new page      | Not copied yet         | 1       |
-      | lti      | SRC    | An external tool    | A type nothing handles | 1       |
+      | activity | course | name               | intro                  | section | idnumber |
+      | page     | SRC    | Existing week page | Copied last time       | 1       | SRCWEEK  |
+      | page     | SRC    | Brand new page     | Not copied yet         | 1       |          |
+      | lti      | SRC    | An external tool   | A type nothing handles | 1       |          |
     And the following "users" exist:
       | username | firstname | lastname | email                |
       | teacher1 | Tina      | Teacher  | teacher1@example.com |
@@ -59,3 +59,27 @@ Feature: The Choose what to copy page groups activities by whether they can be c
     # A type nothing here handles is not on this page anywhere - not in
     # either group, not named in a footnote.
     And I should not see "An external tool"
+
+  Scenario: An activity changed on the source since it was copied can be ticked to replace the copy
+    # Edited on the source after the Background's run copied it.
+    Given I am on the "SRCWEEK" "page activity editing" page logged in as "admin"
+    And I set the field "Page content" to "Rewritten on the source"
+    And I press "Save and return to course"
+
+    When I am on the "DEST" "block_coursesync > Sync" page logged in as "teacher1"
+    Then I should see "Changed since it was copied"
+    And I should see "Changed - the copy here will be replaced" in the "Existing week page" "table_row"
+    # Offered, but never pre-ticked: it replaces something already here.
+    And the "Existing week page" "checkbox" should be enabled
+    And the field "Existing week page" matches value ""
+
+    When I set the field "Existing week page" to "1"
+    And I set the field "Brand new page" to ""
+    And I press "Copy the ticked activities"
+    Then I should see "Updated" in the "Existing week page" "table_row"
+    And I should see "The copy here was replaced with the updated version"
+
+    # Now the copy is up to date, it is back among what is already here.
+    When I am on the "DEST" "block_coursesync > Sync" page
+    Then I should not see "Changed since it was copied"
+    And the "Existing week page" "checkbox" should be disabled

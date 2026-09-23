@@ -18,6 +18,7 @@ namespace block_coursesync;
 
 use block_coursesync\local\file_sync;
 use core\http_client;
+use block_coursesync\local\handler\activity_handler;
 use block_coursesync\local\handler\handler_registry;
 
 /**
@@ -69,6 +70,34 @@ class syncer {
             'idnumber' => self::build_idnumber($remotecmid),
             'deletioninprogress' => 0,
         ], IGNORE_MISSING);
+    }
+
+    /**
+     * Has the source changed an activity since this plugin last pulled it here?
+     *
+     * @param int $blockinstanceid
+     * @param activity $activity as change detection reported it
+     * @param int $localcmid the copy already in this course
+     * @return bool false as well when this plugin did not put that copy here
+     */
+    public static function is_changed(int $blockinstanceid, activity $activity, int $localcmid): bool {
+        $pulledat = history::pulled_at($blockinstanceid, $activity->cmid, $localcmid);
+
+        return $pulledat !== null && self::changed_since($activity, $pulledat);
+    }
+
+    /**
+     * Was an activity modified after the run that pulled it started?
+     *
+     * Both times are compared as they are for the last synced marker: the
+     * source's clock for the change, this site's for the run.
+     *
+     * @param activity $activity
+     * @param int $pulledat
+     * @return bool
+     */
+    protected static function changed_since(activity $activity, int $pulledat): bool {
+        return (int) $activity->timemodified > $pulledat;
     }
 
     /**
@@ -130,10 +159,18 @@ class syncer {
                 // Whether this plugin put it there decides which it is. One is
                 // ordinary housekeeping; the other is something a person should
                 // look at, and was worth flagging before this list existed.
-                if (history::was_pulled_here($blockinstanceid, $activity->cmid, $existing)) {
-                    $candidates->present[] = $activity;
-                } else {
+                $pulledat = history::pulled_at($blockinstanceid, $activity->cmid, $existing);
+
+                if ($pulledat === null) {
                     $candidates->collisions[] = $activity;
+                } else if (self::changed_since($activity, $pulledat) && handler_registry::supports($activity->modname)) {
+                    $candidates->changed[] = $activity;
+
+                    if (copy_update::has_people_data($existing)) {
+                        $candidates->neweditions[] = (int) $activity->cmid;
+                    }
+                } else {
+                    $candidates->present[] = $activity;
                 }
 
                 continue;
@@ -252,7 +289,10 @@ class syncer {
                 // on the list either, so it was not a choice the teacher made.
                 // Calling it one would hold the marker back for good - it can
                 // never be ticked, because it is never offered.
-                $alreadyhere = self::find_existing($course->id, $activity->cmid) > 0;
+                // A changed one was on the list, though, so leaving it unticked
+                // is a choice like any other, and it is offered again.
+                $existing = self::find_existing($course->id, $activity->cmid);
+                $alreadyhere = $existing > 0 && !self::is_changed($blockinstanceid, $activity, $existing);
 
                 $result->add_skipped(
                     $activity->name,
@@ -260,6 +300,17 @@ class syncer {
                     $activity->cmid,
                     $alreadyhere ? 'syncskippedpresent' : 'syncskippeddeselected'
                 );
+
+                continue;
+            }
+
+            // Updating is only ever something a teacher ticked. A run that was
+            // not given a choice keeps to what it always did with a copy that
+            // is already here: flag it and leave it alone.
+            $existing = self::find_existing($course->id, $activity->cmid);
+
+            if ($chosen !== null && $existing > 0 && self::is_changed($blockinstanceid, $activity, $existing)) {
+                self::handle_update($course, $record, $token, $activity, $existing, $result, $client);
 
                 continue;
             }
@@ -351,12 +402,138 @@ class syncer {
             return;
         }
 
+        $created = self::create_copy($course, $record, $token, $activity, $result, $client, self::build_idnumber($activity->cmid));
+
+        if ($created === null) {
+            return;
+        }
+
+        [$cm, $payload, $handler] = $created;
+
+        $result->add_created(
+            $payload->name,
+            $payload->modname,
+            $activity->cmid,
+            (int) $cm->id,
+            self::notes_for($handler, $payload)
+        );
+    }
+
+    /**
+     * Bring a copy this plugin made up to date with a changed source activity.
+     *
+     * A fresh copy is made first, without the identity, so that nothing about
+     * the old one changes until the new one is known to be complete. Only then
+     * is the old one either replaced or set aside - see copy_update for which,
+     * and why - and the identity moved to the fresh copy.
+     *
+     * @param \stdClass $course
+     * @param \stdClass $record the connection
+     * @param string $token
+     * @param activity $activity
+     * @param int $existingcmid the copy already here
+     * @param sync_result $result
+     * @param http_client|null $client
+     * @return void
+     */
+    protected static function handle_update(
+        \stdClass $course,
+        \stdClass $record,
+        string $token,
+        activity $activity,
+        int $existingcmid,
+        sync_result $result,
+        ?http_client $client = null
+    ): void {
+        global $CFG, $DB;
+
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        $created = self::create_copy($course, $record, $token, $activity, $result, $client, '');
+
+        if ($created === null) {
+            return;
+        }
+
+        [$cm, $payload, $handler] = $created;
+
+        $old = $DB->get_record('course_modules', ['id' => $existingcmid], '*', MUST_EXIST);
+        $idnumber = self::build_idnumber($activity->cmid);
+        $newedition = copy_update::has_people_data($existingcmid);
+        $name = $payload->name;
+
+        try {
+            copy_update::take_local_setup($old, $cm, !$newedition);
+
+            if ($newedition) {
+                // The old copy stays exactly as it is, people's work and all;
+                // it only stops being the one this plugin tracks.
+                copy_update::set_identity($existingcmid, '');
+                $name = copy_update::name_as_new_edition((int) $cm->id);
+                copy_update::set_identity((int) $cm->id, $idnumber);
+            } else {
+                copy_update::repoint_references((int) $course->id, $existingcmid, (int) $cm->id);
+                copy_update::set_identity((int) $cm->id, $idnumber);
+
+                // Last, so that nothing after it can fail and leave neither copy.
+                \course_delete_module($existingcmid);
+            }
+        } catch (\Throwable $e) {
+            debugging('block_coursesync: could not update ' . $payload->modname . ' from remote cmid '
+                . $activity->cmid . ': ' . $e->getMessage(), DEBUG_DEVELOPER);
+
+            // Back to how it was: the old copy, still carrying the identity.
+            self::remove_partial($cm, $payload->modname);
+
+            if ($DB->record_exists('course_modules', ['id' => $existingcmid, 'deletioninprogress' => 0])) {
+                copy_update::set_identity($existingcmid, $idnumber);
+            }
+
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, 'errorupdatefailed');
+
+            return;
+        }
+
+        $result->add_updated(
+            $name,
+            $payload->modname,
+            $activity->cmid,
+            (int) $cm->id,
+            $newedition ? 'syncupdatednewedition' : 'syncupdatedreplaced',
+            self::notes_for($handler, $payload)
+        );
+    }
+
+    /**
+     * Fetch one activity from the source and create it here.
+     *
+     * Anything that goes wrong is recorded against the activity, and a
+     * half-made activity is taken back out.
+     *
+     * @param \stdClass $course
+     * @param \stdClass $record the connection
+     * @param string $token
+     * @param activity $activity
+     * @param sync_result $result
+     * @param http_client|null $client
+     * @param string $idnumber what to stamp on the new course module
+     * @return array|null [course_modules record, activity_payload, activity_handler], or null if it failed
+     */
+    protected static function create_copy(
+        \stdClass $course,
+        \stdClass $record,
+        string $token,
+        activity $activity,
+        sync_result $result,
+        ?http_client $client,
+        string $idnumber
+    ): ?array {
         $fetched = remote_client::get_activity($record->remoteurl, $token, $activity->cmid, $client);
 
         if (!$fetched->success) {
             $result->add_failed($activity->name, $activity->modname, $activity->cmid, $fetched->errorkey);
 
-            return;
+            return null;
         }
 
         $payload = $fetched->payload;
@@ -365,7 +542,7 @@ class syncer {
         if ($handler === null) {
             $result->add_failed($activity->name, $activity->modname, $activity->cmid, 'errorunsupportedtype');
 
-            return;
+            return null;
         }
 
         $problem = $handler->check_payload($payload);
@@ -373,17 +550,13 @@ class syncer {
         if ($problem !== null) {
             $result->add_failed($activity->name, $activity->modname, $activity->cmid, $problem);
 
-            return;
+            return null;
         }
 
         $cm = null;
 
         try {
-            $cm = $handler->create_from_remote_data(
-                $course,
-                $payload,
-                self::build_idnumber($activity->cmid)
-            );
+            $cm = $handler->create_from_remote_data($course, $payload, $idnumber);
 
             // Files can only be written once the activity exists, because a file
             // area is addressed by the module's context id.
@@ -411,9 +584,20 @@ class syncer {
 
             $result->add_failed($activity->name, $activity->modname, $activity->cmid, $reason);
 
-            return;
+            return null;
         }
 
+        return [$cm, $payload, $handler];
+    }
+
+    /**
+     * What a teacher should be told about one copied activity.
+     *
+     * @param activity_handler $handler
+     * @param activity_payload $payload
+     * @return array
+     */
+    protected static function notes_for(activity_handler $handler, activity_payload $payload): array {
         $notes = [];
 
         if ($payload->references_files()) {
@@ -429,13 +613,7 @@ class syncer {
             $notes[] = $note;
         }
 
-        $result->add_created(
-            $payload->name,
-            $payload->modname,
-            $activity->cmid,
-            (int) $cm->id,
-            $notes
-        );
+        return $notes;
     }
 
     /**

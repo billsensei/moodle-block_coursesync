@@ -92,11 +92,31 @@ what will happen to it.
 each, ticked and ready. Untick anything you do not want and choose
 **Copy the ticked activities**.
 
-**Already on this course** comes after it, for reference - nothing there can
+**Changed since it was copied** comes next, when there is anything in it:
+activities Course Sync copied here before that have since been edited on the
+other site. These can be ticked to bring your copy up to date, but they start
+**unticked**, because updating changes something already in your course. The
+Status column says which of two things will happen:
+
+- **The copy here will be replaced** — nobody has done anything in your copy
+  yet, so the updated version takes its place: same section, same position,
+  and the same visibility, access restrictions, completion settings and grade
+  category your course gave it. Other activities whose access restrictions
+  depended on it now depend on the new one. The old copy goes to the recycle
+  bin, if your site has one switched on. Any edits you made to the copy itself
+  are replaced along with it.
+- **Will be added as a new edition** — people already have something in your
+  copy: attempts, submissions, posts, answers, grades, or completion progress.
+  Your copy is left exactly as it is, and the updated version is added straight
+  after it with **(New edition)** on the end of its name. From then on the new
+  edition is the one Course Sync keeps up to date; the old one is yours to hide
+  or remove when you are ready.
+
+**Already on this course** comes last, for reference - nothing there can
 be ticked:
 
-- **Already synced** means Course Sync copied it here before. Copying it
-  again is exactly what Course Sync refuses to do.
+- **Already synced** means Course Sync copied it here before, and it has not
+  changed on the other site since.
 - **Needs review** means something in your course already carries that
   activity's identity, but Course Sync did not put it there. It is named in a
   warning above this group until you have looked at it by hand.
@@ -192,8 +212,9 @@ would use, and Course Sync did not put it there. Usually somebody made it by
 hand. Look at what is already there and decide whether you still want the copy.
 
 **"Changed on the other site"** — Course Sync copied this here earlier, and it
-has since been edited on the other site. Your copy is untouched. Compare the two
-and make the change yourself if you want it.
+has since been edited on the other site. You only see this from a sync nobody
+made a choice for; on the sync page itself, a changed activity is offered for
+updating instead (see "Running a sync" above). Your copy is untouched.
 
 ### After you have dealt with one
 

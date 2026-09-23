@@ -127,13 +127,25 @@ if (!$confirm) {
     $newrows = array_map($tag('new'), $candidates->new);
     usort($newrows, $bycmid);
 
+    // Changed since it was copied: offered, but never pre-ticked, because
+    // updating replaces something already in this course or adds a second
+    // edition beside it. Which of the two is said on the row.
+    $changedrows = array_map(
+        static fn(activity $activity): array => [
+            'activity' => $activity,
+            'status' => $candidates->is_new_edition($activity->cmid) ? 'changednewedition' : 'changedreplace',
+        ],
+        $candidates->changed
+    );
+    usort($changedrows, $bycmid);
+
     $alreadyrows = array_merge(
         array_map($tag('present'), $candidates->present),
         array_map($tag('collision'), $candidates->collisions)
     );
     usort($alreadyrows, $bycmid);
 
-    if ($newrows === [] && $alreadyrows === []) {
+    if ($newrows === [] && $changedrows === [] && $alreadyrows === []) {
         echo $OUTPUT->notification(get_string('syncnothingatall', 'block_coursesync'), 'success', false);
     } else {
         echo $OUTPUT->heading(get_string('syncchooseheading', 'block_coursesync'), 3);
@@ -141,6 +153,8 @@ if (!$confirm) {
 
         $statuslabels = [
             'new' => get_string('syncstatusnew', 'block_coursesync'),
+            'changedreplace' => get_string('syncstatuschangedreplace', 'block_coursesync'),
+            'changednewedition' => get_string('syncstatuschangednewedition', 'block_coursesync'),
             'present' => get_string('syncstatuspresent', 'block_coursesync'),
             'collision' => get_string('syncstatuscollision', 'block_coursesync'),
         ];
@@ -154,24 +168,25 @@ if (!$confirm) {
             . html_writer::tag('th', get_string('syncstatuscolumn', 'block_coursesync'), ['scope' => 'col'])
         );
 
-        // Only what is not on this course yet can be copied. Everything else
-        // is shown for reference with its checkbox disabled, so it cannot be
-        // ticked and is not sent even if a browser ignores that.
+        // Only what is not on this course yet, or has changed since it was
+        // copied, can be chosen. Everything else is shown for reference with
+        // its checkbox disabled, so it cannot be ticked and is not sent even
+        // if a browser ignores that. Only new ones start ticked.
         $renderrows = static function (array $rows) use ($statuslabels): string {
             $out = '';
 
             foreach ($rows as $row) {
                 $activity = $row['activity'];
-                $isnew = $row['status'] === 'new';
+                $selectable = in_array($row['status'], ['new', 'changedreplace', 'changednewedition'], true);
                 $id = 'coursesync-cm-' . (int) $activity->cmid;
 
                 $checkbox = html_writer::empty_tag('input', [
                     'type' => 'checkbox',
-                    'name' => $isnew ? 'cmids[]' : null,
+                    'name' => $selectable ? 'cmids[]' : null,
                     'value' => (int) $activity->cmid,
                     'id' => $id,
-                    'checked' => $isnew ? 'checked' : null,
-                    'disabled' => $isnew ? null : 'disabled',
+                    'checked' => $row['status'] === 'new' ? 'checked' : null,
+                    'disabled' => $selectable ? null : 'disabled',
                     'class' => 'form-check-input',
                 ]);
 
@@ -188,7 +203,7 @@ if (!$confirm) {
             return $out;
         };
 
-        if ($newrows !== []) {
+        if ($newrows !== [] || $changedrows !== []) {
             echo html_writer::start_tag('form', [
                 'method' => 'post',
                 'action' => $pageurl->out(false),
@@ -198,9 +213,7 @@ if (!$confirm) {
             echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
             echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'full', 'value' => (int) $full]);
 
-            echo $OUTPUT->heading(get_string('syncgroupnew', 'block_coursesync'), 4);
-
-            // Only the enabled (new) checkboxes respond to these; there is
+            // Only the enabled (new and changed) checkboxes respond to these; there is
             // nothing else on the page for them to affect. See amd/src/choose.js.
             echo html_writer::tag(
                 'div',
@@ -219,17 +232,31 @@ if (!$confirm) {
 
             $PAGE->requires->js_call_amd('block_coursesync/choose', 'init');
 
-            echo html_writer::tag(
-                'table',
-                html_writer::tag(
-                    'caption',
-                    get_string('syncchoosecaptionnew', 'block_coursesync'),
-                    ['class' => 'sr-only']
-                )
-                . html_writer::tag('thead', $head)
-                . html_writer::tag('tbody', $renderrows($newrows)),
-                ['class' => 'table table-striped']
-            );
+            $rendergroup = static function (
+                array $rows,
+                string $headingkey,
+                string $captionkey
+            ) use (
+                $OUTPUT,
+                $head,
+                $renderrows
+            ): void {
+                if ($rows === []) {
+                    return;
+                }
+
+                echo $OUTPUT->heading(get_string($headingkey, 'block_coursesync'), 4);
+                echo html_writer::tag(
+                    'table',
+                    html_writer::tag('caption', get_string($captionkey, 'block_coursesync'), ['class' => 'sr-only'])
+                    . html_writer::tag('thead', $head)
+                    . html_writer::tag('tbody', $renderrows($rows)),
+                    ['class' => 'table table-striped']
+                );
+            };
+
+            $rendergroup($newrows, 'syncgroupnew', 'syncchoosecaptionnew');
+            $rendergroup($changedrows, 'syncgroupchanged', 'syncchoosecaptionchanged');
 
             echo html_writer::tag(
                 'div',
@@ -325,6 +352,8 @@ if ($result->items !== []) {
         $badge = match ($item['outcome']) {
             'created' => html_writer::tag('span', get_string('synccreated', 'block_coursesync'),
                 ['class' => 'badge bg-success']),
+            'updated' => html_writer::tag('span', get_string('syncupdated', 'block_coursesync'),
+                ['class' => 'badge bg-info text-dark']),
             'conflict' => html_writer::tag('span', get_string('syncconflicted', 'block_coursesync'),
                 ['class' => 'badge bg-warning text-dark']),
             'skipped' => html_writer::tag('span', get_string('syncskipped', 'block_coursesync'),

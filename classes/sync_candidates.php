@@ -25,10 +25,15 @@ namespace block_coursesync;
  *
  * - **new**: in the other course and not in this one. These are what is offered,
  *   each one selectable.
- * - **present**: this plugin copied it here already. Not offered, because
- *   copying it twice is exactly what this plugin refuses to do. Counted so the
- *   list being shorter than the other course is explained rather than
- *   mysterious.
+ * - **changed**: this plugin copied it here already, and the source has
+ *   changed it since. Offered, but not pre-selected: syncing it replaces the
+ *   copy, or adds a new edition beside it when people already have something
+ *   in the copy - see copy_update. Which of the two is known up front, so the
+ *   page can say.
+ * - **present**: this plugin copied it here already, and it has not changed
+ *   since. Not offered, because copying it twice is exactly what this plugin
+ *   refuses to do. Counted so the list being shorter than the other course is
+ *   explained rather than mysterious.
  * - **collisions**: something in this course carries that activity's identity,
  *   but this plugin did not put it there. Also not offered, but named rather
  *   than counted: it is the one case a person needs to look at, and hiding it
@@ -55,7 +60,13 @@ class sync_candidates {
     /** @var activity[] In the other course, not in this one, and syncable. */
     public array $new = [];
 
-    /** @var activity[] Copied here by an earlier run. */
+    /** @var activity[] Copied here by an earlier run, and changed on the source since. */
+    public array $changed = [];
+
+    /** @var int[] Remote cmids of changed activities whose local copy people have data in. */
+    public array $neweditions = [];
+
+    /** @var activity[] Copied here by an earlier run, and unchanged since. */
     public array $present = [];
 
     /** @var activity[] Something here carries the identity, but this plugin did not put it there. */
@@ -87,7 +98,17 @@ class sync_candidates {
      * @return bool
      */
     public function has_any(): bool {
-        return $this->new !== [];
+        return $this->new !== [] || $this->changed !== [];
+    }
+
+    /**
+     * Would syncing this changed activity add a new edition rather than replace the copy?
+     *
+     * @param int $remotecmid
+     * @return bool
+     */
+    public function is_new_edition(int $remotecmid): bool {
+        return in_array($remotecmid, $this->neweditions, true);
     }
 
     /**
@@ -99,7 +120,10 @@ class sync_candidates {
      * @return int[]
      */
     public function offered_cmids(): array {
-        return array_map(static fn(activity $activity): int => $activity->cmid, $this->new);
+        return array_map(
+            static fn(activity $activity): int => $activity->cmid,
+            array_merge($this->new, $this->changed)
+        );
     }
 
     /**

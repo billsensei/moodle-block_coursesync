@@ -336,6 +336,15 @@ do. Table cells use `s()`.
 - A quiz's password and IP restriction are deliberately never exported, so they
   do not exist in a request, a log or a response on either site. The copy is
   created without them and the teacher sets their own.
+- Updating a copy can **delete** an activity with no capability beyond
+  `block/coursesync:sync`, the same gate that lets a teacher create one. It is
+  bounded three ways: only a copy this plugin itself made (the sync history
+  must say so), only when nobody has data in it (its own privacy provider plus
+  completion), and only when a teacher ticked it. Deletion goes through
+  `course_delete_module()`, so the recycle bin keeps it where that is enabled.
+  A site that grants `block/coursesync:sync` to a role without
+  `moodle/course:manageactivities` should know that role can now replace
+  synced activities.
 - A source site is trusted not to send an enormous file. `file_sync::MAX_CHUNKS`
   caps a single file at 1 GB.
 - A question's own files (its text, feedback, answers) do not go through
