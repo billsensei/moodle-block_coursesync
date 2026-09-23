@@ -82,11 +82,40 @@ class workshop_handler extends activity_handler {
      * @return array[]
      */
     public function get_file_areas(): array {
-        return [
+        $areas = [
             ['filearea' => 'instructauthors', 'itemid' => 0],
             ['filearea' => 'instructreviewers', 'itemid' => 0],
             ['filearea' => 'conclusion', 'itemid' => 0],
         ];
+
+        // Each grading strategy files the images in its criteria's
+        // descriptions under its own component, keyed by the criterion.
+        foreach (array_keys(self::STRATEGY_TABLES) as $strategy) {
+            $areas[] = ['component' => 'workshopform_' . $strategy, 'filearea' => 'description', 'anyitemid' => true];
+        }
+
+        return $areas;
+    }
+
+    /**
+     * DESTINATION SIDE. A criterion's files go under the criterion created
+     * here for it; the workshop's own texts are always item 0.
+     *
+     * @param activity_payload $payload
+     * @param array $file
+     * @param \stdClass $cm
+     * @return int|null
+     */
+    public function map_file_itemid(activity_payload $payload, array $file, \stdClass $cm): ?int {
+        $component = (string) ($file['component'] ?? '');
+
+        if (str_starts_with($component, 'workshopform_')) {
+            $strategy = substr($component, strlen('workshopform_'));
+
+            return $this->local_id($strategy . 'dimension', (int) ($file['itemid'] ?? 0));
+        }
+
+        return 0;
     }
 
     /**

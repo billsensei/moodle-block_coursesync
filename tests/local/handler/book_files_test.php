@@ -126,15 +126,16 @@ final class book_files_test extends advanced_testcase {
 
         get_file_storage()->create_file_from_string([
             'contextid' => $context->id,
-            'component' => 'mod_book',
-            'filearea' => 'intro',
+            'component' => 'mod_page',
+            'filearea' => 'content',
             'itemid' => 0,
             'filepath' => '/',
             'filename' => 'secret.txt',
         ], 'not part of a chapter');
 
+        // A real area, in this book's own context, but of another component.
         try {
-            get_activity_file::execute($book->cmid, 'intro', 0, '/', 'secret.txt', 0, 1024);
+            get_activity_file::execute($book->cmid, 'content', 0, '/', 'secret.txt', 0, 1024, 'mod_page');
             $this->fail('Expected a moodle_exception');
         } catch (\moodle_exception $e) {
             $this->assertSame('errorfilenotallowed', $e->errorcode);

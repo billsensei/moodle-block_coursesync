@@ -79,8 +79,9 @@ read"*.
 - A copied **Database has no custom CSS or JavaScript**, and a copied **Lesson
   has no password**. Both are deliberate and both are reported on the results
   page; see `SECURITY.md`
-- Images embedded inside a page do not come across yet; files attached to a File
-  activity do
+- Images embedded in text come across - descriptions, pages, text and media
+  areas, book chapters, lesson pages, feedback labels, workshop instructions and
+  criteria. Any link whose file could not come is named on the results page
 - Nothing is overwritten unless a teacher ticks it. A copy changed on the
   source is offered for updating, unticked; it is replaced only if nobody has
   anything in it, and otherwise added beside the old one as a "(New edition)".
@@ -91,7 +92,6 @@ read"*.
 
 | Limitation | Effect on a pilot |
 | --- | --- |
-| Embedded files in text are not transferred | Pages with inline images arrive with those images missing, and say so |
 | Updates are a fresh copy, never an in-place edit | A copy with people's work in it gets a "(New edition)" beside it rather than an update |
 | Quiz question edits are not picked up | Editing a question on the source does not mark the quiz as changed, and a replaced quiz reuses the questions already here |
 | Deletions are not detected | An activity removed from the source simply stops being offered |

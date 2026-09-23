@@ -46,14 +46,33 @@ class feedback_handler extends activity_handler {
     }
 
     /**
-     * A feedback's own files are those in the page shown after submitting.
+     * A feedback's own files: those in the page shown after submitting, and
+     * those embedded in its items - a label item is all text, and its images
+     * are filed under the item's own id.
      *
      * @return array[]
      */
     public function get_file_areas(): array {
         return [
             ['filearea' => 'page_after_submit', 'itemid' => 0],
+            ['filearea' => 'item', 'anyitemid' => true],
         ];
+    }
+
+    /**
+     * DESTINATION SIDE. An item's files go under the item created here for it.
+     *
+     * @param activity_payload $payload
+     * @param array $file
+     * @param \stdClass $cm
+     * @return int|null
+     */
+    public function map_file_itemid(activity_payload $payload, array $file, \stdClass $cm): ?int {
+        if (($file['filearea'] ?? '') === 'item') {
+            return $this->local_id('item', (int) ($file['itemid'] ?? 0));
+        }
+
+        return 0;
     }
 
     /**

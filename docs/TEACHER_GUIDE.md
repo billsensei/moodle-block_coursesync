@@ -244,10 +244,12 @@ tell whether a sync was tried.
 
 ## Things worth knowing
 
-**Images and files inside a page are not copied yet.** A page whose text contains
-an embedded picture arrives with that picture missing, and the sync says so.
-Files attached to a **File** or **Folder** activity *are* copied, and so are
-pictures inside a **Book** chapter.
+**Pictures and files inside text come across.** An image in an activity's
+description, in a page, in a text and media area, in a book chapter, a lesson
+page, a feedback label, or a workshop's instructions and assessment criteria
+arrives with it, as do files attached to a **File** or **Folder** activity. If a
+link in some text points at a file that could not be brought across, the results
+page names that file, so you know which picture to put back by hand.
 
 **Forum discussions, wiki pages and assignment submissions are not copied.** Those
 activities arrive set up but empty. Anything people wrote or handed in stays on

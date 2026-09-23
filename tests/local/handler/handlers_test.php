@@ -259,13 +259,26 @@ final class handlers_test extends advanced_testcase {
     public function test_file_areas_are_declared_only_where_needed(): void {
         $this->resetAfterTest();
 
-        $this->assertSame([], (new page_handler())->get_file_areas());
+        $this->assertSame([['filearea' => 'content', 'itemid' => 0]], (new page_handler())->get_file_areas());
         $this->assertSame([], (new url_handler())->get_file_areas());
         $this->assertSame([], (new label_handler())->get_file_areas());
         $this->assertSame([], (new forum_handler())->get_file_areas());
         $this->assertSame(
             [['filearea' => 'content', 'itemid' => 0]],
             (new resource_handler())->get_file_areas()
+        );
+
+        // Every type also gets the description's area, without declaring it.
+        $this->assertSame(
+            [['component' => 'mod_url', 'filearea' => 'intro', 'itemid' => 0]],
+            (new url_handler())->file_areas()
+        );
+        $this->assertSame(
+            [
+                ['component' => 'mod_page', 'filearea' => 'intro', 'itemid' => 0],
+                ['component' => 'mod_page', 'filearea' => 'content', 'itemid' => 0],
+            ],
+            (new page_handler())->file_areas()
         );
     }
 

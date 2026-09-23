@@ -65,20 +65,36 @@ class file_sync {
         $stored = 0;
 
         foreach ($payload->files as $file) {
+            if (($file['component'] ?? '') === '') {
+                $file['component'] = 'mod_' . $modname;
+            }
+
+            // The source names where a file goes, and this site decides
+            // whether that is somewhere it lets files go. Only an area this
+            // site's own handler declares - never whatever component and area
+            // a source cares to name.
+            if (!$handler->declares_file_area($file['component'], (string) $file['filearea'])) {
+                continue;
+            }
+
             // Files that hang off child records have to be pointed at the ones
             // this site created; a file with nowhere to go is left behind
             // rather than stored somewhere arbitrary.
-            $itemid = $handler->map_file_itemid($payload, $file, $cm);
+            $itemid = $handler->local_file_itemid($payload, $file, $cm);
 
             if ($itemid === null) {
                 continue;
             }
 
-            $content = self::fetch($baseurl, $token, $payload->cmid, $file, $client);
+            // Named only when it is not the activity's own, so a source
+            // running an older version - which lists only the activity's own
+            // areas, and does not know the parameter - is never sent it.
+            $remotecomponent = $file['component'] === 'mod_' . $modname ? '' : $file['component'];
+            $content = self::fetch($baseurl, $token, $payload->cmid, $file, $client, $remotecomponent);
 
             $record = (object) [
                 'contextid' => $context->id,
-                'component' => 'mod_' . $modname,
+                'component' => $file['component'],
                 'filearea' => (string) $file['filearea'],
                 'itemid' => $itemid,
                 'filepath' => (string) $file['filepath'],
@@ -117,6 +133,7 @@ class file_sync {
      * @param int $remotecmid course module id on the source site
      * @param array $file the file metadata from the payload
      * @param http_client|null $client injected only by tests
+     * @param string $component the file area's component, empty for the activity's own
      * @return string the whole file
      * @throws \moodle_exception if the transfer fails or the content does not match
      */
@@ -125,7 +142,8 @@ class file_sync {
         string $token,
         int $remotecmid,
         array $file,
-        ?http_client $client = null
+        ?http_client $client = null,
+        string $component = ''
     ): string {
         $content = '';
         $offset = 0;
@@ -146,7 +164,8 @@ class file_sync {
                 (string) $file['filename'],
                 $offset,
                 self::CHUNK,
-                $client
+                $client,
+                $component
             );
 
             if (!$chunk->success) {

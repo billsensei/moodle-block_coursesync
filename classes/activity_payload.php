@@ -218,6 +218,10 @@ class activity_payload {
             }
 
             $cleaned[] = [
+                // Empty for the activity's own component, which is all an
+                // older source ever sends. Checked against what this site's
+                // handler declares before anything is stored.
+                'component' => clean_param((string) ($file['component'] ?? ''), PARAM_COMPONENT),
                 'filearea' => $filearea,
                 'itemid' => max(0, clean_param($file['itemid'] ?? 0, PARAM_INT)),
                 'filepath' => $filepath === '' ? '/' : $filepath,
@@ -399,25 +403,59 @@ class activity_payload {
     }
 
     /**
-     * Does any text in this payload point at a file that has not been copied?
+     * Does any text in this payload point at a file that is not coming with it?
      *
-     * Files that belong to an activity's own file areas - a resource's upload,
-     * say - are transferred. What is not transferred is a file embedded inside
-     * a text field, which arrives as an @@PLUGINFILE@@ link that will not
-     * resolve. The sync reports that rather than quietly creating a broken
-     * activity.
+     * A file embedded in a text field arrives as an @@PLUGINFILE@@ link, and
+     * the file itself travels only if it is in one of the areas the handler
+     * declared (the description's, a page's content, a book's chapters...).
+     * A link to anything else will not resolve here. The sync reports that
+     * rather than quietly creating a broken activity.
      *
      * @return bool
      */
     public function references_files(): bool {
+        return $this->missing_files() !== [];
+    }
+
+    /**
+     * The names of files a text in this payload links to that are not coming with it.
+     *
+     * Matched by path and name, whichever area the file is in: the link in a
+     * text does not say which area it means, only where in it the file sits.
+     *
+     * @return string[] file names, each once
+     */
+    public function missing_files(): array {
         $texts = array_merge([$this->intro], array_values($this->settings));
 
-        foreach ($texts as $text) {
-            if (strpos((string) $text, '@@PLUGINFILE@@') !== false) {
-                return true;
+        foreach ($this->children as $child) {
+            foreach ($child['fields'] ?? [] as $value) {
+                $texts[] = (string) $value;
             }
         }
 
-        return false;
+        $arriving = [];
+
+        foreach ($this->files as $file) {
+            $arriving[$file['filepath'] . $file['filename']] = true;
+        }
+
+        $missing = [];
+
+        foreach ($texts as $text) {
+            if (!preg_match_all('~@@PLUGINFILE@@(/[^"\'\s<>?#)]*)~', (string) $text, $matches)) {
+                continue;
+            }
+
+            foreach ($matches[1] as $path) {
+                $path = rawurldecode($path);
+
+                if (!isset($arriving[$path])) {
+                    $missing[$path] = basename($path);
+                }
+            }
+        }
+
+        return array_values(array_unique($missing));
     }
 }

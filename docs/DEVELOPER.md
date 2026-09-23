@@ -578,8 +578,21 @@ and Behat each refuse to run against a site built for a different version.
 
 ## Known limitations
 
-- Files embedded in text fields are not transferred; `@@PLUGINFILE@@` links
-  arrive broken and the sync says so.
+- Files embedded in text fields travel only when they are in a declared file
+  area. Every type gets its description's area (`intro`) from
+  `activity_handler::file_areas()` without declaring it, and the handler
+  declares the rest (`get_file_areas()`): a page's `content`, a book's
+  `chapter`, a lesson's pages, a feedback's `item`, a workshop's instructions
+  and - under each grading strategy's own component, `workshopform_*` - its
+  criteria's `description`. `local_file_itemid()` files `intro` under item 0
+  before any handler's `map_file_itemid()` is asked, because several of those
+  only know their own child records' areas. On the destination, a file is
+  stored only if `declares_file_area()` agrees on its component and area,
+  whatever the source listed. A link whose file does not arrive is named in
+  `syncfilesmissing` (`activity_payload::missing_files()`), matched by path
+  and name; runs before this recorded the unnamed `syncfilewarning`.
+- A quiz's overall feedback (the grade-boundary texts in `quiz_feedback`) is
+  not carried at all, embedded files or not.
 - Forum discussions, wiki pages, glossary entries, feedback responses, database
   entries, workshop submissions, choice answers and lesson attempts are not
   synced. Those activities carry what a teacher set up, not what anyone did.

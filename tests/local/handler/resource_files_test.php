@@ -179,9 +179,19 @@ final class resource_files_test extends advanced_testcase {
         $resource = $this->getDataGenerator()->create_module('resource', ['course' => $course->id]);
         $this->add_file($resource, 'handbook.txt', 'contents');
 
-        // The "intro" area is a real Moodle file area, but not one the handler declares.
+        // A real Moodle file area - where students' assignment uploads go -
+        // named with its component, but not one the handler declares.
         try {
-            get_activity_file::execute($resource->cmid, 'intro', 0, '/', 'handbook.txt', 0, 1024);
+            get_activity_file::execute(
+                $resource->cmid,
+                'submission_files',
+                0,
+                '/',
+                'handbook.txt',
+                0,
+                1024,
+                'assignsubmission_file'
+            );
             $this->fail('Expected the undeclared area to be refused');
         } catch (\moodle_exception $e) {
             $this->assertSame('errorfilenotallowed', $e->errorcode);

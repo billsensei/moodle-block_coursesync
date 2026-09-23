@@ -225,11 +225,12 @@ none, and one that does could collide with something already in the destination.
 where it was, so the activities that did not make it are tried again next time
 rather than being silently skipped forever.
 
-### Not copied yet
+### Embedded files
 
-Embedded files are not transferred. A page whose content refers to
-`@@PLUGINFILE@@` is still created, but the sync says plainly that those links
-will not resolve.
+Files embedded in text fields (`@@PLUGINFILE@@` links) are transferred along
+with the activity: every type's description, and each type's own text areas.
+A link whose file does not arrive is named on the results page. See
+`docs/DEVELOPER.md`, "Known limitations", for exactly which areas travel.
 
 ## Change detection
 

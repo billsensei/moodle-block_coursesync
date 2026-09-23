@@ -64,8 +64,16 @@ permission is reported as that, rather than as the "course not accessible" that
 `require_login()` raises.
 
 `get_activity_file` additionally refuses any file area the activity's own handler
-has not declared in `get_file_areas()`. Without that it would be a way to read
-any file in any activity.
+has not declared (`activity_handler::file_areas()`: the description's `intro`,
+which every type has, plus `get_file_areas()`). Without that it would be a way to
+read any file in any activity. An area may name a component other than the
+activity's own - a workshop grading strategy's `workshopform_*` - and the
+optional `component` parameter is checked against the same list, so it widens
+nothing: it only reaches areas a handler already declared.
+
+The destination applies the same rule the other way. `file_sync` stores a file
+only if its own handler declares that component and area, so a source cannot
+place a file in an area of its choosing by listing it.
 
 #### Why the course context, and not the activity's
 
@@ -327,8 +335,8 @@ do. Table cells use `s()`.
 
 ## Known limitations
 
-- Embedded files inside text fields are not transferred; content referring to
-  `@@PLUGINFILE@@` arrives with links that do not resolve. The sync says so.
+- Embedded files in text fields are transferred only from declared areas; a
+  link to anything else arrives broken, and the sync names the file.
 - Hidden activities on the source are reported to the destination, and are read
   and copied. The capability check is the gate, not per-activity visibility — see
   "Why the course context, and not the activity's" above. The copy keeps the

@@ -137,11 +137,90 @@ abstract class activity_handler {
      * item id, and implements map_file_itemid() to say where each file belongs
      * once the activity has been rebuilt here.
      *
+     * An area that belongs to a subplugin rather than to the activity itself -
+     * a workshop grading strategy's criterion descriptions, say - also names
+     * its 'component'. Without one, the component is "mod_" plus the type.
+     *
+     * The description every activity has ('intro') is not declared here: every
+     * type has it, so file_areas() adds it for all of them.
+     *
      * @return array[] each entry ['filearea' => string, 'itemid' => int] or
-     *                 ['filearea' => string, 'anyitemid' => true]
+     *                 ['filearea' => string, 'anyitemid' => true], optionally
+     *                 with 'component' => string
      */
     public function get_file_areas(): array {
         return [];
+    }
+
+    /**
+     * SOURCE AND DESTINATION. Every file area this activity's files may be in.
+     *
+     * The description's own area first, which every activity type has and
+     * whose embedded files - an image in a page's description, or anywhere in
+     * a text and media area, whose description is all it has - would otherwise
+     * arrive as broken links. Then whatever the handler declared, each with its
+     * component filled in.
+     *
+     * @return array[] as get_file_areas(), always with 'component'
+     */
+    final public function file_areas(): array {
+        $default = 'mod_' . static::get_modname();
+        $areas = [['component' => $default, 'filearea' => 'intro', 'itemid' => 0]];
+
+        foreach ($this->get_file_areas() as $area) {
+            $areas[] = ['component' => (string) ($area['component'] ?? $default)] + $area;
+        }
+
+        return $areas;
+    }
+
+    /**
+     * SOURCE AND DESTINATION. Is a file in this place one this activity declares?
+     *
+     * On the source it is what keeps the file function from being a way to read
+     * any file at all. Here it is what keeps a source from writing a file into
+     * any area it names.
+     *
+     * @param string $component
+     * @param string $filearea
+     * @param int|null $itemid null to accept any item id in the area
+     * @return bool
+     */
+    final public function declares_file_area(string $component, string $filearea, ?int $itemid = null): bool {
+        foreach ($this->file_areas() as $area) {
+            if ($area['component'] !== $component || ($area['filearea'] ?? '') !== $filearea) {
+                continue;
+            }
+
+            // An area keyed by child records cannot name its item ids up front,
+            // so the area itself is what the handler vouches for. That is still
+            // one named area of one activity the caller may already read.
+            if ($itemid === null || !empty($area['anyitemid']) || (int) ($area['itemid'] ?? 0) === $itemid) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * DESTINATION SIDE. The item id a file is stored under here.
+     *
+     * The description's files are always item 0, whatever the type, so they
+     * are settled here rather than left to every map_file_itemid() - several
+     * of which only know about their own child records' areas.
+     *
+     * @param activity_payload $payload
+     * @param array $file the file's metadata from the payload
+     * @param \stdClass $cm the course module just created here
+     * @return int|null null to leave the file out
+     */
+    final public function local_file_itemid(activity_payload $payload, array $file, \stdClass $cm): ?int {
+        if (($file['component'] ?? '') === 'mod_' . static::get_modname() && ($file['filearea'] ?? '') === 'intro') {
+            return 0;
+        }
+
+        return $this->map_file_itemid($payload, $file, $cm);
     }
 
     /**

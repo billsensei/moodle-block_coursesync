@@ -122,7 +122,7 @@ class get_activity extends external_api {
             ];
         }
 
-        $files = self::list_files($context, $cminfo->modname, $handler->get_file_areas());
+        $files = self::list_files($context, $cminfo->modname, $handler->file_areas());
 
         return [
             'cmid' => (int) $cminfo->id,
@@ -148,7 +148,7 @@ class get_activity extends external_api {
      *
      * @param \context_module $context the activity's context
      * @param string $modname the activity type
-     * @param array[] $areas what the handler declared
+     * @param array[] $areas what the handler declared, each with its component
      * @return array[]
      */
     protected static function list_files(\context_module $context, string $modname, array $areas): array {
@@ -166,10 +166,12 @@ class get_activity extends external_api {
             // under each of their ids, so false asks for all of them at once.
             $itemid = !empty($area['anyitemid']) ? false : (int) ($area['itemid'] ?? 0);
 
-            $stored = $fs->get_area_files($context->id, 'mod_' . $modname, $filearea, $itemid, 'sortorder', false);
+            $component = (string) ($area['component'] ?? 'mod_' . $modname);
+            $stored = $fs->get_area_files($context->id, $component, $filearea, $itemid, 'sortorder', false);
 
             foreach ($stored as $file) {
                 $files[] = [
+                    'component' => $component,
                     'filearea' => $filearea,
                     'itemid' => (int) $file->get_itemid(),
                     'filepath' => $file->get_filepath(),
@@ -225,6 +227,11 @@ class get_activity extends external_api {
             ),
             'files' => new external_multiple_structure(
                 new external_single_structure([
+                    'component' => new external_value(
+                        PARAM_COMPONENT,
+                        'Component the file area belongs to: the activity, or one of its subplugins.',
+                        VALUE_OPTIONAL
+                    ),
                     'filearea' => new external_value(PARAM_AREA, 'File area within the activity.'),
                     'itemid' => new external_value(PARAM_INT, 'Item id within the file area.'),
                     'filepath' => new external_value(PARAM_PATH, 'Path within the file area.'),

@@ -40,6 +40,17 @@ class page_handler extends activity_handler {
     }
 
     /**
+     * A page's own files: whatever is embedded in its content.
+     *
+     * @return array[]
+     */
+    public function get_file_areas(): array {
+        return [
+            ['filearea' => 'content', 'itemid' => 0],
+        ];
+    }
+
+    /**
      * SOURCE SIDE. What a page needs beyond the common envelope.
      *
      * mod_page keeps its display preferences in a serialized blob. That is an

@@ -601,7 +601,10 @@ class syncer {
         $notes = [];
 
         if ($payload->references_files()) {
-            $notes[] = 'syncfilewarning';
+            // Named, so a teacher knows which pictures to put back by hand.
+            // (Runs from before files embedded in text were copied recorded
+            // the plain syncfilewarning, which their history still shows.)
+            $notes[] = ['syncfilesmissing', implode(', ', $payload->missing_files())];
         }
 
         if ($handler->lost_scale($payload)) {

@@ -198,6 +198,7 @@ class remote_client {
      * @param int $offset byte to start at
      * @param int $length how many bytes to ask for
      * @param \core\http_client|null $client injected only by tests
+     * @param string $component the file area's component, when it is not the activity's own
      * @return file_chunk
      */
     public static function get_activity_file(
@@ -210,9 +211,10 @@ class remote_client {
         string $filename,
         int $offset,
         int $length,
-        ?http_client $client = null
+        ?http_client $client = null,
+        string $component = ''
     ): file_chunk {
-        $outcome = self::call($baseurl, $token, 'block_coursesync_get_activity_file', [
+        $params = [
             'cmid' => $cmid,
             'filearea' => $filearea,
             'itemid' => $itemid,
@@ -220,7 +222,13 @@ class remote_client {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
-        ], $client);
+        ];
+
+        if ($component !== '') {
+            $params['component'] = $component;
+        }
+
+        $outcome = self::call($baseurl, $token, 'block_coursesync_get_activity_file', $params, $client);
 
         if ($outcome['errorkey'] !== null) {
             return file_chunk::failure($outcome['errorkey']);

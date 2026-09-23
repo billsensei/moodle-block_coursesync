@@ -56,6 +56,12 @@ class get_activity_file extends external_api {
             'filename' => new external_value(PARAM_FILE, 'File name.', VALUE_REQUIRED),
             'offset' => new external_value(PARAM_INT, 'Byte to start reading at.', VALUE_DEFAULT, 0),
             'length' => new external_value(PARAM_INT, 'How many bytes to read.', VALUE_DEFAULT, self::MAX_CHUNK),
+            'component' => new external_value(
+                PARAM_COMPONENT,
+                'Component the file area belongs to, when it is not the activity itself.',
+                VALUE_DEFAULT,
+                ''
+            ),
         ]);
     }
 
@@ -69,6 +75,7 @@ class get_activity_file extends external_api {
      * @param string $filename
      * @param int $offset
      * @param int $length
+     * @param string $component empty for the activity's own component
      * @return array
      */
     public static function execute(
@@ -78,7 +85,8 @@ class get_activity_file extends external_api {
         string $filepath,
         string $filename,
         int $offset = 0,
-        int $length = self::MAX_CHUNK
+        int $length = self::MAX_CHUNK,
+        string $component = ''
     ): array {
         global $DB;
 
@@ -90,6 +98,7 @@ class get_activity_file extends external_api {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
+            'component' => $component,
         ] = self::validate_parameters(self::execute_parameters(), [
             'cmid' => $cmid,
             'filearea' => $filearea,
@@ -98,6 +107,7 @@ class get_activity_file extends external_api {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
+            'component' => $component,
         ]);
 
         if ($offset < 0 || $length < 1) {
@@ -131,12 +141,16 @@ class get_activity_file extends external_api {
 
         // Only an area the handler has declared may be read. Without this the
         // function would be a way to read any file in any activity.
-        if (!self::area_is_declared($handler->get_file_areas(), $filearea, $itemid)) {
+        if ($component === '') {
+            $component = 'mod_' . $cminfo->modname;
+        }
+
+        if (!$handler->declares_file_area($component, $filearea, $itemid)) {
             throw new \moodle_exception('errorfilenotallowed', 'block_coursesync');
         }
 
         $fs = get_file_storage();
-        $file = $fs->get_file($context->id, 'mod_' . $cminfo->modname, $filearea, $itemid, $filepath, $filename);
+        $file = $fs->get_file($context->id, $component, $filearea, $itemid, $filepath, $filename);
 
         if (!$file || $file->is_directory()) {
             throw new \moodle_exception('errorfilenotfound', 'block_coursesync');
@@ -154,31 +168,6 @@ class get_activity_file extends external_api {
             'contenthash' => $file->get_contenthash(),
             'content' => base64_encode($content),
         ];
-    }
-
-    /**
-     * Is this file area one the handler said belongs to it?
-     *
-     * @param array[] $areas what the handler declared
-     * @param string $filearea
-     * @param int $itemid
-     * @return bool
-     */
-    protected static function area_is_declared(array $areas, string $filearea, int $itemid): bool {
-        foreach ($areas as $area) {
-            if (($area['filearea'] ?? '') !== $filearea) {
-                continue;
-            }
-
-            // An area keyed by child records cannot name its item ids up front,
-            // so the area itself is what the handler vouches for. That is still
-            // one named area of one activity the caller may already read.
-            if (!empty($area['anyitemid']) || (int) ($area['itemid'] ?? 0) === $itemid) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
