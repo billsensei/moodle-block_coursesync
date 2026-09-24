@@ -424,7 +424,6 @@ abstract class activity_handler {
     }
 
     /**
-     * Steps 3 and 4 of creation: place the activity and tell Moodle about it.    /**
      * Steps 3 and 4 of creation: place the activity and tell Moodle about it.
      *
      * @param \stdClass $course the destination course
@@ -472,6 +471,52 @@ abstract class activity_handler {
      */
     public function notes(activity_payload $payload): array {
         return [];
+    }
+
+    /**
+     * DESTINATION SIDE. May the person running the sync create this type here?
+     *
+     * A sync is a way of creating activities, so it is held to the same rules
+     * as creating one by hand: the type must be enabled on this site, and the
+     * person must be allowed to add it to this course (mod/<type>:addinstance,
+     * via course_allowed_module()) and to manage activities in it. Without this
+     * the sync permission alone would let its holder add any type at all -
+     * including one an administrator had switched off.
+     *
+     * Final, so no handler can skip it; a handler that needs more asks for it
+     * in required_capabilities().
+     *
+     * @param \stdClass $course the destination course
+     * @return string|null a language string identifier explaining the refusal, or null
+     */
+    final public function check_permission(\stdClass $course): ?string {
+        global $CFG;
+
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        if (!\course_allowed_module($course, static::get_modname())) {
+            return 'errormodulenotallowed';
+        }
+
+        $context = \context_course::instance($course->id);
+
+        foreach ($this->required_capabilities() as $capability) {
+            if (!has_capability($capability, $context)) {
+                return 'errormodulenotallowed';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Capabilities, in the course, needed to rebuild this type here - beyond
+     * mod/<type>:addinstance, which check_permission() always asks for.
+     *
+     * @return string[]
+     */
+    protected function required_capabilities(): array {
+        return ['moodle/course:manageactivities'];
     }
 
     /**
@@ -612,7 +657,6 @@ abstract class activity_handler {
     }
 
     /**
-     * Which section the activity should land in.    /**
      * Which section the activity should land in.
      *
      * The source's section number is used where the destination course has one,

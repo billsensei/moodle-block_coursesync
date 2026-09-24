@@ -34,10 +34,10 @@ use core\http_client;
  */
 class file_sync {
     /** @var int How much to ask for at a time, in bytes. */
-    const CHUNK = 524288;
+    public const CHUNK = 524288;
 
     /** @var int Refuse to keep reading past this many chunks for one file. */
-    const MAX_CHUNKS = 2048;
+    public const MAX_CHUNKS = 2048;
 
     /**
      * Copy every file in a payload into a newly created activity.
@@ -90,7 +90,7 @@ class file_sync {
             // running an older version - which lists only the activity's own
             // areas, and does not know the parameter - is never sent it.
             $remotecomponent = $file['component'] === 'mod_' . $modname ? '' : $file['component'];
-            $content = self::fetch($baseurl, $token, $payload->cmid, $file, $client, $remotecomponent);
+            $path = self::fetch($baseurl, $token, $payload->cmid, $file, $client, $remotecomponent);
 
             $record = (object) [
                 'contextid' => $context->id,
@@ -118,7 +118,12 @@ class file_sync {
                 $existing->delete();
             }
 
-            $fs->create_file_from_string($record, $content);
+            try {
+                $fs->create_file_from_pathname($record, $path);
+            } finally {
+                @unlink($path);
+            }
+
             $stored++;
         }
 
@@ -134,7 +139,7 @@ class file_sync {
      * @param array $file the file metadata from the payload
      * @param http_client|null $client injected only by tests
      * @param string $component the file area's component, empty for the activity's own
-     * @return string the whole file
+     * @return string the path of a temporary file holding it, for the caller to remove
      * @throws \moodle_exception if the transfer fails or the content does not match
      */
     protected static function fetch(
@@ -145,7 +150,51 @@ class file_sync {
         ?http_client $client = null,
         string $component = ''
     ): string {
-        $content = '';
+        // Pieces go straight to disk rather than into one string, so a large
+        // file never has to fit in memory - up to MAX_CHUNKS pieces is 1 GB.
+        $path = make_request_directory() . '/transfer';
+        $out = fopen($path, 'wb');
+
+        try {
+            self::fetch_into($out, $baseurl, $token, $remotecmid, $file, $client, $component);
+        } finally {
+            fclose($out);
+        }
+
+        $expected = (string) ($file['contenthash'] ?? '');
+
+        if ($expected !== '' && sha1_file($path) !== $expected) {
+            // Moodle stores a file's SHA1 as its content hash, so this compares
+            // what arrived against what the source site actually holds.
+            @unlink($path);
+
+            throw new \moodle_exception('errorfilecorrupt', 'block_coursesync');
+        }
+
+        return $path;
+    }
+
+    /**
+     * Write a file from the source site to an open stream, a piece at a time.
+     *
+     * @param resource $out
+     * @param string $baseurl
+     * @param string $token
+     * @param int $remotecmid
+     * @param array $file
+     * @param http_client|null $client
+     * @param string $component
+     * @return void
+     */
+    protected static function fetch_into(
+        $out,
+        string $baseurl,
+        string $token,
+        int $remotecmid,
+        array $file,
+        ?http_client $client,
+        string $component
+    ): void {
         $offset = 0;
         $chunks = 0;
 
@@ -172,7 +221,10 @@ class file_sync {
                 throw new \moodle_exception($chunk->errorkey, 'block_coursesync');
             }
 
-            $content .= $chunk->content;
+            if (fwrite($out, $chunk->content) !== strlen($chunk->content)) {
+                throw new \moodle_exception('errorfiletransfer', 'block_coursesync');
+            }
+
             $offset += $chunk->returned;
 
             // A chunk that returns nothing without reaching the end would spin
@@ -181,15 +233,5 @@ class file_sync {
                 throw new \moodle_exception('errorfiletransfer', 'block_coursesync');
             }
         } while (!$chunk->eof);
-
-        $expected = (string) ($file['contenthash'] ?? '');
-
-        if ($expected !== '' && sha1($content) !== $expected) {
-            // Moodle stores a file's SHA1 as its content hash, so this compares
-            // what arrived against what the source site actually holds.
-            throw new \moodle_exception('errorfilecorrupt', 'block_coursesync');
-        }
-
-        return $content;
     }
 }

@@ -482,8 +482,13 @@ class activity_payload {
             foreach ($matches[1] as $path) {
                 $path = rawurldecode($path);
 
-                if (!isset($arriving[$path])) {
-                    $missing[$path] = basename($path);
+                // The path was percent-decoded, so it can now hold anything at
+                // all - markup included. What is kept is only ever shown as a
+                // file name, so it is held to what a file name may be.
+                $name = clean_param(basename($path), PARAM_FILE);
+
+                if (!isset($arriving[$path]) && $name !== '') {
+                    $missing[$path] = $name;
                 }
             }
         }

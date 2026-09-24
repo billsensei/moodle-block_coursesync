@@ -16,6 +16,9 @@ Feature: Course Sync setup wizard
       | user     | course | role           |
       | teacher1 | C1     | editingteacher |
       | student1 | C1     | student        |
+    And the following "permission overrides" exist:
+      | capability                 | permission | role           | contextlevel | reference |
+      | block/coursesync:configure | Allow      | editingteacher | Course       | C1        |
     And the following "blocks" exist:
       | blockname  | contextlevel | reference | pagetypepattern | defaultregion |
       | coursesync | Course       | C1        | course-view-*   | side-pre      |
@@ -27,6 +30,20 @@ Feature: Course Sync setup wizard
     When I am on the "Course 1" course page logged in as "student1"
     Then I should see "Course Sync — not yet configured" in the "Course Sync" "block"
     And I should not see "Set up the connection" in the "Course Sync" "block"
+
+  Scenario: A teacher without the setup permission is told to ask a manager
+    Given the following "courses" exist:
+      | fullname | shortname | category |
+      | Course 2 | C2        | 0        |
+    And the following "course enrolments" exist:
+      | user     | course | role           |
+      | teacher1 | C2     | editingteacher |
+    And the following "blocks" exist:
+      | blockname  | contextlevel | reference | pagetypepattern | defaultregion |
+      | coursesync | Course       | C2        | course-view-*   | side-pre      |
+    When I am on the "Course 2" course page logged in as "teacher1"
+    Then I should see "A manager has to set up the connection" in the "Course Sync" "block"
+    And "Set up the connection" "link" should not exist in the "Course Sync" "block"
 
   Scenario: A plain HTTP address is rejected with an explanation
     Given I am on the "Course 1" course page logged in as "teacher1"

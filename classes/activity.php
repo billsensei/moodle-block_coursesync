@@ -19,7 +19,7 @@ namespace block_coursesync;
 /**
  * One activity on the remote site, as reported by change detection.
  *
- * Metadata only. Phase 3 does not fetch activity content.
+ * Metadata only; the content is fetched separately (activity_payload).
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project

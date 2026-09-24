@@ -20,8 +20,8 @@ use core\output\html_writer;
 /**
  * Course Sync block.
  *
- * Phase 2: holds the connection to a remote source site and proves it works.
- * Nothing is synced yet.
+ * Shows the state of the course's connection to a source site, and links to
+ * the setup wizard, the preview, the sync page and the history.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project
@@ -88,6 +88,18 @@ class block_coursesync extends block_base {
      */
     public function instance_config_save($data, $nolongerused = false) {
         $courseid = $this->get_course_id();
+        $coursecontext = $this->get_course_context();
+
+        // Being allowed to edit a block is not being allowed to decide which
+        // site and course it copies from - the same rule the setup wizard
+        // follows. Without it the connection fields are ignored, whatever the
+        // request carried.
+        if ($coursecontext === null || !has_capability('block/coursesync:configure', $coursecontext)) {
+            unset($data->remoteurl, $data->remotecourse);
+            parent::instance_config_save($data, $nolongerused);
+
+            return;
+        }
 
         if (isset($data->remoteurl) && $courseid !== null) {
             $url = trim((string) $data->remoteurl);
@@ -158,20 +170,27 @@ class block_coursesync extends block_base {
 
         $coursecontext = $this->get_course_context();
         $cansync = $coursecontext !== null && has_capability('block/coursesync:sync', $coursecontext);
+        $canconfigure = $coursecontext !== null && has_capability('block/coursesync:configure', $coursecontext);
 
         $connection = empty($this->instance->id) ? null : connection::get($this->instance->id);
 
         if (!connection::is_configured($connection)) {
             $this->content->text = html_writer::tag('p', get_string('notconfigured', 'block_coursesync'));
 
-            if ($cansync && !empty($this->instance->id)) {
+            if ($canconfigure && !empty($this->instance->id)) {
                 $this->content->text .= $this->setup_link(get_string('setupstart', 'block_coursesync'));
+            } else if ($cansync) {
+                $this->content->text .= html_writer::tag(
+                    'p',
+                    get_string('notconfiguredaskmanager', 'block_coursesync'),
+                    ['class' => 'small text-muted']
+                );
             }
 
             return $this->content;
         }
 
-        $this->content->text = $this->connection_summary($connection, $cansync);
+        $this->content->text = $this->connection_summary($connection, $cansync, $canconfigure);
 
         return $this->content;
     }
@@ -236,10 +255,11 @@ class block_coursesync extends block_base {
      * Render the state of a configured connection.
      *
      * @param stdClass $connection
-     * @param bool $cansync whether the current user may run the setup wizard
+     * @param bool $cansync whether the current user may sync
+     * @param bool $canconfigure whether the current user may run the setup wizard
      * @return string HTML
      */
-    protected function connection_summary(stdClass $connection, bool $cansync): string {
+    protected function connection_summary(stdClass $connection, bool $cansync, bool $canconfigure): string {
         $out = '';
 
         if ($connection->status === connection::STATUS_OK) {
@@ -271,7 +291,7 @@ class block_coursesync extends block_base {
             $out .= $this->mapping_summary($connection, $cansync);
         }
 
-        if ($cansync) {
+        if ($canconfigure) {
             $out .= $this->setup_link(get_string('setupmanage', 'block_coursesync'));
         }
 

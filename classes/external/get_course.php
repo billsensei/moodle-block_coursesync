@@ -66,12 +66,19 @@ class get_course extends external_api {
         }
 
         // The capability is checked in the course's own context, so an
-        // administrator can grant sync rights site-wide or course by course.
-        // It is checked before validate_context() so that a missing sync
-        // permission is reported as exactly that, rather than as the more
-        // confusing "course not accessible" that require_login() would raise.
+        // administrator can grant sync rights course by course or by category.
+        //
+        // A course the account may not sync is reported exactly as one that
+        // does not exist. Otherwise this would answer "does a course with this
+        // shortname exist?" for every course on the site, to anyone holding a
+        // token scoped to one category. The message the destination shows for
+        // it names both causes. (A token with no sync permission anywhere is
+        // told so by ping, before a course is ever asked for.)
         $context = \context_course::instance($course->id);
-        require_capability('block/coursesync:sync', $context);
+
+        if (!has_capability('block/coursesync:sync', $context)) {
+            throw new \moodle_exception('errorcoursenotfound', 'block_coursesync');
+        }
 
         // Note that validate_context() calls require_login() for the course,
         // which is why the sync account also needs moodle/course:view: it is

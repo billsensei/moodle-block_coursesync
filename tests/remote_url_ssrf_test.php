@@ -54,6 +54,13 @@ final class remote_url_ssrf_test extends advanced_testcase {
             'unique local v6' => ['https://[fd00::1]/', 'errorurlprivate'],
             'link local v6' => ['https://[fe80::1]/', 'errorurlprivate'],
             'private with a port' => ['https://192.168.56.10:8443/', 'errorurlprivate'],
+            'ipv4-compatible v6 loopback' => ['https://[::127.0.0.1]/', 'errorurlprivate'],
+            'nat64 metadata endpoint' => ['https://[64:ff9b::a9fe:a9fe]/', 'errorurlprivate'],
+            '6to4 loopback' => ['https://[2002:7f00:1::]/', 'errorurlprivate'],
+            'multicast' => ['https://224.0.0.1/', 'errorurlprivate'],
+            'broadcast' => ['https://255.255.255.255/', 'errorurlprivate'],
+            'reserved' => ['https://240.1.2.3/', 'errorurlprivate'],
+            'multicast v6' => ['https://[ff02::1]/', 'errorurlprivate'],
         ];
     }
 
@@ -210,5 +217,22 @@ final class remote_url_ssrf_test extends advanced_testcase {
         $this->assertFalse($result->success);
         $this->assertSame('errorurlprivate', $result->errorkey);
         $this->assertDebuggingCalled();
+    }
+
+    /**
+     * An address given as an IP is connected to as it is, so there is nothing
+     * to pin; a refused one is refused with nothing to pin either.
+     */
+    public function test_check_and_pin(): void {
+        $this->resetAfterTest();
+
+        $this->assertSame(
+            ['error' => null, 'resolve' => null],
+            remote_url::check_and_pin('https://203.0.114.10/webservice/rest/server.php')
+        );
+        $this->assertSame(
+            ['error' => 'errorurlprivate', 'resolve' => null],
+            remote_url::check_and_pin('https://10.0.0.1/webservice/rest/server.php')
+        );
     }
 }

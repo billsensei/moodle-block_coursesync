@@ -154,13 +154,47 @@ final class block_coursesync_test extends advanced_testcase {
     }
 
     /**
+     * Editing the block is not setting up its connection: a teacher without
+     * the setup permission cannot point it anywhere through the block form.
+     */
+    #[CoversNothing]
+    public function test_instance_config_save_needs_the_configure_permission(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+
+        $course = $this->getDataGenerator()->create_course();
+        $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'editingteacher'));
+
+        $page = new \moodle_page();
+        $page->set_context(\context_course::instance($course->id));
+        $page->set_course($course);
+        $page->set_pagelayout('course');
+        $page->set_pagetype('course-view-' . $course->format);
+        $page->set_url('/course/view.php', ['id' => $course->id]);
+        $page->blocks->add_region('side-pre');
+        $page->blocks->load_blocks();
+        $page->blocks->add_block('coursesync', 'side-pre', 0, false, 'course-view-*');
+
+        $instance = $DB->get_record('block_instances', [
+            'blockname' => 'coursesync',
+            'parentcontextid' => \context_course::instance($course->id)->id,
+        ], '*', MUST_EXIST);
+
+        $block = block_instance('coursesync', $instance, $page);
+        $block->instance_config_save((object) ['remoteurl' => 'https://source.example.edu']);
+
+        $this->assertNull(connection::get($instance->id));
+    }
+
+    /**
      * Both capabilities are declared and have a language string.
      */
     #[CoversNothing]
     public function test_capabilities_are_defined(): void {
         $this->resetAfterTest();
 
-        foreach (['block/coursesync:addinstance', 'block/coursesync:sync'] as $capability) {
+        foreach (['block/coursesync:addinstance', 'block/coursesync:configure', 'block/coursesync:sync'] as $capability) {
             $info = get_capability_info($capability);
             $this->assertNotEmpty($info, "Capability {$capability} is not defined.");
             $this->assertNotEmpty(get_capability_string($capability));
@@ -190,5 +224,26 @@ final class block_coursesync_test extends advanced_testcase {
             'block/coursesync:sync',
             array_keys(get_default_capabilities($managerrole->archetype))
         );
+    }
+
+    /**
+     * Setting up the connection is a manager's, not every teacher's: it
+     * decides what this site may read on the other one.
+     */
+    #[CoversNothing]
+    public function test_configure_capability_defaults(): void {
+        $this->resetAfterTest();
+
+        $course = $this->getDataGenerator()->create_course();
+        $context = \context_course::instance($course->id);
+
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $manager = $this->getDataGenerator()->create_and_enrol($course, 'manager');
+
+        $this->assertFalse(has_capability('block/coursesync:configure', $context, $teacher));
+        $this->assertTrue(has_capability('block/coursesync:configure', $context, $manager));
+
+        $info = get_capability_info('block/coursesync:configure');
+        $this->assertTrue(($info->riskbitmask & RISK_CONFIG) !== 0);
     }
 }

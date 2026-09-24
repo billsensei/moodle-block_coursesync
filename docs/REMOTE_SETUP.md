@@ -57,7 +57,7 @@ general file-serving endpoint: it carries files through its own function, which
 will only serve a file belonging to an activity it is syncing. Turning the
 setting on would let the token fetch anything its account can reach.
 
-The service contains one function in this phase:
+The service contains these functions:
 
 | Function | What it does |
 | --- | --- |
@@ -69,13 +69,13 @@ The service contains one function in this phase:
 
 ## 4. Give the sync account permission
 
-The sync account needs three capabilities at site level on the source site:
+The sync account needs three capabilities on the source site:
 
-| Capability | Why |
-| --- | --- |
-| `block/coursesync:sync` | Course Sync's own permission, checked by every function in the service |
-| `webservice/rest:use` | Moodle's permission to call anything over REST. No role grants it by default, so it has to be added deliberately. |
-| `moodle/course:view` | Lets the account read a course it is not enrolled in. Moodle's own `require_login()` check runs for every course-scoped call, and a service account is never a course participant. |
+| Capability | Where | Why |
+| --- | --- | --- |
+| `webservice/rest:use` | Site level | Moodle's permission to call anything over REST. No role grants it by default, so it has to be added deliberately. |
+| `block/coursesync:sync` | **Only** the category or course to copy from | Course Sync's own permission, checked by every function in the service against the course asked about |
+| `moodle/course:view` | Same place as `block/coursesync:sync` | Lets the account read a course it is not enrolled in. Moodle's own `require_login()` check runs for every course-scoped call, and a service account is never a course participant. |
 
 Those three are the whole list, whatever kinds of activity the course holds. In
 particular the account does **not** need `mod/assign:view`, `mod/quiz:view`,
@@ -84,19 +84,24 @@ per-activity permission: what authorises reading an activity is
 `block/coursesync:sync` on its course. `SECURITY.md` explains why it is
 checked there and what follows from that.
 
-Because of this, grant `block/coursesync:sync` only to the sync account's role.
-An account holding it on a course can read everything in that course, including
-activities hidden from students.
+**Where you grant it is what the token can read.** An account holding
+`block/coursesync:sync` and `moodle/course:view` on a course can read
+everything in that course, including activities hidden from students and quiz
+answers. Granted at site level, that is every course on this site. Grant them in
+the category (or course) that destination is meant to copy from, and use a
+separate account and token for each destination that should see something
+different.
 
-The tidiest way is a dedicated role:
+The tidiest way is two dedicated roles:
 
-1. *Site administration > Users > Permissions > Define roles > Add a new role*
-2. Start from scratch, name it something like `Course Sync service`.
-3. Under **Context types where this role may be assigned**, tick **System**.
-4. Set `block/coursesync:sync`, `webservice/rest:use` and `moodle/course:view`
-   to **Allow**.
-5. Save, then assign the role to the sync account at
-   *Site administration > Users > Permissions > Assign system roles*.
+1. *Site administration > Users > Permissions > Define roles > Add a new role*,
+   named something like `Course Sync REST`, assignable in **System** context,
+   with `webservice/rest:use` set to **Allow**. Assign it to the sync account
+   at *Assign system roles*.
+2. A second role, `Course Sync reader`, assignable in **Category** and
+   **Course** context, with `block/coursesync:sync` and `moodle/course:view`
+   set to **Allow**. Assign it to the sync account in the category holding
+   the source courses (*category > More > Assign roles*), or in one course.
 
 ## 5. Authorise the account on the service
 
@@ -105,8 +110,10 @@ Course Sync > Authorised users*
 
 Add the sync account to the authorised list.
 
-If Moodle warns that the user is missing a capability, go back to step 4 — the
-role is either not assigned or not assigned at system level.
+Moodle may warn that the user is missing `block/coursesync:sync` or
+`moodle/course:view` - it only looks at site level. With the reader role
+assigned in a category, that warning is expected. A warning about
+`webservice/rest:use` is not: go back to step 4.
 
 ## 6. Create the token
 

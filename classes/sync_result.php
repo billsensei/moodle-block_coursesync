@@ -19,9 +19,8 @@ namespace block_coursesync;
 /**
  * What one run of a sync did.
  *
- * Phase 4 keeps this in memory for the length of the request and shows it once.
- * Persistent sync history is phase 6; when it arrives this is the shape that
- * should be written down.
+ * Built up during a run, shown on the result page, and written to the sync
+ * history by history::record().
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project
@@ -174,7 +173,6 @@ class sync_result {
     }
 
     /**
-     * Record an activity that could not be created.    /**
      * Record an activity that could not be created.
      *
      * @param string $name
@@ -275,12 +273,20 @@ class sync_result {
      * Render one entry from a handler's notes(): a plain language string
      * key, or a [key, $a] pair when the string takes a parameter.
      *
+     * The result is HTML, and the parameter is escaped here, once, for every
+     * caller: it can carry text from the other site - the names of files a
+     * description links to - and both sync.php and history.php print the
+     * result as it is. The history keeps notes as they were recorded, so
+     * escaping where they are made would not protect runs already stored.
+     *
      * @param string|array{0:string,1:mixed} $note
-     * @return string
+     * @return string HTML
      */
     public static function describe_note($note): string {
         if (is_array($note)) {
-            return get_string($note[0], 'block_coursesync', $note[1]);
+            $a = is_scalar($note[1] ?? null) ? s((string) $note[1]) : '';
+
+            return get_string((string) $note[0], 'block_coursesync', $a);
         }
 
         return get_string($note, 'block_coursesync');

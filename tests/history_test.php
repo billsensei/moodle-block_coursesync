@@ -29,7 +29,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(history::class)]
 final class history_test extends advanced_testcase {
     /** @var int A stand-in block instance id. */
-    const INSTANCE = 4242;
+    public const INSTANCE = 4242;
 
     /**
      * A result with one activity of each outcome.

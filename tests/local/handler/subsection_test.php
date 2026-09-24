@@ -24,6 +24,8 @@ use block_coursesync\external\get_activity;
 use block_coursesync\history;
 use block_coursesync\local\source_on_this_site;
 use block_coursesync\syncer;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 defined('MOODLE_INTERNAL') || die();
@@ -321,5 +323,54 @@ final class subsection_test extends advanced_testcase {
 
         // And it is up to date now.
         $this->assertTrue(history::was_pulled_here($this->instanceid, (int) $subsection->cmid, $subsectioncopy));
+    }
+
+    /**
+     * An in-place update that throws fails that one activity. It used to
+     * escape the run altogether: no result page, no history row.
+     */
+    public function test_an_in_place_update_that_throws_fails_only_that_activity(): void {
+        global $DB;
+
+        $subsection = $this->make_subsection('Extra reading', 2);
+        syncer::run($this->instanceid, $this->target->id, true, $this->local_source(), [(int) $subsection->cmid]);
+        $copy = syncer::find_existing($this->target->id, (int) $subsection->cmid);
+        $DB->execute('UPDATE {block_coursesync_run} SET timestarted = timestarted - 100');
+        $runs = $DB->count_records('block_coursesync_run');
+
+        // Longer than any activity name may be, so the rename throws.
+        $name = str_repeat('x', 1400);
+        $source = new \core\http_client(['mock' => new MockHandler([
+            new Response(200, [], json_encode([[
+                'cmid' => (int) $subsection->cmid,
+                'modname' => 'subsection',
+                'name' => 'Extra reading',
+                'idnumber' => '',
+                'timemodified' => time(),
+            ]])),
+            new Response(200, [], json_encode([
+                'cmid' => (int) $subsection->cmid,
+                'modname' => 'subsection',
+                'name' => $name,
+                'idnumber' => '',
+                'sectionnum' => 2,
+                'visible' => true,
+                'intro' => '',
+                'introformat' => FORMAT_HTML,
+                'timemodified' => time(),
+                'settings' => [],
+                'children' => [],
+                'files' => [],
+            ])),
+        ])]);
+
+        $result = syncer::run($this->instanceid, $this->target->id, true, $source, [(int) $subsection->cmid]);
+        $this->assertDebuggingCalled();
+
+        $this->assertSame(1, $result->count('failed'));
+        $this->assertSame('errorupdatefailed', $result->items[0]['detail']);
+        $this->assertFalse($result->lastsyncupdated);
+        $this->assertSame($runs + 1, $DB->count_records('block_coursesync_run'));
+        $this->assertSame($copy, syncer::find_existing($this->target->id, (int) $subsection->cmid));
     }
 }

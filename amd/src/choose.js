@@ -20,6 +20,10 @@
  * Ticking something already in the course copies it again, so that is only
  * ever done one row at a time. "Select none" clears everything.
  *
+ * Also stops the form being sent twice: a second click on a slow sync would
+ * otherwise start a second run, which the server refuses (syncer::run()'s
+ * lock) - and it is that refusal the browser would then show.
+ *
  * @module     block_coursesync/choose
  * @copyright  2026 Course Sync project
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -29,6 +33,7 @@ const SELECTORS = {
     FORM: '#coursesync-choose',
     SELECTALL: '[data-action="coursesync-select-all"]',
     SELECTNONE: '[data-action="coursesync-select-none"]',
+    SUBMIT: 'input[type="submit"], button[type="submit"]',
     BULK_CHECKBOX: 'input[type="checkbox"][data-coursesync-bulk]:not(:disabled)',
     ANY_CHECKBOX: 'input[type="checkbox"]:not(:disabled)',
 };
@@ -64,5 +69,17 @@ export const init = () => {
             e.preventDefault();
             setAll(form, SELECTORS.ANY_CHECKBOX, false);
         }
+    });
+
+    form.addEventListener('submit', e => {
+        if (form.dataset.submitted) {
+            e.preventDefault();
+            return;
+        }
+
+        form.dataset.submitted = '1';
+        form.querySelectorAll(SELECTORS.SUBMIT).forEach(button => {
+            button.disabled = true;
+        });
     });
 };

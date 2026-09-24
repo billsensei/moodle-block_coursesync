@@ -21,6 +21,9 @@ Feature: The whole teacher-facing Course Sync flow
     And the following "course enrolments" exist:
       | user     | course | role           |
       | teacher1 | DEST   | editingteacher |
+    And the following "permission overrides" exist:
+      | capability                 | permission | role           | contextlevel | reference |
+      | block/coursesync:configure | Allow      | editingteacher | Course       | DEST      |
 
   @javascript
   Scenario: A teacher adds the block to their course

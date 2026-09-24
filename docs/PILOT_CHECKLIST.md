@@ -22,11 +22,12 @@ things worth checking before teachers touch it.
 - [ ] Course Sync service enabled, **Authorised users only** ticked,
       **Can download files** left off
 - [ ] A dedicated sync account, not a person's login
-- [ ] That account holds `block/coursesync:sync`, `webservice/rest:use` and
-      `moodle/course:view`
+- [ ] That account holds `webservice/rest:use` at site level, and
+      `block/coursesync:sync` + `moodle/course:view` in the category or course
+      it should copy from
 - [ ] Token created and handed over by a route that is not email in plain text
-- [ ] Decide the scope: system-level permission means any course can be pulled
-      from. Assign in specific courses to limit it
+- [ ] Decide the scope: site-level permission means any course can be read.
+      Assign in a category or specific courses to limit it
 
 **On the destination site**
 

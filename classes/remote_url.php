@@ -52,7 +52,7 @@ class remote_url {
      *
      * @var string
      */
-    const ALLOW_PRIVATE_FLAG = 'block_coursesync_allowprivateurls';
+    public const ALLOW_PRIVATE_FLAG = 'block_coursesync_allowprivateurls';
 
     /**
      * Address ranges a remote site may not live on, unless the override is set.
@@ -64,7 +64,7 @@ class remote_url {
      *
      * @var string[]
      */
-    const BLOCKED_RANGES = [
+    public const BLOCKED_RANGES = [
         '0.0.0.0/8',
         '10.0.0.0/8',
         '100.64.0.0/10',
@@ -74,9 +74,24 @@ class remote_url {
         '192.0.0.0/24',
         '192.168.0.0/16',
         '198.18.0.0/15',
+        // Multicast, reserved and broadcast: never something to connect to.
+        // (The documentation ranges are left alone: unrouted, so harmless,
+        // and the tests use them as a stand-in public address.)
+        '224.0.0.0/4',
+        '240.0.0.0/4',
         '::1',
+        // IPv4-compatible (::a.b.c.d), NAT64 (64:ff9b::a.b.c.d) and 6to4
+        // (2002:aabb:ccdd::) addresses all carry an IPv4 address inside -
+        // a way to spell 127.0.0.1 or 169.254.169.254 that the IPv4 ranges
+        // above never see.
+        '::/96',
+        '64:ff9b::/96',
+        '64:ff9b:1::/48',
+        '2002::/16',
+        '100::/64',
         'fc00::/7',
         'fe80::/10',
+        'ff00::/8',
     ];
 
     /**
@@ -88,7 +103,7 @@ class remote_url {
      *
      * @var string[]
      */
-    const BLOCKED_ADDRESSES = [
+    public const BLOCKED_ADDRESSES = [
         '0.0.0.0',
         '::',
         '::1',
@@ -99,7 +114,7 @@ class remote_url {
      *
      * @var string[]
      */
-    const BLOCKED_HOSTS = [
+    public const BLOCKED_HOSTS = [
         'localhost',
         'localhost.localdomain',
         'ip6-localhost',
@@ -197,13 +212,64 @@ class remote_url {
      * @return string|null a language string identifier, or null if the request may proceed
      */
     public static function check_before_request(string $url): ?string {
+        return self::check_and_pin($url)['error'];
+    }
+
+    /**
+     * Check a URL immediately before a request, and say which address to use.
+     *
+     * The name is resolved once, here, and every address it gives is checked.
+     * The caller then tells curl to connect to one of those same addresses
+     * (CURLOPT_RESOLVE) instead of looking the name up again. Otherwise a
+     * name could answer with a public address to this check and a private
+     * one a moment later to curl - DNS rebinding.
+     *
+     * @param string $url
+     * @return array{error: string|null, resolve: string|null} a language
+     *         string identifier if refused; and a CURLOPT_RESOLVE entry
+     *         ("host:port:address"), or null when there is nothing to pin (an
+     *         address given as an IP, or private addresses allowed)
+     */
+    public static function check_and_pin(string $url): array {
         $parts = parse_url($url);
 
         if (!self::has_required_parts($parts)) {
-            return 'errorurlmalformed';
+            return ['error' => 'errorurlmalformed', 'resolve' => null];
         }
 
-        return self::check_address($parts['host']);
+        if (self::private_addresses_allowed()) {
+            return ['error' => null, 'resolve' => null];
+        }
+
+        $host = strtolower(trim($parts['host'], '[]'));
+
+        if (in_array($host, self::BLOCKED_HOSTS, true)) {
+            return ['error' => 'errorurlprivate', 'resolve' => null];
+        }
+
+        $addresses = self::resolve($host);
+
+        foreach ($addresses as $address) {
+            if (self::is_blocked_address($address)) {
+                return ['error' => 'errorurlprivate', 'resolve' => null];
+            }
+        }
+
+        if ($addresses === [] || \core\ip_utils::is_ip_address($host)) {
+            // Nothing to pin: an IP is already what will be connected to, and
+            // a name that did not resolve here will not resolve for curl
+            // either, which it reports as unreachable.
+            return ['error' => null, 'resolve' => null];
+        }
+
+        $port = (int) ($parts['port'] ?? (strtolower($parts['scheme']) === 'http' ? 80 : 443));
+        $address = $addresses[0];
+
+        if (str_contains($address, ':')) {
+            $address = '[' . $address . ']';
+        }
+
+        return ['error' => null, 'resolve' => $host . ':' . $port . ':' . $address];
     }
 
     /**

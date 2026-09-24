@@ -31,25 +31,25 @@ use core\encryption;
  */
 class connection {
     /** @var string No remote site recorded yet. */
-    const STAGE_URL = 'url';
+    public const STAGE_URL = 'url';
 
     /** @var string The remote URL is known, waiting for a token. */
-    const STAGE_TOKEN = 'token';
+    public const STAGE_TOKEN = 'token';
 
     /** @var string A token is stored and has been tested at least once. */
-    const STAGE_TESTED = 'tested';
+    public const STAGE_TESTED = 'tested';
 
     /** @var string A remote course has been mapped. */
-    const STAGE_MAPPED = 'mapped';
+    public const STAGE_MAPPED = 'mapped';
 
     /** @var string Never tested. */
-    const STATUS_NEW = 'new';
+    public const STATUS_NEW = 'new';
 
     /** @var string Last test succeeded. */
-    const STATUS_OK = 'ok';
+    public const STATUS_OK = 'ok';
 
     /** @var string Last test failed. */
-    const STATUS_ERROR = 'error';
+    public const STATUS_ERROR = 'error';
 
     /**
      * Fetch the connection for a block instance.
@@ -317,9 +317,8 @@ class connection {
     /**
      * When this block last pulled activities, or null if it never has.
      *
-     * Phase 3 only reads this. Nothing writes it yet: marking activities as
-     * synced before anything is actually pulled would hide them from the next
-     * run. Writing starts in phase 4.
+     * Written by set_last_sync() only after a run that left nothing behind,
+     * so what failed or was left out is offered again next time.
      *
      * @param int $blockinstanceid
      * @return int|null

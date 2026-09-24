@@ -43,7 +43,8 @@ final class ping_test extends advanced_testcase {
 
         $this->assertTrue($result['status']);
         $this->assertSame($SITE->fullname, $result['sitename']);
-        $this->assertSame($CFG->release, $result['release']);
+        $this->assertSame(ping::major_release($CFG->release), $result['release']);
+        $this->assertMatchesRegularExpression('/^\d+\.\d+$/', $result['release']);
         $this->assertGreaterThan(0, $result['pluginversion']);
     }
 
@@ -91,6 +92,30 @@ final class ping_test extends advanced_testcase {
     }
 
     /**
+     * The sync role can be held in one category rather than site-wide, so a
+     * token reaches only the courses in it. Ping must accept that.
+     */
+    public function test_capability_held_only_in_a_category_is_enough(): void {
+        $this->resetAfterTest();
+
+        $category = $this->getDataGenerator()->create_category();
+        $this->getDataGenerator()->create_course(['category' => $category->id]);
+        $user = $this->getDataGenerator()->create_user();
+        $catcontext = \context_coursecat::instance($category->id);
+
+        $roleid = $this->getDataGenerator()->create_role(['shortname' => 'coursesyncreader']);
+        assign_capability('block/coursesync:sync', CAP_ALLOW, $roleid, \context_system::instance()->id, true);
+        role_assign($roleid, $user->id, $catcontext->id);
+
+        $this->setUser($user);
+
+        $this->assertFalse(has_capability('block/coursesync:sync', \context_system::instance()));
+
+        $result = external_api::clean_returnvalue(ping::execute_returns(), ping::execute());
+        $this->assertTrue($result['status']);
+    }
+
+    /**
      * The function is declared in db/services.php and wired to this class.
      */
     public function test_function_is_registered(): void {
@@ -123,5 +148,14 @@ final class ping_test extends advanced_testcase {
             'externalserviceid' => $service->id,
             'functionname' => 'block_coursesync_ping',
         ]));
+    }
+
+    /**
+     * Only the major version leaves the site.
+     */
+    public function test_major_release(): void {
+        $this->assertSame('5.1', ping::major_release('5.1.7+ (Build: 20260916)'));
+        $this->assertSame('4.5', ping::major_release('4.5'));
+        $this->assertSame('', ping::major_release('unknown'));
     }
 }

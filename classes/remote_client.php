@@ -32,7 +32,7 @@ use GuzzleHttp\RequestOptions;
  */
 class remote_client {
     /** @var int How long to wait for the remote site, in seconds. */
-    const TIMEOUT = 20;
+    public const TIMEOUT = 20;
 
     /**
      * Call block_coursesync_ping on the remote site.
@@ -280,7 +280,8 @@ class remote_client {
         // resolve to something different by the time it is used, and this is the
         // moment that matters. Moodle's own curl_security_helper runs as well,
         // inside http_client; this does not replace it.
-        $blocked = remote_url::check_before_request($endpoint);
+        $checked = remote_url::check_and_pin($endpoint);
+        $blocked = $checked['error'];
 
         if ($blocked !== null) {
             debugging(
@@ -307,6 +308,14 @@ class remote_client {
                 // there should never be one: a site whose certificate cannot be
                 // verified is exactly the case this check exists to catch.
                 RequestOptions::VERIFY => true,
+                // A redirect is refused rather than followed. The endpoint is
+                // a fixed path that never legitimately moves, and following
+                // one would re-send the token (a 307/308 keeps the body) to
+                // an address nobody checked - possibly plain http.
+                RequestOptions::ALLOW_REDIRECTS => false,
+                // Connect to the address that was just checked, not to
+                // whatever the name resolves to a moment from now.
+                'curl' => $checked['resolve'] === null ? [] : [CURLOPT_RESOLVE => [$checked['resolve']]],
                 RequestOptions::FORM_PARAMS => array_merge([
                     'wstoken' => $token,
                     'wsfunction' => $function,
@@ -327,6 +336,12 @@ class remote_client {
 
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
+
+        if ($status >= 300 && $status < 400) {
+            // Almost always an address typed slightly differently from the
+            // site's own (www., a path, http for https).
+            return ['errorkey' => 'errorredirected', 'data' => null];
+        }
 
         if ($status === 404) {
             // Something answered, but the web service endpoint is not there.

@@ -44,7 +44,10 @@ $course = get_course($courseid);
 require_login($course);
 
 $coursecontext = context_course::instance($course->id);
-require_capability('block/coursesync:sync', $coursecontext);
+// Not block/coursesync:sync. Everything on this page decides what this site
+// may read on the other one - which site, with which token, from which
+// course - and that is a manager's decision (see db/access.php).
+require_capability('block/coursesync:configure', $coursecontext);
 
 $blockinstance = $DB->get_record('block_instances', ['id' => $instanceid, 'blockname' => 'coursesync'], '*', MUST_EXIST);
 $blockcontext = context_block::instance($blockinstance->id);

@@ -16,14 +16,26 @@ Every entry point the plugin adds, and what guards it.
 
 | Page | Login | Capability | Sesskey | Changes state? |
 | --- | --- | --- | --- | --- |
-| `setup.php` (view) | yes | `block/coursesync:sync` | — | no |
-| `setup.php` (form submissions) | yes | `block/coursesync:sync` | moodleform | yes |
-| `setup.php?test=1` | yes | `block/coursesync:sync` | `require_sesskey()` | yes |
+| `setup.php` (view) | yes | `block/coursesync:configure` | — | no |
+| `setup.php` (form submissions) | yes | `block/coursesync:configure` | moodleform | yes |
+| `setup.php?test=1` | yes | `block/coursesync:configure` | `require_sesskey()` | yes |
 | `preview.php` | yes | `block/coursesync:sync` | — | no |
 | `sync.php` (the list of what could be copied) | yes | `block/coursesync:sync` | — | no |
 | `sync.php?confirm=1` (the chosen activities) | yes | `block/coursesync:sync` | `require_sesskey()` | yes |
 | `history.php` | yes | `block/coursesync:sync` | — | no |
-| Block configuration form | yes | `moodle/block:edit` (Moodle) **plus** `block/coursesync:sync` for the remote check | moodleform | yes |
+| Block configuration form | yes | `moodle/block:edit` (Moodle); its connection fields are shown **and saved** only with `block/coursesync:configure` | moodleform | yes |
+
+`block/coursesync:configure` (manager only by default, `RISK_CONFIG`) is
+separate from `:sync` because the token usually reaches more than one course
+on the source: choosing the site, token and course is choosing what this site
+may read there. `:sync` (`RISK_XSS | RISK_DATALOSS`) runs syncs, and what a
+sync may create is further held to the syncing person's own permissions for
+each type - `course_allowed_module()` (enabled + `mod/<type>:addinstance`),
+`moodle/course:manageactivities`, and `moodle/question:add` for types that
+bring questions (`activity_handler::check_permission()`, final).
+
+Only one run per block at a time: `syncer::run()` holds a `\core\lock` lock
+and refuses a second run outright (`errorsyncinprogress`).
 
 Every page also confirms that the block instance it was given actually belongs to
 the course it was given, so an instance id from another course cannot be passed
@@ -53,7 +65,7 @@ All five check `block/coursesync:sync` in the relevant context and call
 
 | Function | Capability checked in |
 | --- | --- |
-| `block_coursesync_ping` | system context |
+| `block_coursesync_ping` | system context, or any one course (so the role can be assigned in a category) |
 | `block_coursesync_get_course` | the course's context |
 | `block_coursesync_get_modified_activities` | the course's context |
 | `block_coursesync_get_activity` | the course's context |
@@ -141,10 +153,21 @@ Three layers:
 1. **When the address is saved** — `remote_url::validate()` refuses non-HTTP(S)
    schemes, plain `http`, credentials in the URL, and any host that resolves into
    a loopback, link-local, private or carrier-grade-NAT range.
-2. **Immediately before every request** — `remote_url::check_before_request()`
-   resolves and checks again, inside `remote_client::call()`. This is the layer
-   that matters: a host can resolve differently after it was saved, and no
-   save-time check can prevent that.
+2. **Immediately before every request** — `remote_url::check_and_pin()`
+   resolves and checks again, inside `remote_client::call()`, and returns a
+   `CURLOPT_RESOLVE` entry so curl connects to **the address just checked**
+   instead of resolving the name a second time (DNS rebinding). This is the
+   layer that matters: a host can resolve differently after it was saved, and
+   no save-time check can prevent that.
+
+The ranges refused include IPv6 spellings of IPv4 addresses - IPv4-mapped
+(`::ffff:a.b.c.d`, handled by Moodle's matcher), IPv4-compatible (`::/96`),
+NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`) and 6to4 (`2002::/16`) - plus
+multicast, reserved and broadcast. Documentation ranges are not refused.
+
+**Redirects are never followed** (`allow_redirects => false`). The endpoint
+is a fixed path; following a 307/308 would re-send the token to an unchecked
+address, possibly over plain http. A 3xx is reported as `errorredirected`.
 3. **Moodle's own** — `\core\http_client` runs `curl_security_helper` on every
    request, governed by the site's *cURL blocked hosts* and *cURL allowed ports*
    settings.
@@ -350,9 +373,10 @@ do. Table cells use `s()`.
   must say so), only when nobody has data in it (its own privacy provider plus
   completion), and only when a teacher ticked it. Deletion goes through
   `course_delete_module()`, so the recycle bin keeps it where that is enabled.
-  A site that grants `block/coursesync:sync` to a role without
-  `moodle/course:manageactivities` should know that role can now replace
-  synced activities.
+  Since audit phase 26 a sync also needs `moodle/course:manageactivities` and
+  the type's `addinstance`, so a role without them can no longer replace
+  synced activities. A group override (assign/lesson/quiz) counts as data, so
+  an activity with one is kept and the update arrives as a new edition.
 - An External tool copy is only linked to a tool this site's administrator
   set up (matched by Moodle's own launch matcher), and that tool's privacy
   settings override what the activity asked to send. So a source cannot
@@ -368,7 +392,9 @@ do. Table cells use `s()`.
   the module's own pluginfile rules. Its content is as trusted as a package a
   teacher uploads; nothing about it is cleaned, as nothing is for an upload.
 - A source site is trusted not to send an enormous file. `file_sync::MAX_CHUNKS`
-  caps a single file at 1 GB.
+  caps a single file at 1 GB. Pieces are streamed to a temporary file, not
+  held in memory, and the source reads each piece with a seek rather than
+  loading the whole file.
 - A question's own files (its text, feedback, answers) do not go through
   `file_sync` at all — `qbank_handler` relies on `qformat_xml` inlining them
   as base64 inside each question's own XML, so `file_sync::MAX_CHUNKS`'s cap

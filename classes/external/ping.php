@@ -24,9 +24,9 @@ use core_external\external_value;
 /**
  * Confirms that a destination site can reach this site and is authorised to talk to it.
  *
- * This is the only external function in phase 2. It deliberately exposes nothing
- * about courses or activities: just enough for the caller to confirm the token
- * works and that both ends are running compatible versions of the plugin.
+ * It deliberately exposes nothing about courses or activities: just enough for
+ * the caller to confirm the token works and that both ends are running
+ * compatible versions of the plugin.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project
@@ -50,21 +50,53 @@ class ping extends external_api {
     public static function execute(): array {
         global $CFG, $SITE;
 
-        // The token's user must hold the sync capability at system level on this,
-        // the source site. validate_context() also enforces that web services are
-        // enabled and the user is allowed to use them in this context.
+        // Web services must be enabled and this user allowed to use them;
+        // validate_context() checks both.
         $context = \context_system::instance();
         self::validate_context($context);
-        require_capability('block/coursesync:sync', $context);
+
+        // The sync account must hold the sync capability somewhere on this, the
+        // source site - but not necessarily site-wide. Requiring it at system
+        // level would make every course here readable with the token; granting
+        // the role in one category or one course is what keeps a token to the
+        // courses it is meant for. Every other function checks the course it
+        // is asked about.
+        if (!has_capability('block/coursesync:sync', $context) && !self::holds_sync_anywhere()) {
+            throw new \required_capability_exception($context, 'block/coursesync:sync', 'nopermissions', '');
+        }
 
         $plugin = \core_plugin_manager::instance()->get_plugin_info('block_coursesync');
 
         return [
             'status' => true,
             'sitename' => format_string($SITE->fullname, true, ['context' => $context]),
-            'release' => $CFG->release,
+            // The major version is what a person needs to judge compatibility.
+            // The full release string (build date, point release) would tell
+            // anyone holding a token exactly which fixes this site lacks.
+            'release' => self::major_release((string) $CFG->release),
             'pluginversion' => (int) ($plugin->versiondb ?? 0),
         ];
+    }
+
+    /**
+     * Just the major version of a release string: "5.1.7+ (Build: ...)" is "5.1".
+     *
+     * @param string $release
+     * @return string
+     */
+    public static function major_release(string $release): string {
+        return preg_match('/^\d+\.\d+/', $release, $matches) ? $matches[0] : '';
+    }
+
+    /**
+     * Does the current user hold the sync capability in at least one course?
+     *
+     * @return bool
+     */
+    protected static function holds_sync_anywhere(): bool {
+        $courses = get_user_capability_course('block/coursesync:sync', null, true, '', '', 1);
+
+        return !empty($courses);
     }
 
     /**
@@ -76,7 +108,7 @@ class ping extends external_api {
         return new external_single_structure([
             'status' => new external_value(PARAM_BOOL, 'Always true; the call reached a working source site.'),
             'sitename' => new external_value(PARAM_TEXT, 'Full name of the source site.'),
-            'release' => new external_value(PARAM_TEXT, 'Moodle release of the source site, e.g. "5.1.7+".'),
+            'release' => new external_value(PARAM_TEXT, 'Major Moodle version of the source site, e.g. "5.1".'),
             'pluginversion' => new external_value(PARAM_INT, 'block_coursesync version installed on the source site.'),
         ]);
     }

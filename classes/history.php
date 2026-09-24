@@ -28,13 +28,13 @@ namespace block_coursesync;
  */
 class history {
     /** @var string Everything the run set out to do, it did. */
-    const STATUS_OK = 'ok';
+    public const STATUS_OK = 'ok';
 
     /** @var string The run finished, but something needs a person to look at it. */
-    const STATUS_REVIEW = 'review';
+    public const STATUS_REVIEW = 'review';
 
     /** @var string The run could not finish. */
-    const STATUS_FAILED = 'failed';
+    public const STATUS_FAILED = 'failed';
 
     /**
      * Write a finished run to the history.

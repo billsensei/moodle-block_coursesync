@@ -74,12 +74,16 @@ echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('synctitle', 'block_coursesync'));
 
 if (!connection::is_mapped($record)) {
-    echo $OUTPUT->notification(get_string('errornotmapped', 'block_coursesync'), 'warning', false);
-    echo html_writer::link(
-        new moodle_url('/blocks/coursesync/setup.php', ['instanceid' => $instanceid, 'courseid' => $courseid]),
-        get_string('setupmanage', 'block_coursesync'),
-        ['class' => 'btn btn-primary']
-    );
+    if (has_capability('block/coursesync:configure', $coursecontext)) {
+        echo $OUTPUT->notification(get_string('errornotmapped', 'block_coursesync'), 'warning', false);
+        echo html_writer::link(
+            new moodle_url('/blocks/coursesync/setup.php', ['instanceid' => $instanceid, 'courseid' => $courseid]),
+            get_string('setupmanage', 'block_coursesync'),
+            ['class' => 'btn btn-primary']
+        );
+    } else {
+        echo $OUTPUT->notification(get_string('errornotmappedaskmanager', 'block_coursesync'), 'warning', false);
+    }
     echo $OUTPUT->footer();
     die;
 }

@@ -56,12 +56,10 @@ Full detail, with the screens named, is in
 3. *Server → Web services → External services* → the **Course Sync** service is
    already listed because the plugin defines it. Edit it and tick **Enabled**.
    Leave **Authorised users only** ticked and **Can download files** unticked.
-4. Create a role for the sync account, assignable at **System** level, allowing:
-   - `block/coursesync:sync`
-   - `webservice/rest:use`
-   - `moodle/course:view`
-5. Assign that role to the sync account at system level, and add the account to
-   the service's **Authorised users**.
+4. Give the sync account `webservice/rest:use` at **System** level, and
+   `block/coursesync:sync` + `moodle/course:view` **only in the category or
+   course** it should copy from (two small roles; see REMOTE_SETUP.md).
+5. Add the account to the service's **Authorised users**.
 6. *Manage tokens* → create a token for that account and the Course Sync
    service. Copy it.
 
@@ -76,15 +74,20 @@ common setup mistake.
 
 ### Restricting which courses can be pulled from
 
-Granting `block/coursesync:sync` at system level lets the account read any course
-on the site. To limit it, assign the role in specific courses instead. The
-destination will be refused anywhere the account does not hold the permission.
+Granting `block/coursesync:sync` and `moodle/course:view` at system level lets
+the token read any course on the site, hidden activities and quiz answers
+included. Assign them in a category or in specific courses instead. The
+destination is refused anywhere the account does not hold the permission, and
+the connection test only needs the account to hold it somewhere.
 
 ## 3. Set up the destination site
 
-Installing the plugin is all an administrator has to do. From there it is a
-per-course job for a teacher — hand them
-[TEACHER_GUIDE.md](TEACHER_GUIDE.md) and the token from step 2.
+Installing the plugin, then setting up each course's connection, is the
+administrator's (or a manager's) job: the setup wizard needs
+`block/coursesync:configure`, which only managers hold by default, because the
+connection decides what this site may read on the other one. Once a course is
+connected, its teachers sync it themselves — hand them
+[TEACHER_GUIDE.md](TEACHER_GUIDE.md).
 
 ### Outgoing request settings
 

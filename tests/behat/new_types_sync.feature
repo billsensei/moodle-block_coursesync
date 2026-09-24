@@ -25,6 +25,9 @@ Feature: Syncing books, folders, assignments, quizzes and wikis
     And the following "course enrolments" exist:
       | user     | course | role           |
       | teacher1 | DEST   | editingteacher |
+    And the following "permission overrides" exist:
+      | capability                 | permission | role           | contextlevel | reference |
+      | block/coursesync:configure | Allow      | editingteacher | Course       | DEST      |
     And the following "blocks" exist:
       | blockname  | contextlevel | reference | pagetypepattern | defaultregion |
       | coursesync | Course       | DEST      | course-view-*   | side-pre      |

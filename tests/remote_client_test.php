@@ -477,4 +477,27 @@ final class remote_client_test extends advanced_testcase {
             remote_client::classify_transport_error(new \Exception('Could not resolve host: nowhere.example'))
         );
     }
+
+    /**
+     * A redirect is reported rather than followed, so the token is never
+     * sent on to an address nobody checked.
+     */
+    public function test_a_redirect_is_not_followed(): void {
+        $this->resetAfterTest();
+
+        $seen = null;
+        $client = new http_client(['mock' => new MockHandler([
+            function ($request, array $options) use (&$seen) {
+                $seen = $options;
+
+                return new Response(307, ['Location' => 'http://elsewhere.example.org/'], '');
+            },
+        ])]);
+
+        $result = remote_client::ping('https://source.example.edu', 'abcdef0123456789abcdef0123456789', $client);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('errorredirected', $result->errorkey);
+        $this->assertFalse($seen['allow_redirects']);
+    }
 }

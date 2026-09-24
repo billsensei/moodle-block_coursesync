@@ -55,6 +55,15 @@ trait question_bank_sync_trait {
     protected int $unsupportedcount = 0;
 
     /**
+     * Rebuilding questions is adding questions, so it needs the permission to.
+     *
+     * @return string[]
+     */
+    protected function required_capabilities(): array {
+        return ['moodle/course:manageactivities', 'moodle/question:add'];
+    }
+
+    /**
      * SOURCE SIDE. Every one of the given categories, and every question in
      * a supported type in each, as a flat children list.
      *

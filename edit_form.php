@@ -39,6 +39,14 @@ class block_coursesync_edit_form extends block_edit_form {
     protected function specific_definition($mform) {
         $mform->addElement('header', 'configheader', get_string('blocksettings', 'block'));
 
+        // Only someone who may set up the connection sees its fields; anyone
+        // else editing the block (to move it, say) is told who can.
+        if (!$this->can_configure()) {
+            $mform->addElement('static', 'connectionmanaged', '', get_string('notconfiguredaskmanager', 'block_coursesync'));
+
+            return;
+        }
+
         $mform->addElement('text', 'config_remoteurl', get_string('remoteurl', 'block_coursesync'), ['size' => 60]);
         $mform->setType('config_remoteurl', PARAM_RAW_TRIMMED);
         $mform->addHelpButton('config_remoteurl', 'remoteurl', 'block_coursesync');
@@ -75,6 +83,10 @@ class block_coursesync_edit_form extends block_edit_form {
      */
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
+
+        if (!$this->can_configure()) {
+            return $errors;
+        }
 
         $url = trim((string) ($data['config_remoteurl'] ?? ''));
 
@@ -121,14 +133,6 @@ class block_coursesync_edit_form extends block_edit_form {
 
         $instanceid = $this->block->instance->id ?? 0;
 
-        // Checking the course against the remote site spends the stored token.
-        // Being allowed to configure a block is not the same as being allowed to
-        // use its connection, so the sync permission is required before any
-        // outbound call is made on this user's behalf.
-        if (!has_capability('block/coursesync:sync', $this->page->context)) {
-            return get_string('errornosyncpermission', 'block_coursesync');
-        }
-
         $token = $instanceid ? connection::get_token($instanceid) : null;
 
         if ($token === null) {
@@ -152,5 +156,16 @@ class block_coursesync_edit_form extends block_edit_form {
         $this->block->resolvedremotecourse = $result;
 
         return null;
+    }
+
+    /**
+     * May the current user set up this block's connection?
+     *
+     * @return bool
+     */
+    protected function can_configure(): bool {
+        $context = $this->page->context->get_course_context(false);
+
+        return $context && has_capability('block/coursesync:configure', $context);
     }
 }

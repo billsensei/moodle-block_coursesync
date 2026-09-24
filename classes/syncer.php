@@ -29,6 +29,9 @@ use block_coursesync\local\handler\handler_registry;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class syncer {
+    /** @var int Longest a run may hold its lock, in seconds, if it dies without releasing it. */
+    public const LOCK_LIFETIME = 3600;
+
     /**
      * The ID number stamped on activities this plugin created.
      *
@@ -220,6 +223,51 @@ class syncer {
     ): sync_result {
         global $USER;
 
+        // One run per block at a time. Two at once - a double click on the
+        // button, or two teachers - would each find an activity not yet here
+        // and each create it, leaving two copies with the same identity. The
+        // second is refused rather than made to wait: once the first has
+        // finished, what the second was asked to copy is already here, and
+        // running it then would replace the copies just made.
+        $lock = \core\lock\lock_config::get_lock_factory('block_coursesync')
+            ->get_lock('run-' . $blockinstanceid, 0, self::LOCK_LIFETIME);
+
+        if (!$lock) {
+            return self::finish(
+                $blockinstanceid,
+                $courseid,
+                (int) $USER->id,
+                time(),
+                sync_result::failure('errorsyncinprogress')
+            );
+        }
+
+        try {
+            return self::run_locked($blockinstanceid, $courseid, $full, $client, $only);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * The run itself, once run() holds the lock for this block.
+     *
+     * @param int $blockinstanceid
+     * @param int $courseid the destination course
+     * @param bool $full
+     * @param http_client|null $client
+     * @param int[]|null $only
+     * @return sync_result
+     */
+    protected static function run_locked(
+        int $blockinstanceid,
+        int $courseid,
+        bool $full,
+        ?http_client $client,
+        ?array $only
+    ): sync_result {
+        global $USER;
+
         $timestarted = time();
         $record = connection::get($blockinstanceid);
 
@@ -290,60 +338,71 @@ class syncer {
         );
 
         foreach ($activities as $activity) {
-            // Asked before the chosen set, and deliberately. Something this
-            // plugin cannot handle was never on offer, so saying the teacher
-            // chose to leave it out would be untrue - and worse, it would hold
-            // the last synced marker back forever waiting for a choice that can
-            // never be made.
-            if (!handler_registry::supports($activity->modname)) {
-                $result->add_skipped(
-                    $activity->name,
-                    $activity->modname,
-                    $activity->cmid,
-                    'syncskippedtype'
-                );
+            // One activity going wrong in a way nobody foresaw is reported
+            // against that activity, not allowed to end the run: the rest
+            // still get their turn, and the run is still written to the
+            // history, with the marker held because of the failure.
+            try {
+                // Asked before the chosen set, and deliberately. Something this
+                // plugin cannot handle was never on offer, so saying the teacher
+                // chose to leave it out would be untrue - and worse, it would hold
+                // the last synced marker back forever waiting for a choice that can
+                // never be made.
+                if (!handler_registry::supports($activity->modname)) {
+                    $result->add_skipped(
+                        $activity->name,
+                        $activity->modname,
+                        $activity->cmid,
+                        'syncskippedtype'
+                    );
 
-                continue;
-            }
-
-            if ($chosen !== null && !in_array((int) $activity->cmid, $chosen, true)) {
-                // Same reasoning again: something already in this course is not
-                // on the list either, so it was not a choice the teacher made.
-                // Calling it one would hold the marker back for good - it can
-                // never be ticked, because it is never offered.
-                // A changed one was on the list, though, so leaving it unticked
-                // is a choice like any other, and it is offered again.
-                $existing = self::find_existing($course->id, $activity->cmid);
-                $alreadyhere = $existing > 0 && !self::is_changed($blockinstanceid, $activity, $existing);
-
-                $result->add_skipped(
-                    $activity->name,
-                    $activity->modname,
-                    $activity->cmid,
-                    $alreadyhere ? 'syncskippedpresent' : 'syncskippeddeselected'
-                );
-
-                continue;
-            }
-
-            // Updating or copying again is only ever something a teacher
-            // ticked. A run that was not given a choice keeps to what it always
-            // did with a copy that is already here: flag it and leave it alone.
-            $existing = self::find_existing($course->id, $activity->cmid);
-
-            if ($chosen !== null && $existing > 0) {
-                if (self::is_changed($blockinstanceid, $activity, $existing)) {
-                    self::handle_update($course, $record, $token, $activity, $existing, $result, $client);
-                } else if (history::was_pulled_here($blockinstanceid, $activity->cmid, $existing)) {
-                    self::handle_update($course, $record, $token, $activity, $existing, $result, $client, true);
-                } else {
-                    self::copy_beside($course, $record, $token, $activity, $existing, $result, $client);
+                    continue;
                 }
 
-                continue;
-            }
+                if ($chosen !== null && !in_array((int) $activity->cmid, $chosen, true)) {
+                    // Same reasoning again: something already in this course is not
+                    // on the list either, so it was not a choice the teacher made.
+                    // Calling it one would hold the marker back for good - it can
+                    // never be ticked, because it is never offered.
+                    // A changed one was on the list, though, so leaving it unticked
+                    // is a choice like any other, and it is offered again.
+                    $existing = self::find_existing($course->id, $activity->cmid);
+                    $alreadyhere = $existing > 0 && !self::is_changed($blockinstanceid, $activity, $existing);
 
-            self::handle_one($course, $blockinstanceid, $record, $token, $activity, $result, $client);
+                    $result->add_skipped(
+                        $activity->name,
+                        $activity->modname,
+                        $activity->cmid,
+                        $alreadyhere ? 'syncskippedpresent' : 'syncskippeddeselected'
+                    );
+
+                    continue;
+                }
+
+                // Updating or copying again is only ever something a teacher
+                // ticked. A run that was not given a choice keeps to what it always
+                // did with a copy that is already here: flag it and leave it alone.
+                $existing = self::find_existing($course->id, $activity->cmid);
+
+                if ($chosen !== null && $existing > 0) {
+                    if (self::is_changed($blockinstanceid, $activity, $existing)) {
+                        self::handle_update($course, $record, $token, $activity, $existing, $result, $client);
+                    } else if (history::was_pulled_here($blockinstanceid, $activity->cmid, $existing)) {
+                        self::handle_update($course, $record, $token, $activity, $existing, $result, $client, true);
+                    } else {
+                        self::copy_beside($course, $record, $token, $activity, $existing, $result, $client);
+                    }
+
+                    continue;
+                }
+
+                self::handle_one($course, $blockinstanceid, $record, $token, $activity, $result, $client);
+            } catch (\Throwable $e) {
+                debugging('block_coursesync: unexpected failure on remote cmid ' . $activity->cmid . ': '
+                    . $e->getMessage(), DEBUG_DEVELOPER);
+
+                $result->add_failed($activity->name, $activity->modname, $activity->cmid, 'errorcreatefailed');
+            }
         }
 
         // The marker moves only when the run is trustworthy. Moving it after a
@@ -655,7 +714,8 @@ class syncer {
         }
 
         $payload = $fetched->payload;
-        $problem = $handler->check_payload($payload);
+        $problem = $handler->check_permission(get_course((int) $DB->get_field('course_modules', 'course', ['id' => $existingcmid])))
+            ?? $handler->check_payload($payload);
 
         if ($problem !== null) {
             $result->add_failed($activity->name, $activity->modname, $activity->cmid, $problem);
@@ -663,7 +723,16 @@ class syncer {
             return;
         }
 
-        $handler->update_in_place($DB->get_record('course_modules', ['id' => $existingcmid], '*', MUST_EXIST), $payload);
+        try {
+            $handler->update_in_place($DB->get_record('course_modules', ['id' => $existingcmid], '*', MUST_EXIST), $payload);
+        } catch (\Throwable $e) {
+            debugging('block_coursesync: could not update ' . $payload->modname . ' from remote cmid '
+                . $activity->cmid . ' in place: ' . $e->getMessage(), DEBUG_DEVELOPER);
+
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, 'errorupdatefailed');
+
+            return;
+        }
 
         $result->add_updated($payload->name, $payload->modname, $activity->cmid, $existingcmid, 'syncupdatedinplace');
     }
@@ -709,7 +778,9 @@ class syncer {
             return null;
         }
 
-        $problem = $handler->check_payload($payload) ?? $handler->check_destination($course, $payload);
+        $problem = $handler->check_permission($course)
+            ?? $handler->check_payload($payload)
+            ?? $handler->check_destination($course, $payload);
 
         if ($problem !== null) {
             $result->add_failed(

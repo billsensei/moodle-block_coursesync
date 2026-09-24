@@ -17,8 +17,8 @@
 /**
  * Shows what has changed in the mapped remote course.
  *
- * Read-only. Nothing is pulled and nothing is marked as synced: lastsync is
- * deliberately left alone until there is a real sync to record, from phase 4.
+ * Read-only: nothing is pulled and nothing is marked as synced. It lists what
+ * changed since the last sync; sync.php lists everything.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project
@@ -68,13 +68,18 @@ $setupurl = new moodle_url('/blocks/coursesync/setup.php', [
 ]);
 
 $record = connection::get($instanceid);
+$canconfigure = has_capability('block/coursesync:configure', $coursecontext);
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('previewtitle', 'block_coursesync'));
 
 if (!connection::is_mapped($record)) {
-    echo $OUTPUT->notification(get_string('errornotmapped', 'block_coursesync'), 'warning', false);
-    echo html_writer::link($setupurl, get_string('setupmanage', 'block_coursesync'), ['class' => 'btn btn-primary']);
+    if ($canconfigure) {
+        echo $OUTPUT->notification(get_string('errornotmapped', 'block_coursesync'), 'warning', false);
+        echo html_writer::link($setupurl, get_string('setupmanage', 'block_coursesync'), ['class' => 'btn btn-primary']);
+    } else {
+        echo $OUTPUT->notification(get_string('errornotmappedaskmanager', 'block_coursesync'), 'warning', false);
+    }
     echo $OUTPUT->footer();
     die;
 }
@@ -83,13 +88,15 @@ $token = connection::get_token($instanceid);
 
 if ($token === null) {
     echo $OUTPUT->notification(get_string('errortokenunreadable', 'block_coursesync'), 'error', false);
-    echo html_writer::link($setupurl, get_string('setupmanage', 'block_coursesync'), ['class' => 'btn btn-primary']);
+
+    if ($canconfigure) {
+        echo html_writer::link($setupurl, get_string('setupmanage', 'block_coursesync'), ['class' => 'btn btn-primary']);
+    }
     echo $OUTPUT->footer();
     die;
 }
 
-// Phase 3 reads lastsync but never writes it. Until a real sync exists, marking
-// activities as seen here would hide them from the first genuine run.
+// Only what changed since the last sync. Nothing here moves that marker.
 $lastsync = connection::get_last_sync($instanceid);
 $since = $lastsync ?? 0;
 

@@ -16,6 +16,9 @@ Feature: Sync now
       | user     | course | role           |
       | teacher1 | C1     | editingteacher |
       | student1 | C1     | student        |
+    And the following "permission overrides" exist:
+      | capability                 | permission | role           | contextlevel | reference |
+      | block/coursesync:configure | Allow      | editingteacher | Course       | C1        |
     And the following "blocks" exist:
       | blockname  | contextlevel | reference | pagetypepattern | defaultregion |
       | coursesync | Course       | C1        | course-view-*   | side-pre      |

@@ -629,4 +629,60 @@ final class syncer_update_test extends advanced_testcase {
 
         $this->assertTrue(copy_update::has_people_data((int) $qbank->cmid));
     }
+
+    /**
+     * Replacing a copy keeps what this course set on it: groups, and
+     * permission overrides on the activity itself.
+     */
+    public function test_a_replacement_keeps_groups_and_permission_overrides(): void {
+        global $DB;
+
+        $grouping = $this->getDataGenerator()->create_grouping(['courseid' => $this->course->id]);
+        $old = $this->earlier_copy(11, ['groupmode' => SEPARATEGROUPS, 'groupingid' => $grouping->id]);
+        $DB->set_field('course_modules', 'indent', 2, ['id' => $old->id]);
+
+        $studentrole = (int) $DB->get_field('role', 'id', ['shortname' => 'student']);
+        assign_capability('mod/page:view', CAP_PROHIBIT, $studentrole, \context_module::instance($old->id)->id, true);
+
+        $result = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            true,
+            $this->mock_source([$this->detected(11, time())], [$this->payload(11)]),
+            [11]
+        );
+
+        $this->assertSame('syncupdatedreplaced', $result->items[0]['detail']);
+
+        $new = $DB->get_record('course_modules', ['id' => syncer::find_existing($this->course->id, 11)], '*', MUST_EXIST);
+        $this->assertSame(SEPARATEGROUPS, (int) $new->groupmode);
+        $this->assertSame((int) $grouping->id, (int) $new->groupingid);
+        $this->assertSame(2, (int) $new->indent);
+        $this->assertSame((string) CAP_PROHIBIT, (string) $DB->get_field('role_capabilities', 'permission', [
+            'contextid' => \context_module::instance($new->id)->id,
+            'roleid' => $studentrole,
+            'capability' => 'mod/page:view',
+        ]));
+    }
+
+    /**
+     * A group override is not anyone's personal data, so no privacy provider
+     * reports it - but deleting the activity would delete it, so it counts.
+     */
+    public function test_a_group_override_counts_as_peoples_data(): void {
+        global $DB;
+
+        $assign = $this->getDataGenerator()->create_module('assign', ['course' => $this->course->id]);
+        $this->assertFalse(copy_update::has_people_data((int) $assign->cmid));
+
+        $group = $this->getDataGenerator()->create_group(['courseid' => $this->course->id]);
+        $DB->insert_record('assign_overrides', (object) [
+            'assignid' => $assign->id,
+            'groupid' => $group->id,
+            'sortorder' => 1,
+            'duedate' => time() + WEEKSECS,
+        ]);
+
+        $this->assertTrue(copy_update::has_people_data((int) $assign->cmid));
+    }
 }

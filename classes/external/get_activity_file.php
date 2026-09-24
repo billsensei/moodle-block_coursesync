@@ -40,7 +40,7 @@ use core_external\external_value;
  */
 class get_activity_file extends external_api {
     /** @var int Largest chunk a caller may ask for, in bytes. */
-    const MAX_CHUNK = 524288;
+    public const MAX_CHUNK = 524288;
 
     /**
      * Describes the parameters.
@@ -157,7 +157,7 @@ class get_activity_file extends external_api {
         }
 
         $filesize = (int) $file->get_filesize();
-        $content = $offset >= $filesize ? '' : substr($file->get_content(), $offset, $length);
+        $content = $offset >= $filesize ? '' : self::read_part($file, $offset, $length);
         $read = strlen($content);
 
         return [
@@ -168,6 +168,40 @@ class get_activity_file extends external_api {
             'contenthash' => $file->get_contenthash(),
             'content' => base64_encode($content),
         ];
+    }
+
+    /**
+     * Read one piece of a stored file without loading the rest of it.
+     *
+     * get_content() would read the whole file for every piece asked for: a
+     * 200 MB package fetched in 512 KB pieces would be read from disk 400
+     * times over, 200 MB of memory each time. A stream positioned at the
+     * offset reads only the piece.
+     *
+     * @param \stored_file $file
+     * @param int $offset
+     * @param int $length
+     * @return string
+     */
+    protected static function read_part(\stored_file $file, int $offset, int $length): string {
+        $handle = $file->get_content_file_handle();
+
+        if (!$handle) {
+            throw new \moodle_exception('errorfilenotfound', 'block_coursesync');
+        }
+
+        try {
+            $content = stream_get_contents($handle, $length, $offset);
+        } finally {
+            fclose($handle);
+        }
+
+        if ($content === false) {
+            // A file system whose streams cannot seek. Rare, and still correct.
+            return substr($file->get_content(), $offset, $length);
+        }
+
+        return $content;
     }
 
     /**

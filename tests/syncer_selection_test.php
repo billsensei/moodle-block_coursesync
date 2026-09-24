@@ -530,4 +530,113 @@ final class syncer_selection_test extends advanced_testcase {
         $this->assertFalse($result->has_deselected());
         $this->assertTrue($result->lastsyncupdated);
     }
+
+    /**
+     * Syncing is held to the same permission as adding an activity by hand:
+     * a teacher who may not add pages here does not get one by syncing.
+     */
+    public function test_a_type_the_person_may_not_add_is_refused(): void {
+        global $DB;
+
+        $teacher = $this->getDataGenerator()->create_and_enrol($this->course, 'editingteacher');
+        $roleid = (int) $DB->get_field('role', 'id', ['shortname' => 'editingteacher']);
+        assign_capability('mod/page:addinstance', CAP_PROHIBIT, $roleid, \context_course::instance($this->course->id), true);
+        $this->setUser($teacher);
+
+        $result = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            false,
+            $this->mock_source([$this->detected(11, 'Wanted')], [$this->payload(11, 'Wanted')]),
+            [11]
+        );
+
+        $this->assertSame(1, $result->count('failed'));
+        $this->assertSame('errormodulenotallowed', $result->items[0]['detail']);
+        $this->assertSame(0, $DB->count_records('course_modules', [
+            'course' => $this->course->id,
+            'idnumber' => syncer::build_idnumber(11),
+        ]));
+    }
+
+    /**
+     * A type an administrator switched off is not brought back by a sync.
+     */
+    public function test_a_disabled_type_is_refused(): void {
+        global $DB;
+
+        \core\plugininfo\mod::enable_plugin('page', 0);
+
+        $result = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            false,
+            $this->mock_source([$this->detected(11, 'Wanted')], [$this->payload(11, 'Wanted')]),
+            [11]
+        );
+
+        $this->assertSame(1, $result->count('failed'));
+        $this->assertSame('errormodulenotallowed', $result->items[0]['detail']);
+        $this->assertFalse($DB->record_exists('course_modules', ['course' => $this->course->id]));
+    }
+
+    /**
+     * An editing teacher with the usual permissions still syncs as before.
+     */
+    public function test_an_editing_teacher_can_sync_a_page(): void {
+        $this->setUser($this->getDataGenerator()->create_and_enrol($this->course, 'editingteacher'));
+
+        $result = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            false,
+            $this->mock_source([$this->detected(11, 'Wanted')], [$this->payload(11, 'Wanted')]),
+            [11]
+        );
+
+        $this->assertSame(1, $result->count('created'));
+    }
+
+    /**
+     * A second run of the same block while one is under way is refused, so
+     * the two cannot both create the same activity.
+     */
+    public function test_a_run_already_in_progress_refuses_a_second(): void {
+        global $CFG, $DB;
+
+        // Postgres advisory locks - the default factory here - are re-entrant
+        // within one database session, and a test is one session, so it
+        // could never see its own lock as held. A file lock is not.
+        $CFG->lock_factory = '\\core\\lock\\file_lock_factory';
+
+        $lock = \core\lock\lock_config::get_lock_factory('block_coursesync')
+            ->get_lock('run-' . $this->instanceid, 0);
+        $this->assertNotFalse($lock);
+
+        try {
+            $result = syncer::run(
+                $this->instanceid,
+                $this->course->id,
+                false,
+                $this->mock_source([$this->detected(11, 'Wanted')], [$this->payload(11, 'Wanted')]),
+                [11]
+            );
+        } finally {
+            $lock->release();
+        }
+
+        $this->assertFalse($result->success);
+        $this->assertSame('errorsyncinprogress', $result->errorkey);
+        $this->assertFalse($DB->record_exists('course_modules', ['course' => $this->course->id]));
+
+        // Released, so the next run goes ahead.
+        $again = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            false,
+            $this->mock_source([$this->detected(11, 'Wanted')], [$this->payload(11, 'Wanted')]),
+            [11]
+        );
+        $this->assertSame(1, $again->count('created'));
+    }
 }

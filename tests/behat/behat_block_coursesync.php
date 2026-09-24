@@ -37,7 +37,7 @@ require_once(__DIR__ . '/../../../../lib/behat/behat_base.php');
  */
 class behat_block_coursesync extends behat_base {
     /** @var string The account this site issues its own sync token to. */
-    const SYNC_USERNAME = 'coursesync_behat';
+    public const SYNC_USERNAME = 'coursesync_behat';
 
     /** @var string|null The token this site issued to itself, for the scenario to paste. */
     protected static ?string $synctoken = null;

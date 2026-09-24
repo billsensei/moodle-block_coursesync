@@ -13,7 +13,14 @@ guessing.
 
 ## Before you start
 
-You need three things from whoever administers the **other** site:
+**Setting up the connection needs a manager.** The setup wizard needs the
+*Set up the Course Sync connection* permission, which only managers hold by
+default: the connection decides what this site may read on the other one, not
+just what lands in your course. If you are not a manager, add the block and ask
+one to set it up - the block says so. Once it is connected, you can preview,
+sync and read the history yourself.
+
+Whoever sets it up needs three things from whoever administers the **other** site:
 
 1. **Its web address** — starting `https://`, for example
    `https://moodle.partner.edu`
@@ -32,6 +39,7 @@ installation guide written for them.
 3. **Add a block** → **Course Sync**.
 
 The block appears saying *"Course Sync — not yet configured"*. That is expected.
+Without the setup permission it adds that a manager has to set up the connection.
 
 ## Setting up the connection
 
@@ -100,13 +108,15 @@ Status column says which of two things will happen:
 
 - **The copy here will be replaced** — nobody has done anything in your copy
   yet, so the updated version takes its place: same section, same position,
-  and the same visibility, access restrictions, completion settings and grade
-  category your course gave it. Other activities whose access restrictions
+  and the same visibility, access restrictions, completion settings, group
+  mode and grouping, indentation, permission overrides and grade category your
+  course gave it. Other activities whose access restrictions
   depended on it now depend on the new one. The old copy goes to the recycle
   bin, if your site has one switched on. Any edits you made to the copy itself
   are replaced along with it.
 - **Will be added as a new edition** — people already have something in your
-  copy: attempts, submissions, posts, answers, grades, or completion progress.
+  copy: attempts, submissions, posts, answers, grades, completion progress, or
+  different dates set for a group.
   Your copy is left exactly as it is, and the updated version is added straight
   after it with **(New edition)** on the end of its name. From then on the new
   edition is the one Course Sync keeps up to date; the old one is yours to hide

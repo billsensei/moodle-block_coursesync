@@ -78,12 +78,18 @@ needs, so those steps are deliberately manual.
 | Capability | Context | Default |
 | --- | --- | --- |
 | `block/coursesync:addinstance` | Block | editingteacher, manager |
+| `block/coursesync:configure` | Course | manager |
 | `block/coursesync:sync` | Course | editingteacher, manager |
 
-`block/coursesync:sync` does two jobs. On the destination it gates the setup
-wizard, the change preview and, later, running a sync. On the source it is what
-the token's account must hold for the service to answer — at system level, or in
-a single course if you want to limit which courses can be pulled from.
+`block/coursesync:configure` gates the setup wizard: the other site's address,
+its token, and which course over there this one copies from. It is separate
+from syncing because the token usually reaches more than one course on the
+other site, so choosing the course is choosing what this site may read.
+
+`block/coursesync:sync` gates the change preview, the history and running a
+sync. On the source it is what the token's account must hold for the service to
+answer - in the category or course it should copy from; site level makes every
+course readable.
 
 The sync account on the source also needs `webservice/rest:use` and
 `moodle/course:view`. The second is easy to miss: Moodle's `require_login()`

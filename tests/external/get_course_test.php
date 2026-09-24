@@ -149,7 +149,9 @@ final class get_course_test extends advanced_testcase {
         $user = $this->getDataGenerator()->create_user();
         $this->setUser($user);
 
-        $this->expectException(\required_capability_exception::class);
+        // Reported as not found, so it does not reveal that REMOTE1 exists.
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('errorcoursenotfound', 'block_coursesync'));
         get_course::execute('REMOTE1');
     }
 
@@ -204,7 +206,8 @@ final class get_course_test extends advanced_testcase {
         );
         $this->assertSame((int) $allowed->id, $result['id']);
 
-        $this->expectException(\required_capability_exception::class);
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('errorcoursenotfound', 'block_coursesync'));
         get_course::execute('OTHER');
     }
 }

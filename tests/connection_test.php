@@ -29,7 +29,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(connection::class)]
 final class connection_test extends advanced_testcase {
     /** @var int A stand-in block instance id. */
-    const INSTANCE = 4242;
+    public const INSTANCE = 4242;
 
     /**
      * A URL is stored normalised, and the record starts out untested.

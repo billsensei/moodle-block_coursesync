@@ -107,6 +107,10 @@ class copy_update {
             return true;
         }
 
+        if (self::has_group_overrides($cm)) {
+            return true;
+        }
+
         // A question bank's provider declares nothing, because its questions
         // are core_question's. What would be lost with it is a question added
         // here rather than synced, or one a quiz in this site now uses.
@@ -115,6 +119,37 @@ class copy_update {
         }
 
         return false;
+    }
+
+    /** @var array<string, string[]> Module => [overrides table, column naming the instance]. */
+    public const OVERRIDE_TABLES = [
+        'assign' => ['assign_overrides', 'assignid'],
+        'lesson' => ['lesson_overrides', 'lessonid'],
+        'quiz' => ['quiz_overrides', 'quiz'],
+    ];
+
+    /**
+     * Has this course set different dates or limits for a group here?
+     *
+     * A user override is someone's data and the module's privacy provider
+     * already reports it. A group override is not about any one person, so no
+     * provider does - but it is still this course's work (an extension agreed
+     * with a class), and deleting the old copy would delete it. Treated as
+     * people's data so the old copy is kept rather than replaced.
+     *
+     * @param \stdClass $cm
+     * @return bool
+     */
+    protected static function has_group_overrides(\stdClass $cm): bool {
+        global $DB;
+
+        if (!isset(self::OVERRIDE_TABLES[$cm->modname])) {
+            return false;
+        }
+
+        [$table, $column] = self::OVERRIDE_TABLES[$cm->modname];
+
+        return $DB->record_exists_select($table, "{$column} = ? AND groupid IS NOT NULL", [$cm->instance]);
     }
 
     /**
@@ -152,6 +187,31 @@ class copy_update {
     }
 
     /**
+     * The course_modules fields that are this course's choices rather than
+     * the source's, carried from the old copy to the new one. Visibility is
+     * carried separately (set_coursemodule_visible() keeps its related
+     * fields in step).
+     *
+     * @var string[]
+     */
+    public const LOCAL_SETUP_FIELDS = [
+        'availability',
+        'completion',
+        'completionview',
+        'completionexpected',
+        'completiongradeitemnumber',
+        'completionpassgrade',
+        'groupmode',
+        'groupingid',
+        'indent',
+        'showdescription',
+        'downloadcontent',
+        'lang',
+        'enableaitools',
+        'enabledaiactions',
+    ];
+
+    /**
      * Give the fresh copy the place and set-up the old copy has in this course.
      *
      * None of this came from the source: the fresh copy was created with the
@@ -175,19 +235,21 @@ class copy_update {
         \rebuild_course_cache($old->course, true);
         \moveto_module(get_fast_modinfo($old->course)->get_cm($new->id), $section, $beforemod);
 
-        $DB->update_record('course_modules', (object) [
-            'id' => $new->id,
-            'availability' => $old->availability,
-            'completion' => $old->completion,
-            'completionview' => $old->completionview,
-            'completionexpected' => $old->completionexpected,
-            'completiongradeitemnumber' => $old->completiongradeitemnumber,
-            'completionpassgrade' => $old->completionpassgrade,
-        ]);
+        $update = (object) ['id' => $new->id];
+
+        foreach (self::LOCAL_SETUP_FIELDS as $field) {
+            // Some are newer than others; a site without one has nothing to carry.
+            if (property_exists($old, $field)) {
+                $update->$field = $old->$field;
+            }
+        }
+
+        $DB->update_record('course_modules', $update);
 
         \set_coursemodule_visible($new->id, $old->visible, $old->visibleoncoursepage, false);
 
         self::take_grade_categories($old, $new);
+        self::take_permissions($old, $new);
 
         \rebuild_course_cache($old->course, true);
     }
@@ -344,6 +406,34 @@ class copy_update {
         }
 
         return $DB->get_record('course_modules', ['id' => $sequence[$position + 1]]) ?: null;
+    }
+
+    /**
+     * Give the new copy the permission overrides and local role assignments
+     * the old copy had in this course.
+     *
+     * "Students may not post here", or a student made a moderator of one
+     * forum: set on the activity's own context, so they would go with it.
+     * Only roles assigned by hand (no component) are carried; ones an
+     * enrolment plugin or another component manages are theirs to keep.
+     *
+     * @param \stdClass $old the old copy's course_modules record
+     * @param \stdClass $new the fresh copy's course_modules record
+     * @return void
+     */
+    protected static function take_permissions(\stdClass $old, \stdClass $new): void {
+        global $DB;
+
+        $oldcontext = \context_module::instance($old->id);
+        $newcontext = \context_module::instance($new->id);
+
+        foreach ($DB->get_records('role_capabilities', ['contextid' => $oldcontext->id]) as $override) {
+            assign_capability($override->capability, $override->permission, $override->roleid, $newcontext->id, true);
+        }
+
+        foreach ($DB->get_records('role_assignments', ['contextid' => $oldcontext->id, 'component' => '']) as $assignment) {
+            role_assign($assignment->roleid, $assignment->userid, $newcontext->id);
+        }
     }
 
     /**
