@@ -183,10 +183,12 @@ final class syncer_selection_test extends advanced_testcase {
 
         $this->assertTrue($candidates->success);
 
-        // Only the one that is neither here nor unhandleable is offered.
+        // Only the one that is neither here nor unhandleable is new. The one
+        // already here is offered too, to copy again; the unhandleable one
+        // is never offered.
         $this->assertCount(1, $candidates->new);
         $this->assertSame('Genuinely new', $candidates->new[0]->name);
-        $this->assertSame([12], $candidates->offered_cmids());
+        $this->assertSame([12, 11], $candidates->offered_cmids());
 
         $this->assertCount(1, $candidates->unsupported);
         $this->assertSame('Cannot be copied', $candidates->unsupported[0]->name);
@@ -220,9 +222,10 @@ final class syncer_selection_test extends advanced_testcase {
         $this->assertSame('Collides with something local', $candidates->collisions[0]->name);
         $this->assertTrue($candidates->needs_review());
 
-        // And it is not on offer, nor counted as ordinary housekeeping.
-        $this->assertSame([], $candidates->offered_cmids());
+        // Not counted as ordinary housekeeping. It is on offer, but only
+        // ever as a separate copy - see syncer_update_test.
         $this->assertSame(0, $candidates->present_count());
+        $this->assertSame([11], $candidates->offered_cmids());
     }
 
     /**
@@ -273,7 +276,8 @@ final class syncer_selection_test extends advanced_testcase {
     }
 
     /**
-     * When nothing is new, the list says so rather than offering an empty form.
+     * When nothing is new, the list says so, and still offers what is here to
+     * copy again.
      */
     public function test_nothing_new_is_reported_as_such(): void {
         global $DB;
@@ -294,7 +298,7 @@ final class syncer_selection_test extends advanced_testcase {
 
         $this->assertFalse($candidates->has_any());
         $this->assertSame(1, $candidates->present_count());
-        $this->assertSame([], $candidates->offered_cmids());
+        $this->assertSame([11], $candidates->offered_cmids());
     }
 
     /**

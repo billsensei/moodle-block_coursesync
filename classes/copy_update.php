@@ -89,6 +89,24 @@ class copy_update {
             return true;
         }
 
+        // A grade in the gradebook, which a teacher can enter or override
+        // there without the activity itself knowing.
+        $graded = $DB->record_exists_sql(
+            "SELECT 1
+               FROM {grade_grades} gg
+               JOIN {grade_items} gi ON gi.id = gg.itemid
+              WHERE gi.courseid = :courseid
+                AND gi.itemtype = 'mod'
+                AND gi.itemmodule = :modname
+                AND gi.iteminstance = :instance
+                AND (gg.finalgrade IS NOT NULL OR gg.rawgrade IS NOT NULL OR gg.overridden > 0)",
+            ['courseid' => $cm->course, 'modname' => $cm->modname, 'instance' => $cm->instance]
+        );
+
+        if ($graded) {
+            return true;
+        }
+
         // A question bank's provider declares nothing, because its questions
         // are core_question's. What would be lost with it is a question added
         // here rather than synced, or one a quiz in this site now uses.
@@ -232,11 +250,56 @@ class copy_update {
      * @return string the new name
      */
     public static function name_as_new_edition(int $cmid): string {
+        return self::rename($cmid, static fn(string $name): string => get_string('synceditionname', 'block_coursesync', $name));
+    }
+
+    /**
+     * Name a fresh copy as a copy of what is already here, here and in the
+     * gradebook.
+     *
+     * "Name (copy)" the first time, then "Name (copy 2)" and so on, so that
+     * copying the same activity again never leaves two with the same name.
+     *
+     * @param int $cmid
+     * @return string the new name
+     */
+    public static function name_as_copy(int $cmid): string {
+        return self::rename($cmid, static function (string $name) use ($cmid): string {
+            $taken = [];
+            $courseid = get_coursemodule_from_id('', $cmid, 0, false, MUST_EXIST)->course;
+
+            foreach (get_fast_modinfo($courseid)->get_cms() as $other) {
+                if ((int) $other->id !== $cmid) {
+                    $taken[$other->name] = true;
+                }
+            }
+
+            $candidate = get_string('synccopyname', 'block_coursesync', $name);
+
+            for ($n = 2; isset($taken[$candidate]); $n++) {
+                $candidate = get_string('synccopynamenumbered', 'block_coursesync', (object) [
+                    'name' => $name,
+                    'number' => $n,
+                ]);
+            }
+
+            return $candidate;
+        });
+    }
+
+    /**
+     * Rename an activity, and its grade items with it.
+     *
+     * @param int $cmid
+     * @param callable $newname given the current name, returns the new one
+     * @return string the new name
+     */
+    protected static function rename(int $cmid, callable $newname): string {
         global $DB;
 
         $cm = get_coursemodule_from_id('', $cmid, 0, false, MUST_EXIST);
         $oldname = (string) $DB->get_field($cm->modname, 'name', ['id' => $cm->instance], MUST_EXIST);
-        $newname = get_string('synceditionname', 'block_coursesync', $oldname);
+        $newname = $newname($oldname);
 
         $DB->set_field($cm->modname, 'name', $newname, ['id' => $cm->instance]);
 

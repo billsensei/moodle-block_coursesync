@@ -213,8 +213,10 @@ final class syncer_update_test extends advanced_testcase {
         $this->assertSame([12, 13], array_map(fn(activity $a): int => $a->cmid, $candidates->changed));
 
         // Changed ones are on offer, and it is known up front which of them
-        // would become a new edition.
-        $this->assertSame([12, 13], $candidates->offered_cmids());
+        // would become a new edition. The unchanged one is on offer too, to
+        // copy again.
+        $this->assertSame([12, 13, 11], $candidates->offered_cmids());
+        $this->assertFalse($candidates->recopy_adds_copy(11));
         $this->assertTrue($candidates->has_any());
         $this->assertFalse($candidates->is_new_edition(12));
         $this->assertTrue($candidates->is_new_edition(13));
@@ -380,6 +382,210 @@ final class syncer_update_test extends advanced_testcase {
         $this->assertFalse($result->lastsyncupdated);
         $this->assertSame((int) $old->id, syncer::find_existing($this->course->id, 11));
         $this->assertSame($before, $DB->count_records('course_modules', ['course' => $this->course->id]));
+    }
+
+    /**
+     * An unchanged copy nobody has anything in, ticked anyway, is replaced
+     * by a fresh copy where it stands.
+     */
+    public function test_an_unchanged_untouched_copy_ticked_again_is_replaced(): void {
+        global $DB;
+
+        $old = $this->earlier_copy(11, ['section' => 2]);
+        set_coursemodule_visible($old->id, 0);
+
+        $candidates = syncer::list_candidates(
+            $this->instanceid,
+            $this->course->id,
+            true,
+            $this->mock_source([$this->detected(11, $this->pulledat - 10)])
+        );
+        $this->assertSame([11], array_map(fn(activity $a): int => $a->cmid, $candidates->present));
+        $this->assertFalse($candidates->recopy_adds_copy(11));
+
+        $result = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            true,
+            $this->mock_source([$this->detected(11, $this->pulledat - 10)], [$this->payload(11)]),
+            [11]
+        );
+
+        $this->assertSame(1, $result->count('updated'));
+        $this->assertSame('syncrecopiedreplaced', $result->items[0]['detail']);
+
+        $this->assertFalse($DB->record_exists('course_modules', ['id' => $old->id]));
+        $newcmid = syncer::find_existing($this->course->id, 11);
+        $new = $DB->get_record('course_modules', ['id' => $newcmid], '*', MUST_EXIST);
+        $this->assertSame('Updated title', $DB->get_field('page', 'name', ['id' => $new->instance]));
+        $this->assertSame((int) $old->section, (int) $new->section);
+        $this->assertSame(0, (int) $new->visible);
+        $this->assertTrue(history::was_pulled_here($this->instanceid, 11, $newcmid));
+    }
+
+    /**
+     * An unchanged copy somebody has something in, ticked anyway, is left
+     * alone, and a fresh copy named "(copy)" is added after it and tracked.
+     */
+    public function test_an_unchanged_copy_with_peoples_data_ticked_again_gets_a_copy(): void {
+        global $DB;
+
+        $old = $this->earlier_copy(11, ['section' => 2]);
+        $this->someone_completed((int) $old->id);
+
+        $candidates = syncer::list_candidates(
+            $this->instanceid,
+            $this->course->id,
+            true,
+            $this->mock_source([$this->detected(11, $this->pulledat - 10)])
+        );
+        $this->assertTrue($candidates->recopy_adds_copy(11));
+
+        $result = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            true,
+            $this->mock_source([$this->detected(11, $this->pulledat - 10)], [$this->payload(11)]),
+            [11]
+        );
+
+        // Nothing was updated - something unchanged was copied again.
+        $this->assertSame(1, $result->count('created'));
+        $this->assertSame(0, $result->count('updated'));
+        $this->assertSame('syncrecopiedcopy', $result->items[0]['detail']);
+        $this->assertSame('Updated title (copy)', $result->items[0]['name']);
+
+        $stillthere = $DB->get_record('course_modules', ['id' => $old->id], '*', MUST_EXIST);
+        $this->assertSame('', (string) $stillthere->idnumber);
+        $this->assertSame('Original', $DB->get_field('page', 'name', ['id' => $old->instance]));
+        $this->assertTrue($DB->record_exists('course_modules_completion', ['coursemoduleid' => $old->id]));
+
+        $newcmid = syncer::find_existing($this->course->id, 11);
+        $this->assertNotSame((int) $old->id, $newcmid);
+        $sequence = explode(',', $DB->get_field('course_sections', 'sequence', ['id' => $old->section]));
+        $this->assertSame([(string) $old->id, (string) $newcmid], $sequence);
+        $this->assertTrue(history::was_pulled_here($this->instanceid, 11, $newcmid));
+    }
+
+    /**
+     * Copying again beside an earlier "(copy)" numbers the next one rather
+     * than leaving two with the same name.
+     */
+    public function test_a_second_copy_is_numbered(): void {
+        global $DB;
+
+        $old = $this->earlier_copy(11);
+        $this->someone_completed((int) $old->id);
+
+        $source = fn(): http_client => $this->mock_source(
+            [$this->detected(11, $this->pulledat - 10)],
+            [$this->payload(11)]
+        );
+
+        syncer::run($this->instanceid, $this->course->id, true, $source(), [11]);
+        $first = syncer::find_existing($this->course->id, 11);
+        $this->someone_completed($first);
+
+        $result = syncer::run($this->instanceid, $this->course->id, true, $source(), [11]);
+
+        $this->assertSame('syncrecopiedcopy', $result->items[0]['detail']);
+        $this->assertSame('Updated title (copy 2)', $result->items[0]['name']);
+
+        $firstcm = get_coursemodule_from_id('page', $first, 0, false, MUST_EXIST);
+        $this->assertSame('Updated title (copy)', $DB->get_field('page', 'name', ['id' => $firstcm->instance]));
+    }
+
+    /**
+     * Something here carrying the identity that this plugin did not put here
+     * is never touched. Ticked, a separate untracked "(copy)" goes after it,
+     * and it is still flagged for review.
+     */
+    public function test_a_collision_ticked_gets_a_separate_untracked_copy(): void {
+        global $DB;
+
+        $local = $this->getDataGenerator()->create_module('page', ['course' => $this->course->id, 'name' => 'Local']);
+        $DB->set_field('course_modules', 'idnumber', syncer::build_idnumber(11), ['id' => $local->cmid]);
+
+        $result = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            true,
+            $this->mock_source([$this->detected(11, $this->pulledat - 10)], [$this->payload(11)]),
+            [11]
+        );
+
+        $this->assertSame(1, $result->count('created'));
+        $this->assertSame('syncrecopiedbeside', $result->items[0]['detail']);
+        $this->assertSame('Updated title (copy)', $result->items[0]['name']);
+
+        // What is here is exactly as it was, identity and all.
+        $this->assertSame((int) $local->cmid, syncer::find_existing($this->course->id, 11));
+        $this->assertSame('Local', $DB->get_field('page', 'name', ['id' => $local->id]));
+
+        // The copy is in the course, after it, with no identity.
+        $copy = $DB->get_record('course_modules', ['id' => $result->items[0]['localcmid']], '*', MUST_EXIST);
+        $this->assertSame('', (string) $copy->idnumber);
+        $sequence = explode(',', $DB->get_field('course_sections', 'sequence', ['id' => $copy->section]));
+        $this->assertSame(
+            array_search((string) $local->cmid, $sequence, true) + 1,
+            array_search((string) $copy->id, $sequence, true)
+        );
+
+        $candidates = syncer::list_candidates(
+            $this->instanceid,
+            $this->course->id,
+            true,
+            $this->mock_source([$this->detected(11, $this->pulledat - 10)])
+        );
+        $this->assertTrue($candidates->needs_review());
+    }
+
+    /**
+     * An unchanged copy left unticked is left alone, and does not hold the
+     * last synced marker - it was offered, but never needed a choice.
+     */
+    public function test_an_unticked_unchanged_copy_is_left_alone(): void {
+        global $DB;
+
+        $old = $this->earlier_copy(11);
+
+        $result = syncer::run(
+            $this->instanceid,
+            $this->course->id,
+            true,
+            $this->mock_source([$this->detected(11, $this->pulledat - 10)]),
+            []
+        );
+
+        $this->assertSame('syncskippedpresent', $result->items[0]['detail']);
+        $this->assertTrue($result->lastsyncupdated);
+        $this->assertSame((int) $old->id, syncer::find_existing($this->course->id, 11));
+        $this->assertSame('Original', $DB->get_field('page', 'name', ['id' => $old->instance]));
+    }
+
+    /**
+     * A grade entered in the gradebook counts as people's data, even where
+     * the activity itself holds nothing about anyone.
+     */
+    public function test_a_gradebook_grade_counts_as_peoples_data(): void {
+        global $CFG;
+
+        require_once($CFG->libdir . '/gradelib.php');
+
+        $assign = $this->getDataGenerator()->create_module('assign', ['course' => $this->course->id]);
+        $this->assertFalse(copy_update::has_people_data((int) $assign->cmid));
+
+        $student = $this->getDataGenerator()->create_and_enrol($this->course, 'student');
+        $item = \grade_item::fetch([
+            'courseid' => $this->course->id,
+            'itemtype' => 'mod',
+            'itemmodule' => 'assign',
+            'iteminstance' => $assign->id,
+            'itemnumber' => 0,
+        ]);
+        $item->update_final_grade($student->id, 50, 'gradebook');
+
+        $this->assertTrue(copy_update::has_people_data((int) $assign->cmid));
     }
 
     /**

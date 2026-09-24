@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Pulls new activities from the mapped remote course.
+ * Pulls activities from the mapped remote course, as the teacher chooses.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project
@@ -34,7 +34,6 @@ use core\output\html_writer;
 $instanceid = required_param('instanceid', PARAM_INT);
 $courseid = required_param('courseid', PARAM_INT);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
-$full = optional_param('full', 0, PARAM_BOOL);
 $chosen = optional_param_array('cmids', [], PARAM_INT);
 
 $course = get_course($courseid);
@@ -87,10 +86,14 @@ if (!connection::is_mapped($record)) {
 
 if (!$confirm) {
     // Nothing is created by following a link. This page asks the other site what
-    // it has, shows what is not here yet, and lets the teacher choose; the form
-    // below carries a sesskey.
+    // it has, shows all of it against what is here, and lets the teacher choose;
+    // the form below carries a sesskey.
+    //
+    // Always everything, never only what changed since the last sync: a list
+    // filtered by that marker comes back empty once everything has been
+    // copied, which read as "the other course has nothing in it".
     $lastsync = connection::get_last_sync($instanceid);
-    $candidates = syncer::list_candidates($instanceid, $course->id, (bool) $full);
+    $candidates = syncer::list_candidates($instanceid, $course->id, true);
 
     if (!$candidates->success) {
         echo $OUTPUT->notification(get_string($candidates->errorkey, 'block_coursesync'), 'error', false);
@@ -110,44 +113,38 @@ if (!$confirm) {
         : get_string('syncconfirmsince', 'block_coursesync', userdate($lastsync)));
 
     // Everything on the other site that this page can do something with,
-    // tagged with why it is or is not offered. An activity of a type nothing
+    // tagged with what ticking it would do. An activity of a type nothing
     // here handles is not shown at all - there is no choice to make about it
-    // on this page, so naming it here would be noise, not help. "New" gets a
-    // live checkbox and its own group at the top, pre-ticked, because that is
-    // the whole point of this page; "present" and "collision" are grouped
-    // together below it, ticked never, so a teacher sees what to act on
-    // before seeing what is already accounted for.
-    $tag = static fn(string $status): \Closure => static fn(activity $activity): array => [
-        'activity' => $activity,
-        'status' => $status,
-    ];
-
+    // on this page, so naming it here would be noise, not help. "New" gets
+    // its own group at the top, pre-ticked, because that is the whole point
+    // of this page; "changed" next; what is already here last. Nothing but
+    // "new" starts ticked, because everything else replaces or duplicates
+    // something already in this course.
     $bycmid = static fn(array $a, array $b): int => $a['activity']->cmid <=> $b['activity']->cmid;
+    $rows = static function (array $activities, callable $status) use ($bycmid): array {
+        $rows = array_map(
+            static fn(activity $activity): array => ['activity' => $activity, 'status' => $status($activity)],
+            $activities
+        );
+        usort($rows, $bycmid);
 
-    $newrows = array_map($tag('new'), $candidates->new);
-    usort($newrows, $bycmid);
+        return $rows;
+    };
 
-    // Changed since it was copied: offered, but never pre-ticked, because
-    // updating replaces something already in this course or adds a second
-    // edition beside it. Which of the two is said on the row.
-    $changedrows = array_map(
-        static fn(activity $activity): array => [
-            'activity' => $activity,
-            'status' => match (true) {
-                $candidates->is_in_place($activity->cmid) => 'changedinplace',
-                $candidates->is_new_edition($activity->cmid) => 'changednewedition',
-                default => 'changedreplace',
-            },
-        ],
-        $candidates->changed
+    $newrows = $rows($candidates->new, static fn(): string => 'new');
+    $changedrows = $rows($candidates->changed, static fn(activity $activity): string => match (true) {
+        $candidates->is_in_place($activity->cmid) => 'changedinplace',
+        $candidates->is_new_edition($activity->cmid) => 'changednewedition',
+        default => 'changedreplace',
+    });
+    $alreadyrows = $rows(
+        array_merge($candidates->present, $candidates->collisions),
+        static fn(activity $activity): string => match (true) {
+            in_array($activity, $candidates->collisions, true) => 'collision',
+            $candidates->recopy_adds_copy($activity->cmid) => 'presentcopy',
+            default => 'presentreplace',
+        }
     );
-    usort($changedrows, $bycmid);
-
-    $alreadyrows = array_merge(
-        array_map($tag('present'), $candidates->present),
-        array_map($tag('collision'), $candidates->collisions)
-    );
-    usort($alreadyrows, $bycmid);
 
     if ($newrows === [] && $changedrows === [] && $alreadyrows === []) {
         echo $OUTPUT->notification(get_string('syncnothingatall', 'block_coursesync'), 'success', false);
@@ -155,13 +152,22 @@ if (!$confirm) {
         echo $OUTPUT->heading(get_string('syncchooseheading', 'block_coursesync'), 3);
         echo html_writer::tag('p', get_string('syncchooseintro', 'block_coursesync'), ['class' => 'text-muted']);
 
+        if ($newrows === [] && $changedrows === []) {
+            echo $OUTPUT->notification(
+                get_string('syncnothingnew', 'block_coursesync', count($alreadyrows)),
+                'success',
+                false
+            );
+        }
+
         $statuslabels = [
             'new' => get_string('syncstatusnew', 'block_coursesync'),
             'changedreplace' => get_string('syncstatuschangedreplace', 'block_coursesync'),
             'changednewedition' => get_string('syncstatuschangednewedition', 'block_coursesync'),
             'changedinplace' => get_string('syncstatuschangedinplace', 'block_coursesync'),
-            'present' => get_string('syncstatuspresent', 'block_coursesync'),
-            'collision' => get_string('syncstatuscollision', 'block_coursesync'),
+            'presentreplace' => get_string('syncstatuspresentreplace', 'block_coursesync'),
+            'presentcopy' => get_string('syncstatuspresentcopy', 'block_coursesync'),
+            'collision' => get_string('syncstatuscollisioncopy', 'block_coursesync'),
         ];
 
         $head = html_writer::tag(
@@ -173,25 +179,24 @@ if (!$confirm) {
             . html_writer::tag('th', get_string('syncstatuscolumn', 'block_coursesync'), ['scope' => 'col'])
         );
 
-        // Only what is not on this course yet, or has changed since it was
-        // copied, can be chosen. Everything else is shown for reference with
-        // its checkbox disabled, so it cannot be ticked and is not sent even
-        // if a browser ignores that. Only new ones start ticked.
+        // Every row can be chosen; only new ones start ticked. "Select all"
+        // reaches only new and changed ones (data-coursesync-bulk), so one
+        // click never copies everything already here a second time.
         $renderrows = static function (array $rows) use ($statuslabels): string {
             $out = '';
 
             foreach ($rows as $row) {
                 $activity = $row['activity'];
-                $selectable = in_array($row['status'], ['new', 'changedreplace', 'changednewedition', 'changedinplace'], true);
                 $id = 'coursesync-cm-' . (int) $activity->cmid;
+                $already = in_array($row['status'], ['presentreplace', 'presentcopy', 'collision'], true);
 
                 $checkbox = html_writer::empty_tag('input', [
                     'type' => 'checkbox',
-                    'name' => $selectable ? 'cmids[]' : null,
+                    'name' => 'cmids[]',
                     'value' => (int) $activity->cmid,
                     'id' => $id,
                     'checked' => $row['status'] === 'new' ? 'checked' : null,
-                    'disabled' => $selectable ? null : 'disabled',
+                    'data-coursesync-bulk' => $already ? null : 1,
                     'class' => 'form-check-input',
                 ]);
 
@@ -208,127 +213,92 @@ if (!$confirm) {
             return $out;
         };
 
-        if ($newrows !== [] || $changedrows !== []) {
-            echo html_writer::start_tag('form', [
-                'method' => 'post',
-                'action' => $pageurl->out(false),
-                'id' => 'coursesync-choose',
-            ]);
-            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
-            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'full', 'value' => (int) $full]);
-
-            // Only the enabled (new and changed) checkboxes respond to these; there is
-            // nothing else on the page for them to affect. See amd/src/choose.js.
-            echo html_writer::tag(
-                'div',
-                html_writer::tag('button', get_string('syncselectall', 'block_coursesync'), [
-                    'type' => 'button',
-                    'data-action' => 'coursesync-select-all',
-                    'class' => 'btn btn-link btn-sm p-0 me-3',
-                ])
-                . html_writer::tag('button', get_string('syncselectnone', 'block_coursesync'), [
-                    'type' => 'button',
-                    'data-action' => 'coursesync-select-none',
-                    'class' => 'btn btn-link btn-sm p-0',
-                ]),
-                ['class' => 'mb-2']
-            );
-
-            $PAGE->requires->js_call_amd('block_coursesync/choose', 'init');
-
-            $rendergroup = static function (
-                array $rows,
-                string $headingkey,
-                string $captionkey
-            ) use (
-                $OUTPUT,
-                $head,
-                $renderrows
-            ): void {
-                if ($rows === []) {
-                    return;
-                }
-
-                echo $OUTPUT->heading(get_string($headingkey, 'block_coursesync'), 4);
-                echo html_writer::tag(
-                    'table',
-                    html_writer::tag('caption', get_string($captionkey, 'block_coursesync'), ['class' => 'sr-only'])
-                    . html_writer::tag('thead', $head)
-                    . html_writer::tag('tbody', $renderrows($rows)),
-                    ['class' => 'table table-striped']
-                );
-            };
-
-            $rendergroup($newrows, 'syncgroupnew', 'syncchoosecaptionnew');
-            $rendergroup($changedrows, 'syncgroupchanged', 'syncchoosecaptionchanged');
-
-            echo html_writer::tag(
-                'div',
-                html_writer::empty_tag('input', [
-                    'type' => 'submit',
-                    'value' => get_string('syncchoosesubmit', 'block_coursesync'),
-                    'class' => 'btn btn-primary me-2',
-                ])
-                . html_writer::link($courseurl, get_string('cancel'), ['class' => 'btn btn-secondary']),
-                ['class' => 'mb-4']
-            );
-
-            echo html_writer::end_tag('form');
-        } else {
-            echo $OUTPUT->notification(
-                get_string('syncnothingnew', 'block_coursesync', $candidates->present_count()),
-                'success',
-                false
-            );
-        }
-
-        if ($alreadyrows !== []) {
-            echo $OUTPUT->heading(get_string('syncgrouppresent', 'block_coursesync'), 4);
-
-            // The one thing in this group that wants a person's attention:
-            // something here already carries a synced activity's identity,
-            // and Course Sync did not put it there. It is not offered, and
-            // it is not quietly counted among the ordinary already-here
-            // ones either.
-            if ($candidates->needs_review()) {
-                $names = [];
-
-                foreach ($candidates->collisions as $activity) {
-                    $names[] = s($activity->name) . ' (' . s($activity->get_type_name()) . ')';
-                }
-
-                echo $OUTPUT->notification(get_string('synccollisions', 'block_coursesync', (object) [
-                    'count' => count($names),
-                    'list' => implode(', ', $names),
-                ]), 'warning', false);
+        $rendergroup = static function (
+            array $rows,
+            string $headingkey,
+            string $captionkey,
+            string $before = ''
+        ) use (
+            $OUTPUT,
+            $head,
+            $renderrows
+        ): void {
+            if ($rows === []) {
+                return;
             }
 
+            echo $OUTPUT->heading(get_string($headingkey, 'block_coursesync'), 4);
+            echo $before;
             echo html_writer::tag(
                 'table',
-                html_writer::tag(
-                    'caption',
-                    get_string('syncchoosecaptionpresent', 'block_coursesync'),
-                    ['class' => 'sr-only']
-                )
+                html_writer::tag('caption', get_string($captionkey, 'block_coursesync'), ['class' => 'sr-only'])
                 . html_writer::tag('thead', $head)
-                . html_writer::tag('tbody', $renderrows($alreadyrows)),
+                . html_writer::tag('tbody', $renderrows($rows)),
                 ['class' => 'table table-striped']
             );
-        }
-    }
+        };
 
-    // A conflict that has been dealt with by hand would otherwise never be
-    // offered again, because the last synced marker has moved past it.
-    if (!$full) {
-        echo html_writer::tag('p', html_writer::link(
-            new moodle_url($pageurl, ['full' => 1]),
-            get_string('syncfullrecheck', 'block_coursesync')
-        ) . ' ' . html_writer::tag(
-            'span',
-            get_string('syncfullrecheckhint', 'block_coursesync'),
-            ['class' => 'text-muted small']
-        ), ['class' => 'mt-4']);
+        echo html_writer::start_tag('form', [
+            'method' => 'post',
+            'action' => $pageurl->out(false),
+            'id' => 'coursesync-choose',
+        ]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
+
+        // See amd/src/choose.js.
+        echo html_writer::tag(
+            'div',
+            html_writer::tag('button', get_string('syncselectall', 'block_coursesync'), [
+                'type' => 'button',
+                'data-action' => 'coursesync-select-all',
+                'class' => 'btn btn-link btn-sm p-0 me-3',
+            ])
+            . html_writer::tag('button', get_string('syncselectnone', 'block_coursesync'), [
+                'type' => 'button',
+                'data-action' => 'coursesync-select-none',
+                'class' => 'btn btn-link btn-sm p-0',
+            ]),
+            ['class' => 'mb-2']
+        );
+
+        $PAGE->requires->js_call_amd('block_coursesync/choose', 'init');
+
+        $rendergroup($newrows, 'syncgroupnew', 'syncchoosecaptionnew');
+        $rendergroup($changedrows, 'syncgroupchanged', 'syncchoosecaptionchanged');
+
+        // The one thing in the last group that wants a person's attention:
+        // something here already carries a synced activity's identity, and
+        // Course Sync did not put it there.
+        $collisionwarning = '';
+
+        if ($candidates->needs_review()) {
+            $names = [];
+
+            foreach ($candidates->collisions as $activity) {
+                $names[] = s($activity->name) . ' (' . s($activity->get_type_name()) . ')';
+            }
+
+            $collisionwarning = $OUTPUT->notification(get_string('synccollisions', 'block_coursesync', (object) [
+                'count' => count($names),
+                'list' => implode(', ', $names),
+            ]), 'warning', false);
+        }
+
+        $rendergroup($alreadyrows, 'syncgrouppresent', 'syncchoosecaptionpresent', $collisionwarning);
+
+        echo html_writer::tag(
+            'div',
+            html_writer::empty_tag('input', [
+                'type' => 'submit',
+                'value' => get_string('syncchoosesubmit', 'block_coursesync'),
+                'class' => 'btn btn-primary me-2',
+            ])
+            . html_writer::link($courseurl, get_string('cancel'), ['class' => 'btn btn-secondary']),
+            ['class' => 'mb-4']
+        );
+
+        echo html_writer::end_tag('form');
     }
 
     echo $OUTPUT->footer();
@@ -339,7 +309,7 @@ require_sesskey();
 
 // Only what was ticked. An empty selection is a decision, not a request to copy
 // everything, so it is passed through as the empty set rather than as null.
-$result = syncer::run($instanceid, $course->id, (bool) $full, null, $chosen);
+$result = syncer::run($instanceid, $course->id, true, null, $chosen);
 
 if (!$result->success) {
     echo $OUTPUT->notification($result->get_message(), 'error', false);

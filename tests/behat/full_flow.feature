@@ -90,9 +90,15 @@ Feature: The whole teacher-facing Course Sync flow
     And I press "Copy the ticked activities"
     Then I should see "copied"
 
-    # A second pass over the same ground has nothing left to offer, because
-    # what is already here is not listed.
+    # A second pass over the same ground has nothing new to offer. Straight
+    # from the page, with no second step: everything already here is listed,
+    # none of it ticked, so copying the ticked ones copies nothing.
     When I am on the "DEST" "block_coursesync > Sync" page
-    And I follow "Check everything again"
     Then I should see "Everything in the other course is already here"
-    And I should not see "Copy the ticked activities"
+    And I should not see "There is nothing in the other course to copy"
+    And I should see "Already on this course"
+    And the field "Week 1 Notes" matches value ""
+    When I press "Copy the ticked activities"
+    Then I should see "0 copied"
+    When I am on "Destination Course" course homepage
+    Then I should not see "(copy)"

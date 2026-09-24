@@ -112,14 +112,23 @@ Status column says which of two things will happen:
   edition is the one Course Sync keeps up to date; the old one is yours to hide
   or remove when you are ready.
 
-**Already on this course** comes last, for reference - nothing there can
-be ticked:
+**Already on this course** comes last. Nothing there starts ticked, and
+**Select all** leaves it alone, but you can tick any of it to copy it again -
+useful when your copy has been edited or broken and you want a clean one:
 
-- **Already synced** means Course Sync copied it here before, and it has not
-  changed on the other site since.
+- **Already synced - if ticked, the copy here is replaced** — Course Sync
+  copied it here before, and nobody has work or grades in it. A fresh copy
+  takes its place, exactly as with "The copy here will be replaced" above.
+- **Already synced - if ticked, a separate copy is added** — people have work
+  or grades in your copy. It is left exactly as it is, and a fresh copy is
+  added straight after it with **(copy)** on the end of its name (then
+  **(copy 2)**, and so on). From then on the fresh copy is the one Course Sync
+  keeps up to date.
 - **Needs review** means something in your course already carries that
   activity's identity, but Course Sync did not put it there. It is named in a
-  warning above this group until you have looked at it by hand.
+  warning above this group until you have looked at it by hand. Course Sync
+  never changes or replaces it; if you tick it, a separate **(copy)** is added
+  after it instead. That copy is not kept up to date by later syncs.
 
 An activity of a type Course Sync has no handler for at all is not shown on
 this page - there is nothing to choose about it here, so it is left off
@@ -235,12 +244,8 @@ updating instead (see "Running a sync" above). Your copy is untouched.
 ### After you have dealt with one
 
 Once you have sorted it out — deleted the activity that was in the way, or
-decided your version stands — an ordinary sync will not offer it again, because
-it has moved past that point in time.
-
-To bring it back, use **Check everything again** on the sync page. That looks at
-the whole of the other course rather than only recent changes. Everything already
-in your course is flagged rather than copied, so it is safe to run.
+decided your version stands — just open **Check now** again. The sync page
+always lists the whole of the other course, so it is offered there as usual.
 
 ## Sync history
 

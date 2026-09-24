@@ -31,13 +31,15 @@ namespace block_coursesync;
  *   in the copy - see copy_update. Which of the two is known up front, so the
  *   page can say.
  * - **present**: this plugin copied it here already, and it has not changed
- *   since. Not offered, because copying it twice is exactly what this plugin
- *   refuses to do. Counted so the list being shorter than the other course is
- *   explained rather than mysterious.
+ *   since. Offered, never pre-selected, for a teacher who wants a fresh copy
+ *   anyway. Copying it again replaces the copy here when nobody has anything
+ *   in it, and otherwise adds a separate "(copy)" after it and leaves the one
+ *   with people's work alone. Which of the two is known up front.
  * - **collisions**: something in this course carries that activity's identity,
- *   but this plugin did not put it there. Also not offered, but named rather
- *   than counted: it is the one case a person needs to look at, and hiding it
- *   among the ordinary already-here ones would lose what phase 6 added.
+ *   but this plugin did not put it there. Named rather than hidden among the
+ *   ordinary already-here ones: it is the one case a person needs to look at.
+ *   Offered too, never pre-selected, but only ever as a separate "(copy)" -
+ *   what is here is not this plugin's to replace or change.
  * - **unsupported**: in the other course, not here, and of a type this plugin
  *   has no handler for. Never offered - there is nothing a teacher can do
  *   about it from the sync page, so it is left off that page entirely rather
@@ -71,6 +73,9 @@ class sync_candidates {
 
     /** @var activity[] Copied here by an earlier run, and unchanged since. */
     public array $present = [];
+
+    /** @var int[] Remote cmids of present activities whose local copy people have data in. */
+    public array $presentwithdata = [];
 
     /** @var activity[] Something here carries the identity, but this plugin did not put it there. */
     public array $collisions = [];
@@ -125,6 +130,17 @@ class sync_candidates {
     }
 
     /**
+     * Would copying this already-present activity again add a separate copy
+     * rather than replace the one here?
+     *
+     * @param int $remotecmid
+     * @return bool
+     */
+    public function recopy_adds_copy(int $remotecmid): bool {
+        return in_array($remotecmid, $this->presentwithdata, true);
+    }
+
+    /**
      * The remote course module ids of everything on offer.
      *
      * This is what a selection is checked against: an id that is not in here was
@@ -135,7 +151,7 @@ class sync_candidates {
     public function offered_cmids(): array {
         return array_map(
             static fn(activity $activity): int => $activity->cmid,
-            array_merge($this->new, $this->changed)
+            array_merge($this->new, $this->changed, $this->present, $this->collisions)
         );
     }
 

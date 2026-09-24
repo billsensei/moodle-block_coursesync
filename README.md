@@ -204,9 +204,9 @@ There are two kinds, told apart by looking in the sync history:
 
 Conflicts do **not** hold the last synced marker back. Holding it would re-flag
 every previously copied activity on the next run. The consequence is that once a
-conflict has been dealt with by hand, the ordinary sync will not offer that
-activity again — use **Check everything again** on the sync page, which ignores
-the marker and looks at the whole course.
+conflict has been dealt with by hand, a sync nobody chose for will not look at
+that activity again. The sync page is not affected: it always lists the whole
+of the other course, so it is offered there as usual.
 
 ### Sync history
 

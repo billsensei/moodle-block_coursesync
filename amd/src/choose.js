@@ -16,9 +16,9 @@
 /**
  * Select all / select none for the "Choose what to copy" checkbox picker.
  *
- * Only the enabled checkboxes respond - the ones shown for reference
- * (already synced, needs review, not supported) stay disabled and unticked
- * however these buttons are used.
+ * "Select all" ticks only what is new or changed (data-coursesync-bulk).
+ * Ticking something already in the course copies it again, so that is only
+ * ever done one row at a time. "Select none" clears everything.
  *
  * @module     block_coursesync/choose
  * @copyright  2026 Course Sync project
@@ -29,17 +29,19 @@ const SELECTORS = {
     FORM: '#coursesync-choose',
     SELECTALL: '[data-action="coursesync-select-all"]',
     SELECTNONE: '[data-action="coursesync-select-none"]',
-    ENABLED_CHECKBOX: 'input[type="checkbox"]:not(:disabled)',
+    BULK_CHECKBOX: 'input[type="checkbox"][data-coursesync-bulk]:not(:disabled)',
+    ANY_CHECKBOX: 'input[type="checkbox"]:not(:disabled)',
 };
 
 /**
- * Tick or untick every enabled checkbox in the form.
+ * Tick or untick the checkboxes a selector matches in the form.
  *
  * @param {HTMLFormElement} form
+ * @param {String} selector
  * @param {Boolean} checked
  */
-const setAll = (form, checked) => {
-    form.querySelectorAll(SELECTORS.ENABLED_CHECKBOX).forEach(checkbox => {
+const setAll = (form, selector, checked) => {
+    form.querySelectorAll(selector).forEach(checkbox => {
         checkbox.checked = checked;
     });
 };
@@ -57,10 +59,10 @@ export const init = () => {
     form.addEventListener('click', e => {
         if (e.target.closest(SELECTORS.SELECTALL)) {
             e.preventDefault();
-            setAll(form, true);
+            setAll(form, SELECTORS.BULK_CHECKBOX, true);
         } else if (e.target.closest(SELECTORS.SELECTNONE)) {
             e.preventDefault();
-            setAll(form, false);
+            setAll(form, SELECTORS.ANY_CHECKBOX, false);
         }
     });
 };

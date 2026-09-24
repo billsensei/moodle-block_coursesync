@@ -348,21 +348,32 @@ through the sync account.
 ## Choosing what to sync
 
 `sync.php` asks `syncer::list_candidates()` before it offers anything. That runs
-the same change detection a sync starts with, then sorts what comes back into
-four groups using the same question a run asks - does anything in this course
+the same change detection a sync starts with - always with `since = 0`, the
+whole of the other course, since v1.16.0 - then sorts what comes back into
+groups using the same question a run asks - does anything in this course
 carry that activity's identity:
 
 | Group | Shown as | Why |
 | --- | --- | --- |
 | `new` | "Ready to copy" table, ticked, enabled checkbox | Not here yet and this plugin handles it |
-| `present` | "Already on this course" table, disabled checkbox, status "Already synced" | Pulled here by an earlier run |
-| `collisions` | "Already on this course" table, disabled checkbox, status "Needs review", plus a named warning above that table | Something carries the identity that this plugin did not put there |
+| `changed` | "Changed since it was copied" table, unticked | Pulled here earlier, and the source changed it since - see "Updating a copy" |
+| `present` | "Already on this course" table, unticked, status says replace or "(copy)" (`recopy_adds_copy()`) | Pulled here by an earlier run, unchanged since |
+| `collisions` | "Already on this course" table, unticked, status "Needs review", plus a named warning above that table | Something carries the identity that this plugin did not put there |
 | `unsupported` | Not shown anywhere on this page | No handler for the type - nothing a teacher can do about it here |
 
-`new` and `present`/`collisions` are two separate tables, each sorted by
-remote cmid, under their own heading - `new` first and ticked, since that is
-the actual decision this page exists for; the other two after it, for
-reference, never ticked. `unsupported` is computed by `list_candidates()` but
+Each group is its own table, sorted by remote cmid, under its own heading -
+`new` first and ticked, since that is the actual decision this page exists
+for; the others after it, never pre-ticked. "Select all" only reaches `new`
+and `changed` rows (`data-coursesync-bulk`, see `amd/src/choose.js`).
+
+Ticking an already-present row copies it again (`handle_update(..., $recopy =
+true)`): if `copy_update::has_people_data()` finds nothing - the module's
+privacy userlist, completion, gradebook grades, qbank use - the fresh copy
+replaces it exactly as an update would; otherwise the old copy keeps its
+people's work, loses its identity, and a fresh tracked copy named
+"Name (copy)" (then "(copy 2)", ...) goes after it. A ticked collision is
+never touched: `syncer::copy_beside()` adds an **untracked** "(copy)" after
+it (no idnumber), so the collision stays flagged. `unsupported` is computed by `list_candidates()` but
 deliberately never rendered: a type nothing here handles is not a choice a
 teacher can make on this page, so naming it would be noise, not help.
 
@@ -466,8 +477,11 @@ run, forever.
 
 Failures *do* hold the marker, so a genuine failure is retried.
 
-The cost is that a conflict resolved by hand is not re-offered by an ordinary
-sync. That is what the **Check everything again** option (`since = 0`) is for.
+The marker no longer filters the sync page: since v1.16.0 `sync.php` always
+asks with `since = 0`, so a conflict resolved by hand is offered again on the
+very next visit. (The **Check everything again** link that used to do this is
+gone - a page filtered by the marker came back empty once everything had been
+copied, and said "There is nothing in the other course to copy".)
 
 ### Deleting a synced activity, so it can be synced back
 
@@ -481,7 +495,7 @@ of its section, then queues an adhoc task to do the real deletion -
 whenever cron next processes it. The teacher already sees the activity gone
 from the course at that point, so `find_existing()` treats it as gone too,
 rather than making "delete it, then sync it back" depend on the site's cron
-schedule. A **Check everything again** afterwards correctly re-offers it.
+schedule. The next visit to the sync page correctly re-offers it.
 
 This means, briefly, two `course_modules` rows can carry the same idnumber
 at once: the flagged one, still waiting on its adhoc task, and the freshly

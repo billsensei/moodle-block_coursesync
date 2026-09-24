@@ -232,6 +232,41 @@ class behat_block_coursesync extends behat_base {
     }
 
     /**
+     * Record a user as having completed the synced copy of an activity.
+     *
+     * Progress recorded against the copy is enough for Course Sync to treat
+     * it as holding people's work, and needs no activity-specific set-up.
+     *
+     * @Given /^"(?P<user>(?:[^"]|\\")*)" has completed the synced "(?P<name>(?:[^"]|\\")*)" in course "(?P<course>(?:[^"]|\\")*)"$/
+     * @param string $user
+     * @param string $name
+     * @param string $course
+     */
+    public function user_has_completed_the_synced_activity(string $user, string $name, string $course) {
+        global $DB;
+
+        $courseid = $this->get_course_id($course);
+        $cmid = null;
+
+        foreach (get_fast_modinfo($courseid)->get_cms() as $cm) {
+            if ($cm->name === $name && str_starts_with((string) $cm->idnumber, 'coursesync-')) {
+                $cmid = (int) $cm->id;
+            }
+        }
+
+        if ($cmid === null) {
+            throw new \Exception('No synced activity "' . $name . '" in course "' . $course . '"');
+        }
+
+        $DB->insert_record('course_modules_completion', (object) [
+            'coursemoduleid' => $cmid,
+            'userid' => $DB->get_field('user', 'id', ['username' => $user], MUST_EXIST),
+            'completionstate' => 1,
+            'timemodified' => time(),
+        ]);
+    }
+
+    /**
      * Turn a question into one of a type this site does not have installed.
      *
      * Every core question type is supported, so the only question a sync

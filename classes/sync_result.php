@@ -68,6 +68,7 @@ class sync_result {
      * @param int $remotecmid
      * @param int $localcmid
      * @param string[] $notes language string identifiers for anything the user should know
+     * @param string|null $detailkey a language string identifier, when how it was created needs saying
      * @return void
      */
     public function add_created(
@@ -75,7 +76,8 @@ class sync_result {
         string $modname,
         int $remotecmid,
         int $localcmid,
-        array $notes = []
+        array $notes = [],
+        ?string $detailkey = null
     ): void {
         $this->items[] = [
             'outcome' => 'created',
@@ -84,7 +86,7 @@ class sync_result {
             'remotecmid' => $remotecmid,
             'localcmid' => $localcmid,
             'notes' => $notes,
-            'detail' => null,
+            'detail' => $detailkey,
         ];
     }
 

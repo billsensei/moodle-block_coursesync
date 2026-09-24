@@ -173,6 +173,17 @@ class syncer {
                     }
                 } else {
                     $candidates->present[] = $activity;
+
+                    // Asked now so the page can say what ticking it would do.
+                    // A type updated where it stands has no copy to keep.
+                    $handler = handler_registry::get($activity->modname);
+
+                    if (
+                        $handler !== null && !$handler->updates_in_place()
+                            && copy_update::has_people_data($existing)
+                    ) {
+                        $candidates->presentwithdata[] = (int) $activity->cmid;
+                    }
                 }
 
                 continue;
@@ -315,13 +326,19 @@ class syncer {
                 continue;
             }
 
-            // Updating is only ever something a teacher ticked. A run that was
-            // not given a choice keeps to what it always did with a copy that
-            // is already here: flag it and leave it alone.
+            // Updating or copying again is only ever something a teacher
+            // ticked. A run that was not given a choice keeps to what it always
+            // did with a copy that is already here: flag it and leave it alone.
             $existing = self::find_existing($course->id, $activity->cmid);
 
-            if ($chosen !== null && $existing > 0 && self::is_changed($blockinstanceid, $activity, $existing)) {
-                self::handle_update($course, $record, $token, $activity, $existing, $result, $client);
+            if ($chosen !== null && $existing > 0) {
+                if (self::is_changed($blockinstanceid, $activity, $existing)) {
+                    self::handle_update($course, $record, $token, $activity, $existing, $result, $client);
+                } else if (history::was_pulled_here($blockinstanceid, $activity->cmid, $existing)) {
+                    self::handle_update($course, $record, $token, $activity, $existing, $result, $client, true);
+                } else {
+                    self::copy_beside($course, $record, $token, $activity, $existing, $result, $client);
+                }
 
                 continue;
             }
@@ -445,6 +462,7 @@ class syncer {
      * @param int $existingcmid the copy already here
      * @param sync_result $result
      * @param http_client|null $client
+     * @param bool $recopy true when the source has not changed and the teacher asked for a fresh copy anyway
      * @return void
      */
     protected static function handle_update(
@@ -454,7 +472,8 @@ class syncer {
         activity $activity,
         int $existingcmid,
         sync_result $result,
-        ?http_client $client = null
+        ?http_client $client = null,
+        bool $recopy = false
     ): void {
         global $CFG, $DB;
 
@@ -488,7 +507,9 @@ class syncer {
                 // The old copy stays exactly as it is, people's work and all;
                 // it only stops being the one this plugin tracks.
                 copy_update::set_identity($existingcmid, '');
-                $name = copy_update::name_as_new_edition((int) $cm->id);
+                $name = $recopy
+                    ? copy_update::name_as_copy((int) $cm->id)
+                    : copy_update::name_as_new_edition((int) $cm->id);
                 copy_update::set_identity((int) $cm->id, $idnumber);
             } else {
                 copy_update::repoint_references((int) $course->id, $existingcmid, (int) $cm->id);
@@ -513,13 +534,91 @@ class syncer {
             return;
         }
 
+        $notes = self::notes_for($handler, $payload, $course);
+
+        if ($recopy && $newedition) {
+            // Nothing was updated: an unchanged activity was copied again,
+            // beside the one people have work in.
+            $result->add_created($name, $payload->modname, $activity->cmid, (int) $cm->id, $notes, 'syncrecopiedcopy');
+
+            return;
+        }
+
         $result->add_updated(
             $name,
             $payload->modname,
             $activity->cmid,
             (int) $cm->id,
-            $newedition ? 'syncupdatednewedition' : 'syncupdatedreplaced',
-            self::notes_for($handler, $payload, $course)
+            match (true) {
+                $recopy => 'syncrecopiedreplaced',
+                $newedition => 'syncupdatednewedition',
+                default => 'syncupdatedreplaced',
+            },
+            $notes
+        );
+    }
+
+    /**
+     * Copy an activity again beside something here that carries its identity
+     * but that this plugin did not put here.
+     *
+     * What is here is not this plugin's, so nothing about it changes - not
+     * even its ID number. The fresh copy therefore carries no identity of its
+     * own: it is not tracked for later updates, and what is here is still
+     * flagged for review until a person deals with it.
+     *
+     * @param \stdClass $course
+     * @param \stdClass $record the connection
+     * @param string $token
+     * @param activity $activity
+     * @param int $existingcmid what is here
+     * @param sync_result $result
+     * @param http_client|null $client
+     * @return void
+     */
+    protected static function copy_beside(
+        \stdClass $course,
+        \stdClass $record,
+        string $token,
+        activity $activity,
+        int $existingcmid,
+        sync_result $result,
+        ?http_client $client = null
+    ): void {
+        global $DB;
+
+        $created = self::create_copy($course, $record, $token, $activity, $result, $client, '');
+
+        if ($created === null) {
+            return;
+        }
+
+        [$cm, $payload, $handler] = $created;
+
+        try {
+            copy_update::take_local_setup(
+                $DB->get_record('course_modules', ['id' => $existingcmid], '*', MUST_EXIST),
+                $cm,
+                false
+            );
+            $name = copy_update::name_as_copy((int) $cm->id);
+        } catch (\Throwable $e) {
+            debugging('block_coursesync: could not copy ' . $payload->modname . ' from remote cmid '
+                . $activity->cmid . ' beside an activity already here: ' . $e->getMessage(), DEBUG_DEVELOPER);
+
+            self::remove_partial($cm, $payload->modname);
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, 'errorcreatefailed');
+
+            return;
+        }
+
+        $result->add_created(
+            $name,
+            $payload->modname,
+            $activity->cmid,
+            (int) $cm->id,
+            self::notes_for($handler, $payload, $course),
+            'syncrecopiedbeside'
         );
     }
 
