@@ -120,6 +120,28 @@ class sync_result {
     }
 
     /**
+     * Record an activity that was already here, not made by this plugin, and
+     * is now linked to the original: it carries the marker from now on.
+     *
+     * @param string $name
+     * @param string $modname
+     * @param int $remotecmid
+     * @param int $localcmid the activity here, now linked
+     * @return void
+     */
+    public function add_linked(string $name, string $modname, int $remotecmid, int $localcmid): void {
+        $this->items[] = [
+            'outcome' => 'linked',
+            'name' => $name,
+            'modname' => $modname,
+            'remotecmid' => $remotecmid,
+            'localcmid' => $localcmid,
+            'notes' => [],
+            'detail' => 'synclinked',
+        ];
+    }
+
+    /**
      * Record an activity that was left alone.
      *
      * @param string $name
@@ -260,13 +282,19 @@ class sync_result {
             return get_string('syncnothingtodo', 'block_coursesync');
         }
 
-        return get_string('syncsummary', 'block_coursesync', (object) [
+        $message = get_string('syncsummary', 'block_coursesync', (object) [
             'created' => $this->count('created'),
             'updated' => $this->count('updated'),
             'conflicts' => $this->count('conflict'),
             'skipped' => $this->count('skipped'),
             'failed' => $this->count('failed'),
         ]);
+
+        if ($this->count('linked') > 0) {
+            $message .= ' ' . get_string('synclinkedsummary', 'block_coursesync', $this->count('linked'));
+        }
+
+        return $message;
     }
 
     /**

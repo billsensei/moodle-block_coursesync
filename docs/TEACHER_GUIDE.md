@@ -143,6 +143,30 @@ useful when your copy has been edited or broken and you want a clean one:
   never changes or replaces it; if you tick it, a separate **(copy)** is added
   after it instead. That copy is not kept up to date by later syncs.
 
+**Activities you already had** — built by hand, restored from a backup or
+imported — are recognised too, the first time you sync. If your course has an
+activity of the **same type and the same name** (capitals and extra spaces do
+not matter) as one on the other site, it is listed here rather than offered
+under Ready to copy:
+
+- **Already here, made outside Course Sync … will be linked to the original
+  when you sync** — when you press the button (ticked or not), Course Sync takes
+  it on as its own copy of the original. From then on, changes made on the other
+  site are offered as updates, and **Pull grades** brings grades and quiz
+  attempts into it. Nothing about the activity itself changes; only its ID
+  number is set. If you tick it, it is also replaced by the original (or, if
+  people have work in it, the original is added beside it and yours is kept).
+- **… has its own ID number here, so Course Sync leaves it as it is** — the
+  activity already has an ID number (perhaps used in a gradebook calculation),
+  so Course Sync does not take it on and never changes it. It is listed so you
+  are not offered a duplicate; ticking it adds the original beside it as a
+  separate copy.
+
+When the name is not enough to tell — two activities called "Quiz" here, or two
+on the other site — Course Sync does not guess. That one stays under **Ready to
+copy**, **unticked**, with a note saying so. Rename one of them if you want them
+matched next time.
+
 An activity of a type Course Sync has no handler for at all is not shown on
 this page - there is nothing to choose about it here, so it is left off
 rather than listed as one more thing you cannot act on.

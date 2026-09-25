@@ -62,10 +62,13 @@ class history {
         global $DB;
 
         // An update leaves a new local copy behind just as a create does, and
-        // is what was_pulled_here() and pulled_at() must find from then on.
+        // is what was_pulled_here() and pulled_at() must find from then on. So
+        // does a link: from this run on, the activity here counts as this
+        // plugin's copy, and changes on the source are measured from now.
         $pulled = array_merge(
             self::items_with_outcome($result, 'created'),
-            self::items_with_outcome($result, 'updated')
+            self::items_with_outcome($result, 'updated'),
+            self::items_with_outcome($result, 'linked')
         );
         $conflicts = self::items_with_outcome($result, 'conflict');
         $others = array_merge(

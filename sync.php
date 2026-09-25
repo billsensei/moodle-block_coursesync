@@ -135,15 +135,25 @@ if (!$confirm) {
         return $rows;
     };
 
-    $newrows = $rows($candidates->new, static fn(): string => 'new');
+    // A name used more than once, here or there, is not guessed at: still
+    // on offer, but never pre-ticked, and the row says why.
+    $newrows = $rows(
+        $candidates->new,
+        static fn(activity $activity): string => $candidates->is_ambiguous($activity->cmid) ? 'ambiguous' : 'new'
+    );
     $changedrows = $rows($candidates->changed, static fn(activity $activity): string => match (true) {
         $candidates->is_in_place($activity->cmid) => 'changedinplace',
         $candidates->is_new_edition($activity->cmid) => 'changednewedition',
         default => 'changedreplace',
     });
     $alreadyrows = $rows(
-        array_merge($candidates->present, $candidates->collisions),
+        array_merge($candidates->present, $candidates->collisions, $candidates->matched),
         static fn(activity $activity): string => match (true) {
+            in_array($activity, $candidates->matched, true) => match (true) {
+                $candidates->is_matched_but_owned($activity->cmid) => 'matchedowned',
+                $candidates->matched_has_data($activity->cmid) => 'matchedcopy',
+                default => 'matched',
+            },
             in_array($activity, $candidates->collisions, true) => 'collision',
             $candidates->recopy_adds_copy($activity->cmid) => 'presentcopy',
             default => 'presentreplace',
@@ -172,6 +182,10 @@ if (!$confirm) {
             'presentreplace' => get_string('syncstatuspresentreplace', 'block_coursesync'),
             'presentcopy' => get_string('syncstatuspresentcopy', 'block_coursesync'),
             'collision' => get_string('syncstatuscollisioncopy', 'block_coursesync'),
+            'ambiguous' => get_string('syncstatusambiguous', 'block_coursesync'),
+            'matched' => get_string('syncstatusmatched', 'block_coursesync'),
+            'matchedcopy' => get_string('syncstatusmatchedcopy', 'block_coursesync'),
+            'matchedowned' => get_string('syncstatusmatchedowned', 'block_coursesync'),
         ];
 
         $head = html_writer::tag(
@@ -193,6 +207,10 @@ if (!$confirm) {
                 $activity = $row['activity'];
                 $id = 'coursesync-cm-' . (int) $activity->cmid;
                 $already = in_array($row['status'], ['presentreplace', 'presentcopy', 'collision'], true);
+                $matched = in_array($row['status'], ['matched', 'matchedcopy', 'matchedowned'], true);
+
+                // Select all reaches only what is plainly new or changed.
+                $bulk = !$already && !$matched && $row['status'] !== 'ambiguous';
 
                 $checkbox = html_writer::empty_tag('input', [
                     'type' => 'checkbox',
@@ -200,7 +218,7 @@ if (!$confirm) {
                     'value' => (int) $activity->cmid,
                     'id' => $id,
                     'checked' => $row['status'] === 'new' ? 'checked' : null,
-                    'data-coursesync-bulk' => $already ? null : 1,
+                    'data-coursesync-bulk' => $bulk ? 1 : null,
                     'class' => 'form-check-input',
                 ]);
 
@@ -337,6 +355,8 @@ if ($result->items !== []) {
                 ['class' => 'badge bg-warning text-dark']),
             'skipped' => html_writer::tag('span', get_string('syncskipped', 'block_coursesync'),
                 ['class' => 'badge bg-secondary']),
+            'linked' => html_writer::tag('span', get_string('synclinkedbadge', 'block_coursesync'),
+                ['class' => 'badge bg-info text-dark']),
             default => html_writer::tag(
                 'span',
                 get_string('syncfailed', 'block_coursesync'),

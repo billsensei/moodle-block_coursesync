@@ -201,7 +201,108 @@ class syncer {
             $candidates->new[] = $activity;
         }
 
+        self::match_existing($candidates, $courseid, $found->activities);
+
         return $candidates;
+    }
+
+    /**
+     * Move the new activities that are already here under another guise -
+     * same type and name, no marker - from new to matched, and mark the ones
+     * whose name was ambiguous. See local\existing_match.
+     *
+     * @param sync_candidates $candidates
+     * @param int $courseid
+     * @param activity[] $remote everything the source listed
+     * @return void
+     */
+    protected static function match_existing(sync_candidates $candidates, int $courseid, array $remote): void {
+        if ($candidates->new === []) {
+            return;
+        }
+
+        $found = local\existing_match::find(
+            $courseid,
+            $remote,
+            array_map(static fn(activity $activity) => (int) $activity->cmid, $candidates->new)
+        );
+        $candidates->ambiguous = $found['ambiguous'];
+
+        foreach ($candidates->new as $index => $activity) {
+            $cm = $found['matched'][(int) $activity->cmid] ?? null;
+
+            if ($cm === null) {
+                continue;
+            }
+
+            $candidates->matched[] = $activity;
+            $candidates->matchedlocal[(int) $activity->cmid] = (int) $cm->id;
+
+            if ((string) $cm->idnumber !== '') {
+                $candidates->matchedowned[] = (int) $activity->cmid;
+            } else if (copy_update::has_people_data((int) $cm->id)) {
+                $candidates->matchedwithdata[] = (int) $activity->cmid;
+            }
+
+            unset($candidates->new[$index]);
+        }
+
+        $candidates->new = array_values($candidates->new);
+    }
+
+    /**
+     * Link the source's activities that are already here under another guise.
+     *
+     * A match (see local\existing_match) with an empty ID number here gets
+     * this plugin's marker, and so from now on is this plugin's copy of the
+     * original: changes on the source are offered as updates, and grades and
+     * quiz attempts can be pulled into it. Only the course module's ID number
+     * is set - the gradebook item's is left as it is. A match with an ID
+     * number of its own is left exactly as it is; that number may be what a
+     * gradebook calculation refers to.
+     *
+     * @param int $courseid
+     * @param activity[] $activities everything the source listed
+     * @param sync_result $result links are recorded here
+     * @return array [remote cmid => linked cmid here, remote cmid => owned cmid here]
+     */
+    protected static function link_matches(int $courseid, array $activities, sync_result $result): array {
+        global $CFG;
+
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        $unrecognised = [];
+        $byid = [];
+
+        foreach ($activities as $activity) {
+            $byid[(int) $activity->cmid] = $activity;
+
+            if (handler_registry::supports($activity->modname) && self::find_existing($courseid, $activity->cmid) === 0) {
+                $unrecognised[] = (int) $activity->cmid;
+            }
+        }
+
+        $linked = [];
+        $owned = [];
+
+        if ($unrecognised === []) {
+            return [$linked, $owned];
+        }
+
+        foreach (local\existing_match::find($courseid, $activities, $unrecognised)['matched'] as $remotecmid => $cm) {
+            $activity = $byid[$remotecmid];
+
+            if ((string) $cm->idnumber !== '') {
+                $owned[$remotecmid] = (int) $cm->id;
+                continue;
+            }
+
+            set_coursemodule_idnumber($cm->id, self::build_idnumber($remotecmid));
+            $linked[$remotecmid] = (int) $cm->id;
+            $result->add_linked($activity->name, $activity->modname, $remotecmid, (int) $cm->id);
+        }
+
+        return [$linked, $owned];
     }
 
     /**
@@ -337,6 +438,10 @@ class syncer {
             static fn(activity $a, activity $b): int => ($b->modname === 'subsection') <=> ($a->modname === 'subsection')
         );
 
+        // Activities already here under another guise - same type and name,
+        // no marker - are linked now, ticked or not: see link_matches().
+        [$linked, $owned] = self::link_matches($course->id, $activities, $result);
+
         foreach ($activities as $activity) {
             // One activity going wrong in a way nobody foresaw is reported
             // against that activity, not allowed to end the run: the rest
@@ -359,7 +464,35 @@ class syncer {
                     continue;
                 }
 
-                if ($chosen !== null && !in_array((int) $activity->cmid, $chosen, true)) {
+                $ticked = $chosen !== null && in_array((int) $activity->cmid, $chosen, true);
+
+                // Matched with one here that has its own ID number: that is
+                // never touched. Ticked, the original goes beside it as a
+                // separate copy; otherwise it is simply already here.
+                if (isset($owned[(int) $activity->cmid])) {
+                    if ($ticked) {
+                        self::copy_beside($course, $record, $token, $activity, $owned[(int) $activity->cmid], $result, $client);
+                    } else {
+                        $result->add_skipped($activity->name, $activity->modname, $activity->cmid, 'syncskippedowned');
+                    }
+
+                    continue;
+                }
+
+                // Linked just now. Ticked, it is copied again as anything
+                // already here is: replaced when nobody has work in it,
+                // otherwise the original added beside it. The link itself is
+                // already in the result.
+                if (isset($linked[(int) $activity->cmid])) {
+                    if ($ticked) {
+                        $here = $linked[(int) $activity->cmid];
+                        self::handle_update($course, $record, $token, $activity, $here, $result, $client, true);
+                    }
+
+                    continue;
+                }
+
+                if ($chosen !== null && !$ticked) {
                     // Same reasoning again: something already in this course is not
                     // on the list either, so it was not a choice the teacher made.
                     // Calling it one would hold the marker back for good - it can

@@ -222,7 +222,11 @@ student.
 A malicious or compromised source could send wrong grades. What bounds it:
 
 - Only activities **Course Sync copied** into the course (the
-  `coursesync-<remote cmid>` idnumber), matched to the source's own activity.
+  `coursesync-<remote cmid>` idnumber), matched to the source's own activity -
+  or, since v1.20.0, **linked** to it: an activity here of the same type and
+  name, with an empty ID number, when a teacher presses sync. The source
+  chooses its own names, so it could only ever link an activity whose name it
+  already matches exactly, of the same type, and never one with an ID number.
 - Only students who are already **active graded users** of the course here. No
   account is created and nobody is enrolled.
 - **Separate groups** limit a pull as they limit the gradebook: someone who may

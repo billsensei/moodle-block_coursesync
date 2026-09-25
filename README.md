@@ -11,7 +11,10 @@ history, and the plugin has been through a security audit. Since v1.18.0,
 **grade sync** (switched off by default on both sites) brings students' grades
 for copied activities into the gradebook, matched by username, never replacing
 a grade a teacher gave. Since v1.19.0 it also brings students' finished quiz
-attempts - times and per-question marks - into the quiz's own reports.
+attempts - times and per-question marks - into the quiz's own reports. Since
+v1.20.0 a course that already has the activities (restored, imported or built
+by hand) is recognised on its first sync, by type and name, and linked rather
+than copied again.
 
 ## How it fits together
 

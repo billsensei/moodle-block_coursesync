@@ -109,6 +109,10 @@ read"*.
   anything in it, and otherwise added beside the old one as a "(New edition)".
   Tell pilot teachers a replaced copy loses any edits they made to it
 - Nothing happens automatically — a sync only runs when someone asks for it
+- A course that already has the activities (restored from a backup, imported,
+  or built by hand) is recognised on its first sync: same type and same name
+  counts as already here, and pressing sync links it rather than copying it
+  again. Two activities with the same name are not guessed at
 - If grades are on: **Pull grades** shows a preview before writing anything,
   never replaces a grade someone gave on this site (it lists it instead), and
   pulled grades show as **overridden** in the gradebook — that is what keeps
@@ -126,6 +130,7 @@ read"*.
 | Deletions are not detected | An activity removed from the source simply stops being offered |
 | Hidden activities are reported | Teachers see the names of hidden activities on the source |
 | Third-party activity types with no `timemodified` | Edits to them are not detected, only their creation |
+| Existing activities match by type and name only | A renamed activity is offered as new; two with the same name are not matched |
 | Grades match by username only | A username that is a different person on each site gets the wrong grades — check before switching grades on |
 | Grades removed on the source stay here | Pulling only adds and updates; clear a grade here by hand |
 | Images in grade feedback do not come across | The feedback text does; pictures in it arrive as broken links |

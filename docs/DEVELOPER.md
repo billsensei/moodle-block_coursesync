@@ -530,6 +530,29 @@ re-report the same items forever once `lastsync` started being written. There is
 a test pinning this; if an activity ever looks skipped, fix the timestamp being
 stored rather than this comparison.
 
+## Recognising activities already here
+
+Added in v1.20.0 (LEARNFROMME phases 49-51). A destination course built by hand,
+restored from a backup or imported has the activities but not the
+`coursesync-<remote cmid>` marker, so a first sync used to offer them all again.
+
+- `local\existing_match::find()` matches by **type + name**, names compared as
+  text (`normalise()`: decode entities, strip tags, collapse whitespace, lower
+  case - the source sends formatted names, `"Q&amp;A"`; local ones are raw).
+  Only unmarked activities here are considered. A match needs exactly one here
+  and one of that key in the source's whole listing; otherwise it is
+  **ambiguous** and nothing is matched.
+- `syncer::list_candidates()` moves matches from `new` to `matched` (and marks
+  `matchedowned` / `matchedwithdata` / `ambiguous`). Read-only.
+- `syncer::link_matches()` runs at the start of **every** `run()`: a match
+  with an empty idnumber gets the marker (`set_coursemodule_idnumber()` - the
+  course module only, not the grade item) and a `linked` result, which
+  `history::record()` puts in `pulled`, so change detection counts from the
+  link. A match with its own idnumber is never touched ("owned").
+- Ticked: a linked match is copied again like anything already here
+  (`handle_update(…, recopy: true)`); an owned one gets `copy_beside()`.
+  Unticked owned is skipped as `syncskippedowned` - not a deselection.
+
 ## Grade sync
 
 Added in v1.18.0 (LEARNFROMME phases 34-39). The only part of the plugin that

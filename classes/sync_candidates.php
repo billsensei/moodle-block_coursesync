@@ -40,6 +40,13 @@ namespace block_coursesync;
  *   ordinary already-here ones: it is the one case a person needs to look at.
  *   Offered too, never pre-selected, but only ever as a separate "(copy)" -
  *   what is here is not this plugin's to replace or change.
+ * - **matched**: not copied by this plugin, but an activity of the same type
+ *   and name is already here, without its marker - built by hand, restored or
+ *   imported (see local\existing_match). Listed with what is already here,
+ *   not offered as new. A sync links it (Phase 50) - unless it has an ID
+ *   number of its own here, which is never overwritten ("owned").
+ *   A name used more than once, here or there, is not matched: those stay
+ *   **new**, but **ambiguous**, and are never pre-selected.
  * - **unsupported**: in the other course, not here, and of a type this plugin
  *   has no handler for. Never offered - there is nothing a teacher can do
  *   about it from the sync page, so it is left off that page entirely rather
@@ -82,6 +89,21 @@ class sync_candidates {
 
     /** @var activity[] In the other course, not here, and of a type nothing handles. */
     public array $unsupported = [];
+
+    /** @var activity[] Not copied here, but the same type and name is already here, unmarked. */
+    public array $matched = [];
+
+    /** @var int[] Remote cmid => the matched activity's course module id here. */
+    public array $matchedlocal = [];
+
+    /** @var int[] Remote cmids of matches that have an ID number of their own here. */
+    public array $matchedowned = [];
+
+    /** @var int[] Remote cmids of new activities whose name could only have been guessed at. */
+    public array $ambiguous = [];
+
+    /** @var int[] Remote cmids of linkable matches that people have data in here. */
+    public array $matchedwithdata = [];
 
     /** @var int The timestamp change detection asked about. */
     public int $since = 0;
@@ -151,7 +173,7 @@ class sync_candidates {
     public function offered_cmids(): array {
         return array_map(
             static fn(activity $activity): int => $activity->cmid,
-            array_merge($this->new, $this->changed, $this->present, $this->collisions)
+            array_merge($this->new, $this->changed, $this->present, $this->collisions, $this->matched)
         );
     }
 
@@ -161,7 +183,50 @@ class sync_candidates {
      * @return int
      */
     public function present_count(): int {
-        return count($this->present);
+        return count($this->present) + count($this->matched);
+    }
+
+    /**
+     * The activity here that a source activity was matched to by name.
+     *
+     * @param int $remotecmid
+     * @return int|null its course module id, or null if it was not matched
+     */
+    public function matched_local_cmid(int $remotecmid): ?int {
+        return $this->matchedlocal[$remotecmid] ?? null;
+    }
+
+    /**
+     * Was this matched to an activity here that has its own ID number, so
+     * cannot be linked?
+     *
+     * @param int $remotecmid
+     * @return bool
+     */
+    public function is_matched_but_owned(int $remotecmid): bool {
+        return in_array($remotecmid, $this->matchedowned, true);
+    }
+
+    /**
+     * Would ticking this match add the original beside it rather than
+     * replace it - because people have work in the one here?
+     *
+     * @param int $remotecmid
+     * @return bool
+     */
+    public function matched_has_data(int $remotecmid): bool {
+        return in_array($remotecmid, $this->matchedwithdata, true);
+    }
+
+    /**
+     * Is this new activity's name used more than once, here or there, so
+     * that matching it would have been a guess?
+     *
+     * @param int $remotecmid
+     * @return bool
+     */
+    public function is_ambiguous(int $remotecmid): bool {
+        return in_array($remotecmid, $this->ambiguous, true);
     }
 
     /**

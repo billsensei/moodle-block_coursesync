@@ -217,6 +217,12 @@ on v1.18 talking to an older source tells a teacher who tries **Pull grades**
 that the other site's Course Sync is too old to share grades; copying activities
 works as before.
 
+Upgrading to v1.20.0 changes nothing until a teacher next syncs: from then on,
+activities already in a course that match the other course's by type and name
+are recognised and linked instead of being offered again (see
+[TEACHER_GUIDE.md](TEACHER_GUIDE.md#running-a-sync)). Nothing is linked that has
+an ID number of its own.
+
 Upgrading to v1.19.0 adds quiz attempts to grade sync, under the same switches.
 A v1.19 destination talking to a v1.18 source still pulls grades - quiz grades
 then come as overrides, and the page says the source is too old for attempts.
