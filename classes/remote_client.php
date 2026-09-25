@@ -186,6 +186,48 @@ class remote_client {
     }
 
     /**
+     * Fetch students' gradebook grades for some of the mapped course's activities.
+     *
+     * @param string $baseurl normalised base URL of the remote site
+     * @param string $token the remote site's web service token
+     * @param int $courseid the resolved remote course id
+     * @param int[] $cmids course module ids on the source site
+     * @param \core\http_client|null $client injected only by tests
+     * @return grades_result
+     */
+    public static function get_grades(
+        string $baseurl,
+        string $token,
+        int $courseid,
+        array $cmids,
+        ?http_client $client = null
+    ): grades_result {
+        $outcome = self::call($baseurl, $token, 'block_coursesync_get_grades', [
+            'courseid' => $courseid,
+            'cmids' => array_values(array_map('intval', $cmids)),
+        ], $client);
+
+        if ($outcome['errorkey'] === 'errornopermission') {
+            // The account may well hold the sync permission: what it lacks
+            // here is the separate one for grades, so say that.
+            return grades_result::failure('errornogradepermission');
+        }
+
+        if ($outcome['errorkey'] === 'errorpluginmissing') {
+            // The source answered as Course Sync (the connection test passed),
+            // so what it lacks is this one function: a version from before
+            // grade sync.
+            return grades_result::failure('errorgradesourceoutdated');
+        }
+
+        if ($outcome['errorkey'] !== null) {
+            return grades_result::failure($outcome['errorkey']);
+        }
+
+        return grades_result::from_response($outcome['data']);
+    }
+
+    /**
      * Fetch one chunk of one of an activity's files.
      *
      * @param string $baseurl normalised base URL of the remote site
@@ -448,6 +490,7 @@ class remote_client {
             'errorunsupportedtype' => 'errorunsupportedtype',
             'errorfilenotfound' => 'errorfilenotfound',
             'errorfilenotallowed' => 'errorfilenotallowed',
+            'errorgradeexportdisabled' => 'errorgradeexportoff',
             'invalidparameter' => 'errorbadrequest',
             'invalidrecordunknown' => 'errorcoursenotfound',
         ];

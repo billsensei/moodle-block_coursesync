@@ -19,6 +19,7 @@ namespace block_coursesync\local;
 use block_coursesync\activity_payload;
 use block_coursesync\external\get_activity;
 use block_coursesync\external\get_activity_file;
+use block_coursesync\external\get_grades;
 use block_coursesync\external\get_modified_activities;
 use block_coursesync\local\handler\handler_registry;
 use core\http_client;
@@ -33,9 +34,10 @@ use Psr\Http\Message\RequestInterface;
  * destination would, and its files fetched through file_sync from a "source"
  * that answers each request by running the real web service function on this
  * same site - get_activity_file, and for a whole syncer::run(),
- * get_modified_activities and get_activity too. So the source's
- * listing, its refusal rules, the transfer and the destination's filing and
- * post_files() all run together, as they do between two sites.
+ * get_modified_activities and get_activity too, and get_grades for a grade
+ * pull. So the source's listing, its refusal rules, the transfer and the
+ * destination's filing and post_files() all run together, as they do between
+ * two sites.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project
@@ -74,6 +76,10 @@ trait source_on_this_site {
     protected function answer(string $function, array $params): array {
         if ($function === 'block_coursesync_get_modified_activities') {
             return get_modified_activities::execute((int) $params['courseid'], (int) ($params['since'] ?? 0));
+        }
+
+        if ($function === 'block_coursesync_get_grades') {
+            return get_grades::execute((int) $params['courseid'], array_map('intval', $params['cmids'] ?? []));
         }
 
         if ($function === 'block_coursesync_get_activity') {

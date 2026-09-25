@@ -60,7 +60,7 @@ Phase 7 replaced one such guard in `setup.php` with `require_sesskey()`.
 
 ### Web service functions
 
-All five check `block/coursesync:sync` in the relevant context and call
+All six check `block/coursesync:sync` in the relevant context and call
 `validate_context()`. Sesskey does not apply: these are token-authenticated.
 
 | Function | Capability checked in |
@@ -70,6 +70,7 @@ All five check `block/coursesync:sync` in the relevant context and call
 | `block_coursesync_get_modified_activities` | the course's context |
 | `block_coursesync_get_activity` | the course's context |
 | `block_coursesync_get_activity_file` | the course's context |
+| `block_coursesync_get_grades` | the course's context, plus `block/coursesync:exportgrades` there |
 
 The capability is checked **before** `validate_context()` so a missing sync
 permission is reported as that, rather than as the "course not accessible" that
@@ -82,6 +83,29 @@ read any file in any activity. An area may name a component other than the
 activity's own - a workshop grading strategy's `workshopform_*` - and the
 optional `component` parameter is checked against the same list, so it widens
 nothing: it only reaches areas a handler already declared.
+
+`get_grades` is the one function that hands out people's data - students'
+gradebook grades and feedback, keyed by username. It is **off** until an
+administrator ticks "Let other sites read grades from this site"
+(`block_coursesync | allowgradeexport`, default off); until then it refuses
+every caller with `errorgradeexportdisabled` before looking up the course.
+When on, it also requires
+`block/coursesync:exportgrades` (`RISK_PERSONAL`), which **no role holds by
+default**, not even manager. An account set up to copy activities therefore
+gains nothing on upgrade; an administrator has to grant grade access
+deliberately, in the same category or course as the sync permission. It only
+reports students the gradebook itself lists (a graded role and an active
+enrolment), only final gradebook grades (never attempts, submissions or
+responses), and only for requested activities inside the checked course: a
+cmid from another course is dropped silently, never answered. If the course's
+gradebook is waiting to be recalculated it recalculates first, as core's own
+user-grades web service does, so the grades sent are never stale.
+
+The other direction has its own switch, "Let teachers pull grades into this
+site" (`allowgradepull`, default off), and `grade_pull::check_allowed()`
+requires both `block/coursesync:pullgrades` and `moodle/grade:edit` in the
+course - for a preview as well as a pull, since a preview shows another
+site's grades. The check is inside the engine, not only in the pages.
 
 The destination applies the same rule the other way. `file_sync` stores a file
 only if its own handler declares that component and area, so a source cannot
@@ -141,6 +165,67 @@ would be if that teacher added a random question to the quiz by hand — the
 `editingteacher` archetype already holds it by default at the course
 context. Fixed-question slots add no check at all, same reasoning as
 `qbank_handler` above. See `DEVELOPER.md`'s "Security" section.
+
+## Students' grades
+
+Copying activities never moves anyone's data between sites. Grade sync
+(v1.18.0) is the deliberate exception, and it is built so that nothing moves
+unless four separate people-decisions have been made:
+
+1. **Source switch** `allowgradeexport`, default off. Until it is on,
+   `get_grades` refuses every caller before looking at anything.
+2. **Source permission** `block/coursesync:exportgrades` (`RISK_PERSONAL`, no
+   archetypes) for the sync account, in the course being read.
+3. **Destination switch** `allowgradepull`, default off.
+4. **Destination permission** `block/coursesync:pullgrades` **and**
+   `moodle/grade:edit` for the teacher, in the course being written to — checked
+   in `grade_pull::check_allowed()` for a preview as well as a pull.
+
+### What travels
+
+Per activity asked about: each active, graded student's **username**, final
+gradebook grade, feedback text and format, and hidden flag; the grade item's
+range, type and scale items. Only activities in the course the sync account is
+permitted on; only the ones the destination names. Never attempts,
+submissions, responses, answers, or any other user data.
+
+### What the destination trusts
+
+A source with grade sharing on is trusted to report a student's grade — and
+the destination writes it against **whoever has that username here**. That is
+the design's one real assumption, and an administrator is told to check it
+before switching either side on (INSTALL, REMOTE_SETUP step 8): usernames must
+mean the same people on both sites. If they do not, grades reach the wrong
+student.
+
+A malicious or compromised source could send wrong grades. What bounds it:
+
+- Only activities **Course Sync copied** into the course (the
+  `coursesync-<remote cmid>` idnumber), matched to the source's own activity.
+- Only students who are already **active graded users** of the course here. No
+  account is created and nobody is enrolled.
+- A grade **anyone here gave is never overwritten** — it is reported as a
+  conflict. The only grade a pull replaces is one an earlier pull wrote that is
+  still exactly as written (value and a SHA-1 of the feedback, kept in
+  `block_coursesync_grade`).
+- A locked grade or grade item is never written.
+- A teacher sees a **preview** of every write, and every write is recorded in
+  the gradebook's own history with source `block_coursesync`.
+- Feedback is cleaned on arrival with `clean_text()` in its own format; the
+  username with `PARAM_USERNAME`; the format limited to the four core formats.
+  Everything is escaped again where the page shows it.
+
+### What is kept, and where
+
+- The grades themselves: the core gradebook (overrides), reported and deleted
+  by `core_grades`.
+- `block_coursesync_grade`: which grades a pull wrote, and what it wrote — in the
+  privacy provider, block context.
+- The run history for a grade pull holds **counts per activity only**, never
+  students, so there is no second copy of anyone's grades outside the
+  gradebook's reach.
+- The source's privacy provider declares the external location: usernames,
+  grades and feedback are sent to another site when sharing is on.
 
 ## Outgoing requests
 
@@ -395,6 +480,13 @@ do. Table cells use `s()`.
   caps a single file at 1 GB. Pieces are streamed to a temporary file, not
   held in memory, and the source reads each piece with a seek rather than
   loading the whole file.
+- Grade sync matches students by username only (see
+  [Students' grades](#students-grades)). There is no second check that the
+  person is the same, because there is nothing both sites would reliably share
+  beyond it.
+- Images embedded in grade feedback are not transferred; the text is, and a
+  `@@PLUGINFILE@@` link in it arrives broken.
+- A grade removed on the source is not removed on the destination.
 - A question's own files (its text, feedback, answers) do not go through
   `file_sync` at all — `qbank_handler` relies on `qformat_xml` inlining them
   as base64 inside each question's own XML, so `file_sync::MAX_CHUNKS`'s cap

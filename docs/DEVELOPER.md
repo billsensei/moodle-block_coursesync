@@ -20,7 +20,7 @@ service, and that single fact drives the whole design:
   ───────────                              ────────────────
   db/services.php                          block instance
     defines the "Course Sync" service        holds URL + token + course mapping
-    and five read-only functions             in block_coursesync_connection
+    and six read-only functions              in block_coursesync_connection
 
   classes/external/*                       classes/syncer.php
     ping                                     asks what changed
@@ -28,6 +28,8 @@ service, and that single fact drives the whole design:
     get_modified_activities                  hands it to a handler
     get_activity                             writes the run to history
     get_activity_file
+    get_grades               ◄────────►    classes/grade_pull.php
+                                             pulls grades for copies
 
   classes/local/handler/*                  classes/local/handler/*
     export_settings()          ◄────────►    create_from_remote_data()
@@ -526,6 +528,44 @@ re-report the same items forever once `lastsync` started being written. There is
 a test pinning this; if an activity ever looks skipped, fix the timestamp being
 stored rather than this comparison.
 
+## Grade sync
+
+Added in v1.18.0 (LEARNFROMME phases 34-39). The only part of the plugin that
+moves people's data, so it is switched off on both sides by default; the gates
+are listed in [SECURITY.md](SECURITY.md#students-grades).
+
+**Source:** `external\get_grades` takes a course and a list of cmids and returns
+each grade item (itemnumber, type, range, scale items, hidden) with each graded
+student's grade by **username**. Students come from core's
+`get_gradable_users($courseid, null, true)` — graded roles, active enrolment. It
+runs `grade_regrade_final_grades()` first if the course needs it: the iterator
+behind `get_gradable_users()` throws `gradesneedregrading` otherwise, and final
+grades would be stale anyway.
+
+**Destination:** `grade_pull::preview()` / `run()`, returning a
+`grade_pull_result` (one entry per student per grade item: ADD, UPDATE, SAME,
+CONFLICT or SKIPPED with a reason). `grades.php` is a thin page over it.
+
+- Copies are found by the idnumber `coursesync-<remote cmid>`, the same
+  identity the syncer uses. Only those cmids are sent.
+- Grade items are paired by `itemnumber` (workshop has two).
+- A different range is converted linearly; a scale grade only lands on a scale
+  with the same items; a different grade type is refused.
+- Writes go through `grade_item::update_final_grade()`, which marks a mod
+  item's grade **overridden**. That is the point: the activity here has no
+  attempts for these students, and `quiz_update_grades($quiz, $userid, true)`
+  would null a plain grade. `test_a_quiz_regrade_does_not_wipe_a_pulled_grade`
+  pins it.
+- `block_coursesync_grade` records each grade a pull wrote (value + SHA-1 of the
+  feedback). "Ours and untouched" = both still match → UPDATE; anything else
+  with a grade is CONFLICT.
+- `run()` takes the **same lock** as `syncer::run()` (`run-<blockinstanceid>`),
+  so grades are never written into an activity a sync is replacing.
+- History: `block_coursesync_run.kind` is `activities` or `grades`.
+  **`history::pulled_at()` must filter `kind = activities`** — a grade run lists
+  activities too, and taking one for "the run that copied this" would break
+  change detection. A grade run's `pulled` holds per-activity counts only.
+
 ## Security
 
 The full audit is in [SECURITY.md](SECURITY.md). The parts that constrain how you
@@ -575,9 +615,18 @@ wizard, because that field requires `https` and the Behat site is served over
 plain http; a step definition records the address instead, and the token, test,
 mapping, sync and history are all driven through the interface.
 
-`remote_client`, `file_sync` and `syncer` all accept an injected
+`remote_client`, `file_sync`, `syncer` and `grade_pull` all accept an injected
 `\core\http_client`, which is how a whole run can be driven from a test with
-mocked responses.
+mocked responses. `tests/local/source_on_this_site.php` goes one better: its
+client answers by running this site's own external functions, so a test can
+copy an activity and pull its grades end to end.
+
+`tests/behat/grade_pull.feature` grades the source course in the Background,
+**before** anything is copied: core's `grade grades` generator finds a grade
+item by name, which is ambiguous once a copy exists on the same site. For a
+grade on the copy there is a step of our own,
+`"user" has a grade of "55" in the synced "Name" in course "DEST"`, and both
+switches are turned on with `Course Sync grade sharing|pulling is switched on`.
 
 **The Behat web server needs worker processes.** Because the site calls itself,
 a single-threaded `php -S` deadlocks: the request being served is the one that

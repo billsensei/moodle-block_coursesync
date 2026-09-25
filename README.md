@@ -1,13 +1,16 @@
 # Course Sync block (block_coursesync)
 
-Pull newly-added activities from a course on a different Moodle site into a
-course on this site.
+Pull activities from a course on a different Moodle site into a course on this
+site — and, optionally, the students' grades for them.
 
-**Status: complete (phase 8 of 8).** All five v1 activity types sync end to end —
-Page, URL, Label, Resource (including its uploaded files) and Forum (activity
-settings only). Anything already in the destination course is flagged for review
-rather than overwritten or duplicated, every run is written to a sync history the
-teacher can read, and the plugin has been through a security hardening pass.
+**Status: beta, ready for a pilot.** Every standard Moodle activity type (23)
+syncs end to end, including quiz questions of every core type and embedded
+files. The teacher chooses what to copy; a changed source activity can be
+updated, never overwriting anyone's work. Every run is written to a sync
+history, and the plugin has been through a security audit. Since v1.18.0,
+**grade sync** (switched off by default on both sites) brings students' grades
+for copied activities into the gradebook, matched by username, never replacing
+a grade a teacher gave.
 
 ## How it fits together
 
@@ -20,7 +23,7 @@ sites and behaves differently at each end:
 | **Source** | Exposes the Course Sync external service. Needs web services enabled and a token issued to a sync account. |
 | **Destination** | Holds the block, stores the source's address, token and course mapping, and makes the calls. |
 
-The service contains five functions, all read-only:
+The service contains six functions, all read-only:
 
 | Function | Returns |
 | --- | --- |
@@ -29,6 +32,7 @@ The service contains five functions, all read-only:
 | `block_coursesync_get_modified_activities` | Activity metadata for changes after a given time: course module id, type, name, ID number, modification time |
 | `block_coursesync_get_activity` | Everything needed to rebuild one activity: the common envelope, type-specific settings, and a list of its files |
 | `block_coursesync_get_activity_file` | One chunk of one file belonging to an activity, base64 encoded |
+| `block_coursesync_get_grades` | Students' gradebook grades and feedback for chosen activities, by username. Off unless the site allows it and the account holds `block/coursesync:exportgrades` |
 
 The same code runs at both ends; which role a site plays depends only on how it
 is configured.

@@ -78,6 +78,16 @@ $functions = [
         'capabilities' => 'block/coursesync:sync',
         'loginrequired' => true,
     ],
+
+    'block_coursesync_get_grades' => [
+        'classname' => 'block_coursesync\\external\\get_grades',
+        'methodname' => 'execute',
+        'description' => 'Returns students\' gradebook grades for chosen activities, identified by username.',
+        'type' => 'read',
+        'ajax' => false,
+        'capabilities' => 'block/coursesync:sync, block/coursesync:exportgrades',
+        'loginrequired' => true,
+    ],
 ];
 
 // A pre-built service so an administrator can generate a token without having to
@@ -92,6 +102,7 @@ $services = [
             'block_coursesync_get_modified_activities',
             'block_coursesync_get_activity',
             'block_coursesync_get_activity_file',
+            'block_coursesync_get_grades',
         ],
         'restrictedusers' => 1,
         'enabled' => 0,

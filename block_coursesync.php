@@ -53,6 +53,15 @@ class block_coursesync extends block_base {
     }
 
     /**
+     * The site-wide switches for grade sync live in settings.php.
+     *
+     * @return bool
+     */
+    public function has_config() {
+        return true;
+    }
+
+    /**
      * This block has per-instance configuration.
      *
      * @return bool
@@ -151,6 +160,7 @@ class block_coursesync extends block_base {
     public function instance_delete() {
         connection::delete($this->instance->id);
         \block_coursesync\history::delete_for_block_instance($this->instance->id);
+        \block_coursesync\grade_pull::delete_for_block_instance($this->instance->id);
 
         return true;
     }
@@ -244,6 +254,20 @@ class block_coursesync extends block_base {
             $out .= html_writer::tag('p', html_writer::link(
                 $historyurl,
                 get_string('historyview', 'block_coursesync'),
+                ['class' => 'btn btn-secondary btn-sm']
+            ));
+        }
+
+        // Offered only where it can work - grade pulling switched on for the
+        // site and this person allowed to do it here. The page checks again.
+        if (\block_coursesync\grade_pull::check_allowed($this->get_course_id()) === null) {
+            $gradesurl = new moodle_url('/blocks/coursesync/grades.php', [
+                'instanceid' => $this->instance->id,
+                'courseid' => $this->get_course_id(),
+            ]);
+            $out .= html_writer::tag('p', html_writer::link(
+                $gradesurl,
+                get_string('gradespull', 'block_coursesync'),
                 ['class' => 'btn btn-secondary btn-sm']
             ));
         }

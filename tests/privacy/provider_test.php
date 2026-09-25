@@ -94,6 +94,112 @@ final class provider_test extends provider_testcase {
     }
 
     /**
+     * Record that a grade pull wrote a student's grade, as grade_pull does.
+     *
+     * @param int $userid
+     * @param float $grade
+     * @return \stdClass the assignment the grade is in
+     */
+    protected function record_pulled_grade(int $userid, float $grade): \stdClass {
+        global $CFG, $DB;
+
+        require_once($CFG->libdir . '/gradelib.php');
+
+        $assign = $this->getDataGenerator()->create_module('assign', ['course' => $this->course->id, 'name' => 'Essay']);
+        $gradeitem = \grade_item::fetch([
+            'courseid' => $this->course->id,
+            'itemtype' => 'mod',
+            'itemmodule' => 'assign',
+            'iteminstance' => $assign->id,
+        ]);
+        $gradeitem->update_final_grade($userid, $grade, 'block_coursesync');
+
+        $DB->insert_record('block_coursesync_grade', (object) [
+            'blockinstanceid' => $this->instanceid,
+            'courseid' => $this->course->id,
+            'userid' => $userid,
+            'gradeitemid' => $gradeitem->id,
+            'remotecmid' => 777,
+            'itemnumber' => 0,
+            'finalgrade' => $grade,
+            'feedbackhash' => sha1(''),
+            'remotetime' => 1750000000,
+            'timepulled' => 1750000100,
+        ]);
+
+        return $assign;
+    }
+
+    /**
+     * A student whose grade was pulled has data in the block's context and
+     * is listed among its users - though they never started a run.
+     */
+    public function test_a_pulled_grade_is_found(): void {
+        $student = $this->getDataGenerator()->create_user();
+        $this->record_pulled_grade($student->id, 80);
+
+        $this->assertSame(
+            [$this->blockcontext->id],
+            array_map('intval', provider::get_contexts_for_userid($student->id)->get_contextids())
+        );
+
+        $userlist = new userlist($this->blockcontext, 'block_coursesync');
+        provider::get_users_in_context($userlist);
+        $this->assertSame([(int) $student->id], array_map('intval', $userlist->get_userids()));
+    }
+
+    /**
+     * A student's pulled grades are exported, named by their grade item.
+     */
+    public function test_export_pulled_grades(): void {
+        $student = $this->getDataGenerator()->create_user();
+        $this->record_pulled_grade($student->id, 80);
+
+        provider::export_user_data(new approved_contextlist($student, 'block_coursesync', [$this->blockcontext->id]));
+
+        $data = writer::with_context($this->blockcontext)
+            ->get_data([get_string('privacy:path:grades', 'block_coursesync')]);
+
+        $this->assertCount(1, $data->grades);
+        $this->assertSame('Essay', $data->grades[0]['gradeitem']);
+        $this->assertEquals(80, $data->grades[0]['finalgrade']);
+    }
+
+    /**
+     * Deleting a student's data removes this plugin's record of the pull,
+     * for them only. The grade itself is the gradebook's to delete.
+     */
+    public function test_delete_pulled_grades(): void {
+        global $DB;
+
+        $student = $this->getDataGenerator()->create_user();
+        $other = $this->getDataGenerator()->create_user();
+        $third = $this->getDataGenerator()->create_user();
+        $this->record_pulled_grade($student->id, 80);
+        $this->record_pulled_grade($other->id, 70);
+        $this->record_pulled_grade($third->id, 60);
+
+        provider::delete_data_for_user(new approved_contextlist($student, 'block_coursesync', [$this->blockcontext->id]));
+
+        $this->assertFalse($DB->record_exists('block_coursesync_grade', ['userid' => $student->id]));
+        $this->assertTrue($DB->record_exists('block_coursesync_grade', ['userid' => $other->id]));
+        $this->assertTrue($DB->record_exists_select(
+            'grade_grades',
+            'userid = :userid AND finalgrade IS NOT NULL',
+            ['userid' => $student->id]
+        ), 'The gradebook grade belongs to core_grades.');
+
+        provider::delete_data_for_users(new approved_userlist($this->blockcontext, 'block_coursesync', [$other->id]));
+        $this->assertSame(
+            [(int) $third->id],
+            array_map('intval', $DB->get_fieldset_select('block_coursesync_grade', 'userid', '1 = 1'))
+        );
+
+        provider::delete_data_for_all_users_in_context($this->blockcontext);
+        $this->assertSame(0, $DB->count_records('block_coursesync_grade'));
+    }
+
+    /**
      * The plugin says what it stores, rather than claiming it stores nothing.
      */
     public function test_metadata_is_declared(): void {
@@ -104,6 +210,30 @@ final class provider_test extends provider_testcase {
 
         $tables = array_map(static fn($item) => $item->get_name(), $items);
         $this->assertContains('block_coursesync_run', $tables);
+        $this->assertContains('block_coursesync_grade', $tables);
+        $this->assertContains('core_grades', $tables);
+        $this->assertContains('othersite', $tables);
+    }
+
+    /**
+     * Every column of the grades table that says something about a student
+     * is declared.
+     */
+    public function test_grade_table_fields_are_declared(): void {
+        $collection = new \core_privacy\local\metadata\collection('block_coursesync');
+
+        foreach (provider::get_metadata($collection)->get_collection() as $item) {
+            if ($item->get_name() === 'block_coursesync_grade') {
+                $this->assertEqualsCanonicalizing(
+                    ['userid', 'gradeitemid', 'remotecmid', 'finalgrade', 'feedbackhash', 'remotetime', 'timepulled'],
+                    array_keys($item->get_privacy_fields())
+                );
+
+                return;
+            }
+        }
+
+        $this->fail('block_coursesync_grade is not declared.');
     }
 
     /**

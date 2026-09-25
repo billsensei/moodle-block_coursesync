@@ -49,6 +49,7 @@ class behat_block_coursesync extends behat_base {
      * | Preview | Course shortname | The remote change preview for that course's block   |
      * | Sync    | Course shortname | The sync page for that course's block               |
      * | History | Course shortname | The sync history for that course's block            |
+     * | Grades  | Course shortname | The grade pull page for that course's block         |
      *
      * @param string $type identifies which type of page this is, e.g. 'Preview'
      * @param string $identifier identifies the particular page, here a course shortname
@@ -81,6 +82,8 @@ class behat_block_coursesync extends behat_base {
                 return new moodle_url('/blocks/coursesync/sync.php', $params);
             case 'history':
                 return new moodle_url('/blocks/coursesync/history.php', $params);
+            case 'grades':
+                return new moodle_url('/blocks/coursesync/grades.php', $params);
             default:
                 throw new Exception("Unrecognised page type '{$type}'.");
         }
@@ -245,25 +248,83 @@ class behat_block_coursesync extends behat_base {
     public function user_has_completed_the_synced_activity(string $user, string $name, string $course) {
         global $DB;
 
-        $courseid = $this->get_course_id($course);
-        $cmid = null;
-
-        foreach (get_fast_modinfo($courseid)->get_cms() as $cm) {
-            if ($cm->name === $name && str_starts_with((string) $cm->idnumber, 'coursesync-')) {
-                $cmid = (int) $cm->id;
-            }
-        }
-
-        if ($cmid === null) {
-            throw new \Exception('No synced activity "' . $name . '" in course "' . $course . '"');
-        }
-
         $DB->insert_record('course_modules_completion', (object) [
-            'coursemoduleid' => $cmid,
+            'coursemoduleid' => $this->synced_cm($name, $course)->id,
             'userid' => $DB->get_field('user', 'id', ['username' => $user], MUST_EXIST),
             'completionstate' => 1,
             'timemodified' => time(),
         ]);
+    }
+
+    /**
+     * The copy Course Sync made of an activity, found by its name.
+     *
+     * @param string $name
+     * @param string $course course shortname
+     * @return cm_info
+     */
+    protected function synced_cm(string $name, string $course): cm_info {
+        foreach (get_fast_modinfo($this->get_course_id($course))->get_cms() as $cm) {
+            if ($cm->name === $name && str_starts_with((string) $cm->idnumber, 'coursesync-')) {
+                return $cm;
+            }
+        }
+
+        throw new \Exception('No synced activity "' . $name . '" in course "' . $course . '"');
+    }
+
+    /**
+     * Give a student a grade, by hand, in the synced copy of an activity.
+     *
+     * Core's "grade grades" generator finds a grade item by name alone, which
+     * is ambiguous once an activity has been copied into a course on the same
+     * site. This finds the copy.
+     *
+     * @Given /^"(?P<user>[^"]*)" has a grade of "(?P<grade>[\d.]+)" in the synced "(?P<name>[^"]*)" in course "(?P<course>[^"]*)"$/
+     * @param string $user
+     * @param string $grade
+     * @param string $name
+     * @param string $course
+     */
+    public function user_has_a_grade_in_the_synced_activity(string $user, string $grade, string $name, string $course) {
+        global $CFG, $DB;
+
+        require_once($CFG->libdir . '/gradelib.php');
+
+        $cm = $this->synced_cm($name, $course);
+        $gradeitem = grade_item::fetch([
+            'courseid' => $cm->course,
+            'itemtype' => 'mod',
+            'itemmodule' => $cm->modname,
+            'iteminstance' => $cm->instance,
+            'itemnumber' => 0,
+        ]);
+        $gradeitem->update_final_grade($DB->get_field('user', 'id', ['username' => $user], MUST_EXIST), (float) $grade, 'behat');
+    }
+
+    /**
+     * Switch on one direction of grade sync for this site.
+     *
+     * Sharing also gives the account "this site is set up as a Course Sync
+     * source" created the permission to read grades, so it needs that step
+     * first.
+     *
+     * @Given /^Course Sync grade (?P<direction>sharing|pulling) is switched on$/
+     * @param string $direction
+     */
+    public function course_sync_grade_direction_is_switched_on(string $direction) {
+        global $DB;
+
+        if ($direction === 'pulling') {
+            set_config('allowgradepull', 1, 'block_coursesync');
+
+            return;
+        }
+
+        set_config('allowgradeexport', 1, 'block_coursesync');
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'coursesyncservice'], MUST_EXIST);
+        assign_capability('block/coursesync:exportgrades', CAP_ALLOW, $roleid, context_system::instance()->id, true);
+        reload_all_capabilities();
     }
 
     /**

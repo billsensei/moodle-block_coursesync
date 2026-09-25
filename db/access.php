@@ -65,4 +65,32 @@ $capabilities = [
             'manager' => CAP_ALLOW,
         ],
     ],
+
+    // Who may read students' gradebook grades through the Course Sync web
+    // service, so another site can pull them. Held by the source site's sync
+    // account, never by default: copying activities and handing out people's
+    // grades are separate decisions, and an account set up for the first must
+    // not quietly gain the second on upgrade. Read-only here - the grades are
+    // written on the other site, under its own permissions.
+    'block/coursesync:exportgrades' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [],
+    ],
+
+    // Who may pull students' grades from the other site into this course.
+    // The grades are written as gradebook overrides, so holding this is not
+    // enough on its own: grade_pull also requires moodle/grade:edit here.
+    // Nothing happens either way until an administrator turns grade pulling
+    // on for the site (block_coursesync | allowgradepull).
+    'block/coursesync:pullgrades' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
 ];

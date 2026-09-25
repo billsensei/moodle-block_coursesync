@@ -11,6 +11,9 @@ It is careful by design. It will never change or delete anything already in your
 course. If it finds something in the way, it stops and tells you rather than
 guessing.
 
+It can also bring across **students' grades** for the activities it copied, if
+your site allows it — see [Pulling grades](#pulling-grades).
+
 ## Before you start
 
 **Setting up the connection needs a manager.** The setup wizard needs the
@@ -257,9 +260,59 @@ Once you have sorted it out — deleted the activity that was in the way, or
 decided your version stands — just open **Check now** again. The sync page
 always lists the whole of the other course, so it is offered there as usual.
 
+## Pulling grades
+
+If your students did an activity on the other site — the same students, with the
+same usernames on both — Course Sync can bring their grades into your gradebook
+here. It only works for activities Course Sync copied into your course.
+
+You will only see a **Pull grades** button in the block if:
+
+- an administrator has switched grade pulling on for this site, **and** one on
+  the other site has switched grade sharing on there, and
+- you are allowed to edit grades in this course (editing teachers are, by
+  default; non-editing teachers are not).
+
+### What happens
+
+**Pull grades** first shows you what it *would* do. Nothing is written until you
+press **Pull the grades**. The page lists:
+
+- **Kept as they were** — a student already has a different grade here, given by
+  someone on this site. That grade is **never replaced**. Both grades are shown
+  side by side; if the other site's is the right one, change it in the gradebook
+  yourself.
+- **Skipped** — a grade that could not be used, and why: nobody here has that
+  username, the student is not active in your course, the grade is locked, or
+  the activity is graded differently here (a different scale, say).
+- **Grades to pull** — students who have no grade here yet. A grade out of a
+  different maximum is converted: 40 out of 50 there becomes 80 out of 100 here.
+
+Feedback comes across with each grade. A grade the other site keeps hidden from
+the student is hidden here too.
+
+### Pulling again
+
+You can pull as often as you like. A grade Course Sync brought across, and that
+nobody here has changed since, follows the other site: if it is regraded there,
+the next pull updates it here. As soon as anyone here changes that grade or its
+feedback, it is yours, and later pulls leave it alone.
+
+Grades removed on the other site are **not** removed here.
+
+### In the gradebook
+
+Pulled grades show as **overridden** grades. That is deliberate: the activity in
+your course has no attempts or submissions for these students, and an overridden
+grade is what stops it wiping the grade the next time it recalculates. You can
+edit or remove a pulled grade like any other.
+
+Images inside feedback do not come across; the text does.
+
 ## Sync history
 
-**View sync history** lists every sync, newest first, with a coloured label:
+**View sync history** lists every sync and every grade pull (marked **Grades**),
+newest first, with a coloured label:
 
 - **Completed** — everything it set out to do
 - **Needs review** — something was flagged or failed
@@ -268,6 +321,9 @@ always lists the whole of the other course, so it is offered there as usual.
 Open any run to see who started it, what it looked at, and the full list of what
 was copied and flagged. Runs that did nothing are recorded too, so you can always
 tell whether a sync was tried.
+
+A grade pull shows only how many grades each activity gained, kept or skipped —
+not which students. Who got which grade is in the gradebook's own history.
 
 ## Things worth knowing
 
@@ -281,7 +337,8 @@ page names that file, so you know which picture to put back by hand.
 
 **Forum discussions, wiki pages and assignment submissions are not copied.** Those
 activities arrive set up but empty. Anything people wrote or handed in stays on
-the other site.
+the other site. Only the grades can follow, separately — see
+[Pulling grades](#pulling-grades).
 
 **A copied quiz brings its questions, but not every question.** See the table
 above — every standard Moodle question type travels, fixed or drawn randomly
@@ -316,7 +373,8 @@ than leaving something that would fail confusingly later.
 recognise what it has already brought across. Change it and the next sync will
 make a second copy.
 
-**Nothing is automatic.** Course Sync only runs when you choose **Check now**.
+**Nothing is automatic.** Course Sync only runs when you choose **Check now**,
+and grades only come across when you choose **Pull grades**.
 
 ## If you get stuck
 

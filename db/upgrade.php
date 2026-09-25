@@ -122,5 +122,49 @@ function xmldb_block_coursesync_upgrade($oldversion) {
         upgrade_block_savepoint(true, 2026092005, 'coursesync');
     }
 
+    if ($oldversion < 2026092405) {
+        // Phase 35: what each grade pull wrote, so a later pull can update
+        // its own grades and leave everyone else's alone.
+        $table = new xmldb_table('block_coursesync_grade');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('blockinstanceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('gradeitemid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('remotecmid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('itemnumber', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('finalgrade', XMLDB_TYPE_NUMBER, '10, 5', null, null, null, null);
+        $table->add_field('feedbackhash', XMLDB_TYPE_CHAR, '40', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('remotetime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timepulled', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+        $table->add_index('gradeitemid-userid', XMLDB_INDEX_UNIQUE, ['gradeitemid', 'userid']);
+        $table->add_index('blockinstanceid', XMLDB_INDEX_NOTUNIQUE, ['blockinstanceid']);
+        $table->add_index('courseid', XMLDB_INDEX_NOTUNIQUE, ['courseid']);
+        $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_block_savepoint(true, 2026092405, 'coursesync');
+    }
+
+    if ($oldversion < 2026092407) {
+        // Phase 37: grade pulls are written to the same history as syncs,
+        // told apart by kind. Every earlier run copied activities.
+        $table = new xmldb_table('block_coursesync_run');
+        $field = new xmldb_field('kind', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'activities', 'userid');
+
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_block_savepoint(true, 2026092407, 'coursesync');
+    }
+
     return true;
 }

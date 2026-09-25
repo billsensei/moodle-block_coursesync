@@ -31,6 +31,17 @@ use core_privacy\local\request\writer;
  * provider. The sync history added in phase 6 records who started each run, so
  * that is no longer true and the real provider is implemented here.
  *
+ * Grade sync (phases 34-38) added two more things to account for:
+ * - block_coursesync_grade, this site's note of which students' grades a pull
+ *   wrote and what it wrote, kept so a later pull can tell its own grades from
+ *   a teacher's. It lives in the block's context, like the run history.
+ * - students' grades themselves, which go into the core gradebook here (and are
+ *   reported and deleted by core_grades), and which this site sends to another
+ *   site when it is the source and grade sharing is switched on.
+ *
+ * A grade pull's run history holds counts per activity only - no students -
+ * so a student's data here is only ever in block_coursesync_grade.
+ *
  * The connection record - the remote address and its encrypted token - is course
  * configuration rather than anything about a person, and is not reported here.
  *
@@ -51,12 +62,34 @@ class provider implements
     public static function get_metadata(collection $collection): collection {
         $collection->add_database_table('block_coursesync_run', [
             'userid' => 'privacy:metadata:run:userid',
+            'kind' => 'privacy:metadata:run:kind',
             'timestarted' => 'privacy:metadata:run:timestarted',
             'timefinished' => 'privacy:metadata:run:timefinished',
             'status' => 'privacy:metadata:run:status',
             'pulled' => 'privacy:metadata:run:pulled',
             'conflicts' => 'privacy:metadata:run:conflicts',
         ], 'privacy:metadata:run');
+
+        $collection->add_database_table('block_coursesync_grade', [
+            'userid' => 'privacy:metadata:grade:userid',
+            'gradeitemid' => 'privacy:metadata:grade:gradeitemid',
+            'remotecmid' => 'privacy:metadata:grade:remotecmid',
+            'finalgrade' => 'privacy:metadata:grade:finalgrade',
+            'feedbackhash' => 'privacy:metadata:grade:feedbackhash',
+            'remotetime' => 'privacy:metadata:grade:remotetime',
+            'timepulled' => 'privacy:metadata:grade:timepulled',
+        ], 'privacy:metadata:grade');
+
+        // Pulled grades are written into the gradebook, which reports them.
+        $collection->add_subsystem_link('core_grades', [], 'privacy:metadata:core_grades');
+
+        // When this site is the source and grade sharing is on, students'
+        // grades leave it for the site that asks.
+        $collection->add_external_location_link('othersite', [
+            'username' => 'privacy:metadata:othersite:username',
+            'grade' => 'privacy:metadata:othersite:grade',
+            'feedback' => 'privacy:metadata:othersite:feedback',
+        ], 'privacy:metadata:othersite');
 
         return $collection;
     }
@@ -78,6 +111,17 @@ class provider implements
                   JOIN {block_instances} bi ON bi.id = r.blockinstanceid
                   JOIN {context} ctx ON ctx.instanceid = bi.id AND ctx.contextlevel = :contextlevel
                  WHERE r.userid = :userid";
+
+        $contextlist->add_from_sql($sql, [
+            'contextlevel' => CONTEXT_BLOCK,
+            'userid' => $userid,
+        ]);
+
+        $sql = "SELECT ctx.id
+                  FROM {block_coursesync_grade} g
+                  JOIN {block_instances} bi ON bi.id = g.blockinstanceid
+                  JOIN {context} ctx ON ctx.instanceid = bi.id AND ctx.contextlevel = :contextlevel
+                 WHERE g.userid = :userid";
 
         $contextlist->add_from_sql($sql, [
             'contextlevel' => CONTEXT_BLOCK,
@@ -108,6 +152,15 @@ class provider implements
                  WHERE r.blockinstanceid = :blockinstanceid",
             ['blockinstanceid' => $context->instanceid]
         );
+
+        $userlist->add_from_sql(
+            'userid',
+            "
+                SELECT g.userid
+                  FROM {block_coursesync_grade} g
+                 WHERE g.blockinstanceid = :blockinstanceid",
+            ['blockinstanceid' => $context->instanceid]
+        );
     }
 
     /**
@@ -125,6 +178,8 @@ class provider implements
             if (!$context instanceof \context_block) {
                 continue;
             }
+
+            self::export_pulled_grades($context, (int) $user->id);
 
             $runs = $DB->get_records('block_coursesync_run', [
                 'blockinstanceid' => $context->instanceid,
@@ -157,6 +212,46 @@ class provider implements
     }
 
     /**
+     * Export the grades a pull wrote for a student, from one block.
+     *
+     * @param \context_block $context
+     * @param int $userid
+     * @return void
+     */
+    protected static function export_pulled_grades(\context_block $context, int $userid): void {
+        global $DB;
+
+        $rows = $DB->get_records_sql(
+            "SELECT g.*, gi.itemname
+               FROM {block_coursesync_grade} g
+          LEFT JOIN {grade_items} gi ON gi.id = g.gradeitemid
+              WHERE g.blockinstanceid = :blockinstanceid AND g.userid = :userid
+           ORDER BY g.timepulled ASC, g.id ASC",
+            ['blockinstanceid' => $context->instanceid, 'userid' => $userid]
+        );
+
+        if (!$rows) {
+            return;
+        }
+
+        $grades = [];
+
+        foreach ($rows as $row) {
+            $grades[] = [
+                'gradeitem' => $row->itemname !== null ? format_string($row->itemname) : '',
+                'finalgrade' => $row->finalgrade,
+                'timepulled' => transform::datetime($row->timepulled),
+                'timechangedonothersite' => $row->remotetime ? transform::datetime($row->remotetime) : '',
+            ];
+        }
+
+        writer::with_context($context)->export_data(
+            [get_string('privacy:path:grades', 'block_coursesync')],
+            (object) ['grades' => $grades]
+        );
+    }
+
+    /**
      * Delete everything this plugin holds in a context.
      *
      * @param \context $context
@@ -170,6 +265,7 @@ class provider implements
         }
 
         $DB->delete_records('block_coursesync_run', ['blockinstanceid' => $context->instanceid]);
+        $DB->delete_records('block_coursesync_grade', ['blockinstanceid' => $context->instanceid]);
     }
 
     /**
@@ -188,10 +284,14 @@ class provider implements
                 continue;
             }
 
-            $DB->delete_records('block_coursesync_run', [
-                'blockinstanceid' => $context->instanceid,
-                'userid' => $userid,
-            ]);
+            // Only this plugin's own record of the pull. The grade itself is
+            // in the gradebook, and core_grades deletes that.
+            foreach (['block_coursesync_run', 'block_coursesync_grade'] as $table) {
+                $DB->delete_records($table, [
+                    'blockinstanceid' => $context->instanceid,
+                    'userid' => $userid,
+                ]);
+            }
         }
     }
 
@@ -219,10 +319,8 @@ class provider implements
         [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
         $params['blockinstanceid'] = $context->instanceid;
 
-        $DB->delete_records_select(
-            'block_coursesync_run',
-            "blockinstanceid = :blockinstanceid AND userid {$insql}",
-            $params
-        );
+        foreach (['block_coursesync_run', 'block_coursesync_grade'] as $table) {
+            $DB->delete_records_select($table, "blockinstanceid = :blockinstanceid AND userid {$insql}", $params);
+        }
     }
 }

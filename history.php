@@ -113,6 +113,39 @@ if ($runs === []) {
             );
     };
 
+    // Renders a grade pull's per-activity counts, or a line saying there were none.
+    $rendergradecounts = function (array $activities): string {
+        if ($activities === []) {
+            return html_writer::tag('p', get_string('historynothing', 'block_coursesync'));
+        }
+
+        $keys = ['gradescolactivity', 'gradescoladd', 'gradescolupdate', 'gradescolsame', 'gradescolconflict',
+            'gradescolskipped'];
+        $head = '';
+
+        foreach ($keys as $key) {
+            $head .= html_writer::tag('th', get_string($key, 'block_coursesync'));
+        }
+
+        $rows = '';
+
+        foreach ($activities as $activity) {
+            $cells = html_writer::tag('td', s($activity['name'] ?? ''));
+
+            foreach (['add', 'update', 'same', 'conflict', 'skipped'] as $outcome) {
+                $cells .= html_writer::tag('td', (int) ($activity[$outcome] ?? 0));
+            }
+
+            $rows .= html_writer::tag('tr', $cells);
+        }
+
+        return html_writer::tag(
+            'table',
+            html_writer::tag('thead', html_writer::tag('tr', $head)) . html_writer::tag('tbody', $rows),
+            ['class' => 'table table-sm table-striped']
+        );
+    };
+
     foreach ($runs as $run) {
         $badgeclass = match ($run->status) {
             history::STATUS_OK => 'bg-success',
@@ -123,10 +156,19 @@ if ($runs === []) {
         $summary = html_writer::tag('span', get_string('historystatus' . $run->status, 'block_coursesync'), [
             'class' => 'badge ' . $badgeclass . ' me-2',
         ]);
+        $isgrades = $run->kind === history::KIND_GRADES;
+
+        if ($isgrades) {
+            $summary .= html_writer::tag('span', get_string('historykindgrades', 'block_coursesync'), [
+                'class' => 'badge bg-info text-dark me-2',
+            ]);
+        }
+
         $summary .= html_writer::tag('strong', userdate($run->timestarted));
-        $summary .= ' — ' . get_string('historycounts', 'block_coursesync', (object) [
+        $summary .= ' — ' . get_string($isgrades ? 'historygradecounts' : 'historycounts', 'block_coursesync', (object) [
             'pulled' => $run->pulledcount,
             'conflicts' => $run->conflictcount,
+            'skipped' => $run->skippedcount,
         ]);
 
         $body = '';
@@ -137,12 +179,27 @@ if ($runs === []) {
             'when' => userdate($run->timestarted),
         ]), ['class' => 'small text-muted']);
 
-        $body .= html_writer::tag('p', $run->since > 0
-            ? get_string('historylookedsince', 'block_coursesync', userdate($run->since))
-            : get_string('historylookedall', 'block_coursesync'), ['class' => 'small text-muted']);
+        if (!$isgrades) {
+            $body .= html_writer::tag('p', $run->since > 0
+                ? get_string('historylookedsince', 'block_coursesync', userdate($run->since))
+                : get_string('historylookedall', 'block_coursesync'), ['class' => 'small text-muted']);
+        }
 
         if ($run->status === history::STATUS_FAILED && $run->errorkey !== null) {
             $body .= $OUTPUT->notification(get_string($run->errorkey, 'block_coursesync'), 'error', false);
+        }
+
+        if ($isgrades) {
+            // Counts per activity only: which students and what grades are
+            // deliberately not kept (see history::record_grade_pull()).
+            $body .= $rendergradecounts($run->pulled);
+
+            echo html_writer::tag(
+                'details',
+                html_writer::tag('summary', $summary, ['class' => 'p-2']) . html_writer::div($body, 'p-3'),
+                ['class' => 'border rounded mb-2']
+            );
+            continue;
         }
 
         $body .= $rendergroup($run->pulled, 'historypulled', $renderitem);

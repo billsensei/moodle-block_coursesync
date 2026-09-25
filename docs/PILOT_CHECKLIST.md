@@ -38,6 +38,17 @@ things worth checking before teachers touch it.
       genuinely sits on a private network
 - [ ] `<dataroot>/secret/key/` is readable by the web server user — see below
 
+**If the pilot includes grades** (optional — leave all of this off otherwise)
+
+- [ ] **Usernames are the same people on both sites.** Grade sync matches by
+      username alone; check a handful of real students on each side first
+- [ ] Source: **Let other sites read grades from this site** ticked, and
+      `block/coursesync:exportgrades` given to the sync account where it has
+      its other permissions
+- [ ] Destination: **Let teachers pull grades into this site** ticked
+- [ ] Pilot teachers are editing teachers (or hold `block/coursesync:pullgrades`
+      and `moodle/grade:edit`)
+
 ## The encryption key
 
 The token is encrypted with a key created on first use, owned by whichever
@@ -98,6 +109,10 @@ read"*.
   anything in it, and otherwise added beside the old one as a "(New edition)".
   Tell pilot teachers a replaced copy loses any edits they made to it
 - Nothing happens automatically — a sync only runs when someone asks for it
+- If grades are on: **Pull grades** shows a preview before writing anything,
+  never replaces a grade someone gave on this site (it lists it instead), and
+  pulled grades show as **overridden** in the gradebook — that is what keeps
+  them from being wiped by the activity here
 
 ## Known limitations to set expectations on
 
@@ -108,10 +123,15 @@ read"*.
 | Deletions are not detected | An activity removed from the source simply stops being offered |
 | Hidden activities are reported | Teachers see the names of hidden activities on the source |
 | Third-party activity types with no `timemodified` | Edits to them are not detected, only their creation |
+| Grades match by username only | A username that is a different person on each site gets the wrong grades — check before switching grades on |
+| Grades removed on the source stay here | Pulling only adds and updates; clear a grade here by hand |
+| Images in grade feedback do not come across | The feedback text does; pictures in it arrive as broken links |
 
 ## After the pilot
 
 - [ ] Read the sync history with the teacher — it is the record of what happened
+- [ ] If grades were pulled: compare a few in the gradebook with the source,
+      and go through the "Kept as they were" list with the teacher
 - [ ] Note which activity types were skipped most; that is the next priority list
 - [ ] Ask quiz users whether an empty quiz with correct settings is useful to
       them, or whether question banks need solving first

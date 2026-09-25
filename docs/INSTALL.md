@@ -123,6 +123,33 @@ If it does not, the message says which of these it is:
 | Course Sync is not installed on the other site | Step 1 was only done on one site |
 | This site is not allowed to connect to that address | See the outgoing request settings above |
 
+## Grade sync
+
+Optional, and **off** until you turn it on. Copying activities never moves
+anyone's data between sites; grade sync is the one part of Course Sync that
+does — students' gradebook grades and feedback, from the source site's course
+into the destination's, for activities Course Sync copied.
+
+**Before switching it on, check that usernames mean the same people on both
+sites.** Students are matched by username alone: nobody is created or enrolled,
+and a username that belongs to two different people would give one of them the
+other's grades. Two sites fed from the same directory or student system are the
+usual safe case.
+
+Each direction has its own switch, at *Site administration → Plugins → Blocks →
+Course Sync*, so turning on one side never turns on the other:
+
+| Site | Setting | Plus |
+| --- | --- | --- |
+| Source | **Let other sites read grades from this site** | Give the sync account `block/coursesync:exportgrades` where it has its other permissions — see [REMOTE_SETUP.md step 8](REMOTE_SETUP.md#8-optional-share-students-grades). No role has it by default. |
+| Destination | **Let teachers pull grades into this site** | Teachers need `block/coursesync:pullgrades` (editing teachers and managers by default) **and** `moodle/grade:edit` in the course. |
+
+What the destination does with them is in
+[TEACHER_GUIDE.md](TEACHER_GUIDE.md#pulling-grades): a preview first, never
+replacing a grade someone here gave, and pulled grades written as gradebook
+overrides so the activity cannot wipe them. Grades pulled stay in the gradebook
+if grade sync is later switched off or the plugin removed.
+
 ## Private networks and testing
 
 Course Sync refuses to connect to loopback, link-local or private addresses, so
@@ -147,7 +174,8 @@ access to the server. **Do not set it on a production site.**
 | Table | Holds |
 | --- | --- |
 | `block_coursesync_connection` | One row per configured block: the source address, the encrypted token, the mapped course, and the result of the last test |
-| `block_coursesync_run` | One row per sync run: when, who, what was copied, what was flagged |
+| `block_coursesync_run` | One row per sync run or grade pull: when, who, what was copied or flagged. A grade pull keeps counts per activity only, never which students |
+| `block_coursesync_grade` | One row per grade a grade pull wrote: the student, the grade item, and the grade as written, so a later pull can tell its own grades from a teacher's |
 
 The token is encrypted with Moodle's own secret storage (`\core\encryption`,
 libsodium). The key lives outside the database, in the site's secret data
@@ -163,9 +191,12 @@ encryption. If a CLI script running as `root` creates it, the web server user
 cannot read it and every sync fails with *"The saved token could not be read"*.
 Check the ownership of `<dataroot>/secret/key/` if that happens.
 
-Because the run history records who started each sync, the plugin holds personal
-data and implements a full privacy provider. It appears in data requests and
-data deletion as normal.
+Because the run history records who started each sync, and grade sync records
+whose grades it wrote, the plugin holds personal data and implements a full
+privacy provider. It appears in data requests and data deletion as normal. The
+pulled grades themselves are ordinary gradebook grades, reported and deleted by
+the gradebook. On a source site with grade sharing on, the provider also
+declares that students' usernames, grades and feedback are sent to another site.
 
 ## Upgrading
 
@@ -173,11 +204,18 @@ Standard Moodle upgrade. Upgrade **both** sites, ideally together: the two sides
 exchange a version number and the destination reports a mismatch it cannot work
 with.
 
+Upgrading to v1.18.0 adds [grade sync](#grade-sync), switched **off** on both
+sides. Nothing changes for anyone until an administrator turns it on. A destination
+on v1.18 talking to an older source tells a teacher who tries **Pull grades**
+that the other site's Course Sync is too old to share grades; copying activities
+works as before.
+
 ## Uninstalling
 
-Uninstalling from the destination removes the connection records and the run
-history. Activities already copied into courses stay where they are — they are
-ordinary Moodle activities and are not deleted.
+Uninstalling from the destination removes the connection records, the run
+history and the record of which grades were pulled. Activities already copied
+into courses stay where they are — they are ordinary Moodle activities and are
+not deleted — and so do pulled grades, which are ordinary gradebook grades.
 
 On the source, remember to delete the web service token as well, at
 *Server → Web services → Manage tokens*. Uninstalling the plugin does not revoke

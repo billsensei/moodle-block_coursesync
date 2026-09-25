@@ -77,7 +77,9 @@ The sync account needs three capabilities on the source site:
 | `block/coursesync:sync` | **Only** the category or course to copy from | Course Sync's own permission, checked by every function in the service against the course asked about |
 | `moodle/course:view` | Same place as `block/coursesync:sync` | Lets the account read a course it is not enrolled in. Moodle's own `require_login()` check runs for every course-scoped call, and a service account is never a course participant. |
 
-Those three are the whole list, whatever kinds of activity the course holds. In
+Those three are the whole list for copying activities, whatever kinds of
+activity the course holds. (Sharing students' grades is separate and optional —
+see [step 8](#8-optional-share-students-grades).) In
 particular the account does **not** need `mod/assign:view`, `mod/quiz:view`,
 `mod/wiki:viewpage`, `mod/qbank:view`, `moodle/question:viewall`, or any other
 per-activity permission: what authorises reading an activity is
@@ -142,6 +144,35 @@ in the site's secret data directory. Two consequences worth knowing:
   file, the token cannot be decrypted and has to be pasted in again. The block
   says so rather than failing silently.
 
+## 8. Optional: share students' grades
+
+Only do this if teachers on the destination site should be able to bring
+students' grades across for the activities they copied. Skip it and Course Sync
+never hands out anyone's grades — however the roles above are set.
+
+**First, check the usernames.** The destination matches students by username
+alone. If `jsmith` is one person here and a different person there, `jsmith`
+there would get this `jsmith`'s grades. Only turn this on when the same username
+is the same person on both sites (usually because both take accounts from the
+same directory or student system).
+
+Then two things, both on this source site:
+
+1. *Site administration > Plugins > Blocks > Course Sync*: tick **Let other sites
+   read grades from this site**. It is off by default.
+2. Give the sync account `block/coursesync:exportgrades` ("Let another site read
+   students' grades through Course Sync") in the **same** category or course as
+   its other permissions — adding it to the `Course Sync reader` role from step 4
+   is simplest. No role has it by default, not even manager, so an existing sync
+   account gains nothing until you do this.
+
+What the destination can then read: for each activity it asks about, each
+active student's final gradebook grade, its feedback, and whether it is hidden —
+keyed by username. Never attempts, submissions, answers or anything else.
+
+The destination site needs its own switch, **Let teachers pull grades into this
+site**, ticked there. See [INSTALL.md](INSTALL.md#grade-sync).
+
 ## If the test fails
 
 | What the block says | Usually means |
@@ -156,6 +187,9 @@ in the site's secret data directory. Two consequences worth knowing:
 | No course matches that id or shortname | Typo, or the sync account has no sync permission in that course |
 | The sync account is not allowed to see that course | `moodle/course:view` is missing from the role |
 | This site is not allowed to make connections to that address | The destination site's own outgoing-request rules blocked it — see below |
+| The other site does not share grades | **Pull grades** only: step 8's setting is not ticked on this site |
+| The account the token belongs to is not allowed to read grades on the other site | **Pull grades** only: step 8's permission is missing, or granted somewhere other than the course being copied from |
+| The other site's Course Sync is too old to share grades | **Pull grades** only: upgrade the plugin on this site to v1.18.0 or later |
 
 ### Outgoing request rules on the destination site
 

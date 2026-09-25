@@ -752,6 +752,11 @@ final class qbank_handler_test extends advanced_testcase {
     /**
      * A question's answers match between the original and its copy, in order,
      * compared on the given columns only.
+     *
+     * @param \moodle_database $db
+     * @param int $originalid the original question id
+     * @param int $copyid the copied question id
+     * @param string $fields comma-separated question_answers columns to compare
      */
     protected function assert_same_answers(\moodle_database $db, int $originalid, int $copyid, string $fields): void {
         $original = array_values(array_map(
@@ -776,6 +781,12 @@ final class qbank_handler_test extends advanced_testcase {
     /**
      * A qtype's own child rows match between the original and its copy,
      * compared on the given columns only - ids and question ids differ.
+     *
+     * @param \moodle_database $db
+     * @param string $table the qtype's child table, keyed by questionid and ordered by no
+     * @param int $originalid the original question id
+     * @param int $copyid the copied question id
+     * @param string $fields comma-separated columns to compare
      */
     protected function assert_same_rows(
         \moodle_database $db,
@@ -799,6 +810,14 @@ final class qbank_handler_test extends advanced_testcase {
 
     /**
      * A qtype file area holds the same one file, byte for byte, on the copy.
+     *
+     * @param \file_storage $fs
+     * @param int $sourcecontextid context of the original question's bank
+     * @param int $targetcontextid context of the copy's bank
+     * @param string $component
+     * @param string $filearea
+     * @param int $originalid the original question id (the item id)
+     * @param int $copyid the copied question id (the item id)
      */
     protected function assert_same_file(
         \file_storage $fs,
@@ -844,6 +863,11 @@ final class qbank_handler_test extends advanced_testcase {
     /**
      * Find the copy of a question by name in a given category - ids differ
      * between sites, names do not.
+     *
+     * @param \moodle_database $db
+     * @param int $categoryid the category the copy should be in
+     * @param string $name the question name
+     * @return \stdClass the copied question record
      */
     protected function find_copy(\moodle_database $db, int $categoryid, string $name): \stdClass {
         $entryids = $db->get_fieldset_select(
@@ -875,6 +899,9 @@ final class qbank_handler_test extends advanced_testcase {
 
     /**
      * Multiple choice keeps its options row and its answers.
+     *
+     * @param \moodle_database $db
+     * @param \stdClass $question the copied question
      */
     protected function assert_multichoice_shape(\moodle_database $db, \stdClass $question): void {
         $options = $db->get_record('qtype_multichoice_options', ['questionid' => $question->id], '*', MUST_EXIST);
@@ -886,6 +913,9 @@ final class qbank_handler_test extends advanced_testcase {
 
     /**
      * True/false has exactly two answers, and points at both of them.
+     *
+     * @param \moodle_database $db
+     * @param \stdClass $question the copied question
      */
     protected function assert_truefalse_shape(\moodle_database $db, \stdClass $question): void {
         $answers = $db->get_records('question_answers', ['question' => $question->id]);
@@ -898,6 +928,10 @@ final class qbank_handler_test extends advanced_testcase {
 
     /**
      * Short answer's usecase setting survives the copy.
+     *
+     * @param \moodle_database $db
+     * @param \stdClass $question the copied question
+     * @param \stdClass $original the question it was copied from
      */
     protected function assert_shortanswer_shape(\moodle_database $db, \stdClass $question, \stdClass $original): void {
         $options = $db->get_record('qtype_shortanswer_options', ['questionid' => $question->id], '*', MUST_EXIST);
@@ -907,6 +941,9 @@ final class qbank_handler_test extends advanced_testcase {
 
     /**
      * Matching keeps its subquestions, and no question_answers of its own.
+     *
+     * @param \moodle_database $db
+     * @param \stdClass $question the copied question
      */
     protected function assert_match_shape(\moodle_database $db, \stdClass $question): void {
         $options = $db->get_record('qtype_match_options', ['questionid' => $question->id], '*', MUST_EXIST);
@@ -921,6 +958,9 @@ final class qbank_handler_test extends advanced_testcase {
 
     /**
      * Essay keeps its options row, and has no answers at all.
+     *
+     * @param \moodle_database $db
+     * @param \stdClass $question the copied question
      */
     protected function assert_essay_shape(\moodle_database $db, \stdClass $question): void {
         $options = $db->get_record('qtype_essay_options', ['questionid' => $question->id], '*', MUST_EXIST);
@@ -930,6 +970,9 @@ final class qbank_handler_test extends advanced_testcase {
 
     /**
      * Numerical's answers each keep a matching tolerance row.
+     *
+     * @param \moodle_database $db
+     * @param \stdClass $question the copied question
      */
     protected function assert_numerical_shape(\moodle_database $db, \stdClass $question): void {
         $answers = $db->get_records('question_answers', ['question' => $question->id]);
@@ -949,6 +992,9 @@ final class qbank_handler_test extends advanced_testcase {
      * itself, given the already-fully-parsed data qformat_xml::readquestions()
      * hands it, exactly the same as any other type's save_question_options()
      * call.
+     *
+     * @param \moodle_database $db
+     * @param \stdClass $question the copied question
      */
     protected function assert_multianswer_shape(\moodle_database $db, \stdClass $question): void {
         $this->assertSame('multianswer', $question->qtype);

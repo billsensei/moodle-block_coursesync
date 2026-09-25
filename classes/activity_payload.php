@@ -88,6 +88,7 @@ class activity_payload {
      * @param array $settings
      * @param array[] $files
      * @param array[] $children
+     * @param int $subsectioncmid course module id on the source site of the subsection holding it, or 0
      */
     public function __construct(
         int $cmid,

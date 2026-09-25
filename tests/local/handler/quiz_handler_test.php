@@ -609,6 +609,11 @@ final class quiz_handler_test extends advanced_testcase {
     /**
      * Find a fixed slot's quiz_slots row by the qtype of the question it
      * points at.
+     *
+     * @param \moodle_database $db
+     * @param int $quizid
+     * @param string $qtype the question type to look for
+     * @return \stdClass|null the quiz_slots row, or null if none
      */
     protected function find_slot_question(\moodle_database $db, int $quizid, string $qtype): ?\stdClass {
         return $db->get_record_sql(
@@ -626,6 +631,11 @@ final class quiz_handler_test extends advanced_testcase {
     /**
      * Find a fixed slot's quiz_slots row by the name of the question it
      * points at.
+     *
+     * @param \moodle_database $db
+     * @param int $quizid
+     * @param string $name the question name to look for
+     * @return \stdClass|null the quiz_slots row, or null if none
      */
     protected function find_fixed_slot_by_question_name(\moodle_database $db, int $quizid, string $name): ?\stdClass {
         return $db->get_record_sql(
@@ -644,6 +654,9 @@ final class quiz_handler_test extends advanced_testcase {
      * Every random slot for a quiz, with its filter condition decoded
      * category checked against the given bank context.
      *
+     * @param \moodle_database $db
+     * @param int $quizid
+     * @param \context $bankcontext the question bank the slots should draw from
      * @return \stdClass[] each with an extra ->filtercondition (raw string, as stored)
      */
     protected function find_random_slots(\moodle_database $db, int $quizid, \context $bankcontext): array {
@@ -659,6 +672,11 @@ final class quiz_handler_test extends advanced_testcase {
     /**
      * Pick out the one random slot whose filter condition points at the
      * given category with the given includesubcategories flag.
+     *
+     * @param \stdClass[] $slots from find_random_slots()
+     * @param int $categoryid
+     * @param bool $includesub the includesubcategories flag to match
+     * @return \stdClass|null the matching slot, or null if none
      */
     protected function find_random_slot_for_category(array $slots, int $categoryid, bool $includesub): ?\stdClass {
         foreach ($slots as $slot) {

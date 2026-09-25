@@ -36,6 +36,12 @@ class history {
     /** @var string The run could not finish. */
     public const STATUS_FAILED = 'failed';
 
+    /** @var string A run that copied activities. */
+    public const KIND_ACTIVITIES = 'activities';
+
+    /** @var string A run that pulled students' grades. */
+    public const KIND_GRADES = 'grades';
+
     /**
      * Write a finished run to the history.
      *
@@ -71,6 +77,7 @@ class history {
             'blockinstanceid' => $blockinstanceid,
             'courseid' => $courseid,
             'userid' => $userid,
+            'kind' => self::KIND_ACTIVITIES,
             'timestarted' => $timestarted,
             'timefinished' => time(),
             'status' => self::status_for($result),
@@ -84,6 +91,64 @@ class history {
             'pulled' => json_encode($pulled),
             'conflicts' => json_encode($conflicts),
             'others' => json_encode($others),
+        ];
+
+        return (int) $DB->insert_record('block_coursesync_run', $record);
+    }
+
+    /**
+     * Write a finished grade pull to the history.
+     *
+     * Only counts, per activity, are kept - never which students or what
+     * grades. The results page shows those at the time; keeping them here
+     * would put a second copy of students' grades where the gradebook's own
+     * history and privacy handling do not reach.
+     *
+     * @param int $blockinstanceid
+     * @param int $courseid
+     * @param int $userid who started the pull
+     * @param int $timestarted
+     * @param grade_pull_result $result
+     * @return int the new history row id
+     */
+    public static function record_grade_pull(
+        int $blockinstanceid,
+        int $courseid,
+        int $userid,
+        int $timestarted,
+        grade_pull_result $result
+    ): int {
+        global $DB;
+
+        $counts = $result->counts();
+
+        if (!$result->success) {
+            $status = self::STATUS_FAILED;
+        } else if ($counts[grade_pull_result::CONFLICT] > 0) {
+            $status = self::STATUS_REVIEW;
+        } else {
+            $status = self::STATUS_OK;
+        }
+
+        $record = (object) [
+            'blockinstanceid' => $blockinstanceid,
+            'courseid' => $courseid,
+            'userid' => $userid,
+            'kind' => self::KIND_GRADES,
+            'timestarted' => $timestarted,
+            'timefinished' => time(),
+            'status' => $status,
+            'errorkey' => $result->success ? null : $result->errorkey,
+            'since' => 0,
+            'lastsyncmoved' => 0,
+            'pulledcount' => $counts[grade_pull_result::ADD] + $counts[grade_pull_result::UPDATE],
+            'conflictcount' => $counts[grade_pull_result::CONFLICT],
+            'skippedcount' => $counts[grade_pull_result::SKIPPED],
+            'failedcount' => 0,
+            // One row per activity; see grade_pull_result::by_activity().
+            'pulled' => json_encode(array_values($result->by_activity())),
+            'conflicts' => json_encode([]),
+            'others' => json_encode([]),
         ];
 
         return (int) $DB->insert_record('block_coursesync_run', $record);
@@ -198,9 +263,10 @@ class history {
     public static function pulled_at(int $blockinstanceid, int $remotecmid, int $localcmid): ?int {
         global $DB;
 
+        // Grade pulls list activities too, but they did not copy them.
         $records = $DB->get_records(
             'block_coursesync_run',
-            ['blockinstanceid' => $blockinstanceid],
+            ['blockinstanceid' => $blockinstanceid, 'kind' => self::KIND_ACTIVITIES],
             'timestarted DESC, id DESC',
             'id, timestarted, pulled',
             0,
