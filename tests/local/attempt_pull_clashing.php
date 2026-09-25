@@ -14,19 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace block_coursesync\local;
+
 /**
- * Version details for block_coursesync.
+ * An attempt pull that always picks attempt number 1, as if a student's
+ * attempt with that number had appeared after the pull chose it.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-defined('MOODLE_INTERNAL') || die();
-
-$plugin->component = 'block_coursesync';
-$plugin->version = 2026092504;
-$plugin->requires = 2025100600;
-$plugin->supported = [501, 501];
-$plugin->maturity = MATURITY_BETA;
-$plugin->release = 'v1.19.1-beta';
+class attempt_pull_clashing extends \block_coursesync\attempt_pull {
+    /**
+     * Always 1.
+     *
+     * @param int $quizid
+     * @param int $userid
+     * @return int
+     */
+    protected static function next_attempt_number(int $quizid, int $userid): int {
+        return 1;
+    }
+}

@@ -71,6 +71,25 @@ class quiz_attempts_result {
     }
 
     /**
+     * Several successful answers, for batches of one request, as one.
+     *
+     * @param self[] $answers
+     * @return self
+     */
+    public static function merge(array $answers): self {
+        $quizzes = [];
+        $formatversion = 0;
+
+        foreach ($answers as $answer) {
+            $quizzes = array_merge($quizzes, $answer->quizzes);
+            // The oldest format any batch used is the one all of it can be read as.
+            $formatversion = $formatversion === 0 ? $answer->formatversion : min($formatversion, $answer->formatversion);
+        }
+
+        return new self(true, null, $formatversion, $quizzes);
+    }
+
+    /**
      * Build the result from block_coursesync_get_quiz_attempts' decoded
      * response, cleaning every value on the way in.
      *

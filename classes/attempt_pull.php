@@ -38,8 +38,9 @@ use mod_quiz\quiz_settings;
  * "attempt submitted" event, and the "graded" notification marked as sent.
  *
  * Which students, and who may do it, follow grade_pull exactly: students by
- * username who are active graded users here, and grade_pull::check_allowed()
- * for the person pulling - plus mod/quiz:grade in each quiz.
+ * username who are active graded users here within the person's reach, and
+ * grade_pull::check_allowed() for the person pulling - plus mod/quiz:grade in
+ * each quiz. It is only ever run by grade_pull (see work()).
  *
  * Results use grade_pull_result, with these outcomes:
  * - ADD: a new attempt, created here;
@@ -55,46 +56,6 @@ use mod_quiz\quiz_settings;
  */
 class attempt_pull {
     /**
-     * What a pull would do, without writing anything.
-     *
-     * @param int $blockinstanceid
-     * @param int $courseid the destination course
-     * @param http_client|null $client injected only by tests
-     * @return grade_pull_result
-     */
-    public static function preview(int $blockinstanceid, int $courseid, ?http_client $client = null): grade_pull_result {
-        $result = self::pull($blockinstanceid, $courseid, false, $client);
-        $result->preview = true;
-
-        return $result;
-    }
-
-    /**
-     * Bring the attempts across.
-     *
-     * Holds the same per-block lock as a sync and a grade pull.
-     *
-     * @param int $blockinstanceid
-     * @param int $courseid the destination course
-     * @param http_client|null $client injected only by tests
-     * @return grade_pull_result
-     */
-    public static function run(int $blockinstanceid, int $courseid, ?http_client $client = null): grade_pull_result {
-        $lock = \core\lock\lock_config::get_lock_factory('block_coursesync')
-            ->get_lock('run-' . $blockinstanceid, 0, syncer::LOCK_LIFETIME);
-
-        if (!$lock) {
-            return grade_pull_result::failure('errorsyncinprogress');
-        }
-
-        try {
-            return self::pull($blockinstanceid, $courseid, true, $client);
-        } finally {
-            $lock->release();
-        }
-    }
-
-    /**
      * Forget which attempts a block brought across, when it is deleted.
      *
      * The attempts themselves stay: they are the students' attempts now.
@@ -109,46 +70,10 @@ class attempt_pull {
     }
 
     /**
-     * Work through every attempt, writing if asked to.
-     *
-     * @param int $blockinstanceid
-     * @param int $courseid
-     * @param bool $write false for a preview
-     * @param http_client|null $client
-     * @return grade_pull_result
-     */
-    protected static function pull(int $blockinstanceid, int $courseid, bool $write, ?http_client $client): grade_pull_result {
-        global $CFG;
-
-        require_once($CFG->dirroot . '/grade/lib.php');
-        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
-        require_once($CFG->libdir . '/completionlib.php');
-
-        $notallowed = grade_pull::check_allowed($courseid);
-
-        if ($notallowed !== null) {
-            return grade_pull_result::failure($notallowed);
-        }
-
-        $record = connection::get($blockinstanceid);
-
-        if (!connection::is_mapped($record)) {
-            return grade_pull_result::failure('errornotmapped');
-        }
-
-        $token = connection::get_token($blockinstanceid);
-
-        if ($token === null) {
-            return grade_pull_result::failure('errortokenunreadable');
-        }
-
-        return self::work($blockinstanceid, $courseid, $record, $token, $write, $client);
-    }
-
-    /**
-     * The pull itself, once the person is allowed and the connection is
-     * known to be usable - also how grade_pull brings attempts in first,
-     * under the lock it already holds.
+     * The pull itself: how grade_pull brings attempts in first, once it has
+     * checked the person is allowed and the connection is usable, and under
+     * the lock it holds. There is deliberately no other way in: grade_pull
+     * also writes the history and hands quizzes over to their own grade.
      *
      * Besides its entries, the result's attemptquizzes says which quizzes
      * here the source's attempts can be brought into, and whose; for those,
@@ -182,19 +107,26 @@ class attempt_pull {
             return $result;
         }
 
+        // Only these students' attempts are asked for; with nobody, nothing
+        // is (see grade_pull::pull()).
+        [$students, $outofreach] = grade_pull::reach($courseid);
+
+        if (!$students) {
+            return $result;
+        }
+
         $found = remote_client::get_quiz_attempts(
             $record->remoteurl,
             $token,
             (int) $record->remotecourseid,
             array_keys($copies),
-            $client
+            $client,
+            array_map('strval', array_keys($students))
         );
 
         if (!$found->success) {
             return grade_pull_result::failure($found->errorkey);
         }
-
-        $students = grade_pull::students($courseid);
 
         $usernames = [];
 
@@ -209,7 +141,7 @@ class attempt_pull {
 
         foreach ($found->quizzes as $remotequiz) {
             if (isset($copies[$remotequiz->cmid])) {
-                self::pull_quiz(
+                static::pull_quiz(
                     $result,
                     $write,
                     $blockinstanceid,
@@ -218,6 +150,7 @@ class attempt_pull {
                     $remotequiz,
                     $students,
                     $knownhere,
+                    $outofreach,
                     $sitename
                 );
             }
@@ -237,6 +170,8 @@ class attempt_pull {
      * @param \stdClass $remotequiz from quiz_attempts_result
      * @param \stdClass[] $students gradable users here, by username
      * @param bool[] $knownhere username => true for accounts that exist here
+     * @param bool[] $outofreach username => true for students here outside
+     *      the pulling person's groups, left out without a word
      * @param string $sitename the source, as named in the comment on each mark
      * @return void
      */
@@ -249,6 +184,7 @@ class attempt_pull {
         \stdClass $remotequiz,
         array $students,
         array $knownhere,
+        array $outofreach,
         string $sitename
     ): void {
         global $DB;
@@ -289,6 +225,11 @@ class attempt_pull {
         $counts = [];
 
         foreach ($remotequiz->attempts as $remote) {
+            // Outside this person's groups: see grade_pull::pull_item().
+            if (isset($outofreach[$remote->username])) {
+                continue;
+            }
+
             $entry = self::entry($cm, $remote, grade_pull_result::SKIPPED, null);
             $user = $students[$remote->username] ?? null;
 
@@ -327,17 +268,26 @@ class attempt_pull {
             }
 
             if ($write) {
-                $entry->attemptid = self::create_attempt(
-                    $blockinstanceid,
-                    $courseid,
-                    $quiz,
-                    $cm,
-                    $user,
-                    $remote,
-                    $marks,
-                    $sitename
-                );
-                $entry->localgrade = self::sumgrades($entry->attemptid);
+                try {
+                    $entry->attemptid = static::create_attempt(
+                        $blockinstanceid,
+                        $courseid,
+                        $quiz,
+                        $cm,
+                        $user,
+                        $remote,
+                        $marks,
+                        $sitename
+                    );
+                    $entry->localgrade = self::sumgrades($entry->attemptid);
+                } catch (\dml_write_exception $e) {
+                    // The student started an attempt at this quiz at the
+                    // same moment, and took the number: this one waits for
+                    // the next pull, and the rest go on.
+                    $entry->outcome = grade_pull_result::SKIPPED;
+                    $entry->reason = 'attemptskipbusy';
+                    $entry->notes = [];
+                }
             }
 
             $result->add($entry);
@@ -461,12 +411,69 @@ class attempt_pull {
 
         $transaction = $DB->start_delegated_transaction();
 
-        $timestart = $remote->timestart ?: time();
-        $timefinish = max($timestart, $remote->timefinish ?: $timestart);
-        $number = 1 + (int) $DB->get_field_sql(
+        try {
+            $attemptid = self::build_attempt($blockinstanceid, $courseid, $quiz, $cm, $user, $remote, $marks, $sitename);
+        } catch (\Throwable $e) {
+            // Nothing of it is left half-written; the exception goes on.
+            $transaction->rollback($e);
+        }
+
+        $transaction->allow_commit();
+
+        return $attemptid;
+    }
+
+    /**
+     * The student's next attempt number at a quiz here.
+     *
+     * Read, then used a moment later: a student starting an attempt in
+     * between can take the same number, and the unique index on quiz_attempts
+     * refuses the second - see create_attempt()'s caller.
+     *
+     * @param int $quizid
+     * @param int $userid
+     * @return int
+     */
+    protected static function next_attempt_number(int $quizid, int $userid): int {
+        global $DB;
+
+        return 1 + (int) $DB->get_field_sql(
             'SELECT COALESCE(MAX(attempt), 0) FROM {quiz_attempts} WHERE quiz = ? AND userid = ?',
-            [$quiz->id, $user->id]
+            [$quizid, $userid]
         );
+    }
+
+    /**
+     * The work of create_attempt(), inside its transaction.
+     *
+     * @param int $blockinstanceid
+     * @param int $courseid
+     * @param \stdClass $quiz
+     * @param \cm_info $cm
+     * @param \stdClass $user
+     * @param \stdClass $remote
+     * @param array $marks slot => mark, from local_marks()
+     * @param string $sitename
+     * @return int the new attempt's id
+     */
+    protected static function build_attempt(
+        int $blockinstanceid,
+        int $courseid,
+        \stdClass $quiz,
+        \cm_info $cm,
+        \stdClass $user,
+        \stdClass $remote,
+        array $marks,
+        string $sitename
+    ): int {
+        global $DB;
+
+        // The source's times, but never in the future: an attempt cannot have
+        // been started or finished later than now.
+        $now = time();
+        $timestart = min(max(1, $remote->timestart ?: $now), $now);
+        $timefinish = min(max($timestart, $remote->timefinish ?: $timestart), $now);
+        $number = static::next_attempt_number((int) $quiz->id, (int) $user->id);
 
         $quizobj = quiz_settings::create($quiz->id, $user->id);
         $quba = \question_engine::make_questions_usage_by_activity('mod_quiz', $quizobj->get_context());
@@ -502,7 +509,6 @@ class attempt_pull {
         ]);
 
         self::after_marks_changed($quizobj, $cm, $user->id);
-        $transaction->allow_commit();
 
         return (int) $attempt->id;
     }

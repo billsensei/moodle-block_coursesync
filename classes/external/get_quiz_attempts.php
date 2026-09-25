@@ -21,6 +21,7 @@ use core_external\external_function_parameters;
 use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
+use block_coursesync\local\gradebook;
 use mod_quiz\question\bank\qbank_helper;
 
 /**
@@ -43,6 +44,9 @@ use mod_quiz\question\bank\qbank_helper;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class get_quiz_attempts extends external_api {
+    /** @var int Most activities one request may name; the destination sends longer lists in batches. */
+    public const MAX_CMIDS = 500;
+
     /** @var int Version 1: marks only. A later version may add responses. */
     public const FORMAT_VERSION = 1;
 
@@ -59,6 +63,13 @@ class get_quiz_attempts extends external_api {
                 'Quizzes whose attempts are wanted.',
                 VALUE_REQUIRED
             ),
+            'usernames' => new external_value(
+                PARAM_RAW,
+                'Only these students, one username per line: the ones the destination can use. '
+                    . 'Empty (as older destinations send) for every student.',
+                VALUE_DEFAULT,
+                ''
+            ),
         ]);
     }
 
@@ -67,9 +78,10 @@ class get_quiz_attempts extends external_api {
      *
      * @param int $courseid
      * @param int[] $cmids
+     * @param string $usernames one per line; empty for every student
      * @return array
      */
-    public static function execute(int $courseid, array $cmids): array {
+    public static function execute(int $courseid, array $cmids, string $usernames = ''): array {
         global $CFG, $DB;
 
         require_once($CFG->dirroot . '/grade/lib.php');
@@ -78,14 +90,20 @@ class get_quiz_attempts extends external_api {
         [
             'courseid' => $courseid,
             'cmids' => $cmids,
+            'usernames' => $usernames,
         ] = self::validate_parameters(self::execute_parameters(), [
             'courseid' => $courseid,
             'cmids' => $cmids,
+            'usernames' => $usernames,
         ]);
 
         // The same switch as grades, checked before anything else.
         if (!get_config('block_coursesync', 'allowgradeexport')) {
             throw new \moodle_exception('errorgradeexportdisabled', 'block_coursesync');
+        }
+
+        if (count($cmids) > self::MAX_CMIDS) {
+            throw new \invalid_parameter_exception('At most ' . self::MAX_CMIDS . ' activities per request.');
         }
 
         $course = $DB->get_record('course', ['id' => $courseid]);
@@ -112,7 +130,12 @@ class get_quiz_attempts extends external_api {
             }
         }
 
-        $students = $quizzes ? get_gradable_users($course->id, null, true) : [];
+        // Recalculated first if it needs it: see gradebook::gradable_users().
+        // Every student, not only the sync account's groups: see gradebook.
+        $students = $quizzes ? gradebook::gradable_users($course->id, true) : [];
+
+        // Only the students the destination can use leave this site.
+        $students = gradebook::only($students, $usernames);
         $out = [];
 
         foreach ($quizzes as $cm) {

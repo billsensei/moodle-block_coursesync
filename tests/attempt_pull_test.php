@@ -27,6 +27,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 defined('MOODLE_INTERNAL') || die();
 
 require_once(__DIR__ . '/local/quiz_on_the_source.php');
+require_once(__DIR__ . '/local/attempt_pull_clashing.php');
 
 /**
  * Tests for bringing students' quiz attempts across, as marks.
@@ -53,6 +54,28 @@ final class attempt_pull_test extends advanced_testcase {
     }
 
     /**
+     * Bring the source's attempts across the way grade_pull does, through
+     * attempt_pull::work(), for tests about the attempts alone.
+     *
+     * @param http_client $client
+     * @param bool $write false for a preview
+     * @return grade_pull_result
+     */
+    protected function pull_attempts(http_client $client, bool $write = true): grade_pull_result {
+        $result = attempt_pull::work(
+            $this->instanceid,
+            $this->course->id,
+            connection::get($this->instanceid),
+            connection::get_token($this->instanceid),
+            $write,
+            $client
+        );
+        $result->preview = !$write;
+
+        return $result;
+    }
+
+    /**
      * The only entry a pull produced.
      *
      * @param grade_pull_result $result
@@ -76,7 +99,7 @@ final class attempt_pull_test extends advanced_testcase {
         $source = $this->source_attempt($this->student, $this->answers(), 4);
         $this->assertEqualsWithDelta(9.4, $source->sumgrades, 0.00001);
 
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
 
         $this->assertSame(grade_pull_result::ADD, $entry->outcome);
         $this->assertSame([], $entry->notes);
@@ -123,7 +146,7 @@ final class attempt_pull_test extends advanced_testcase {
 
         $this->source_attempt($this->student, $this->answers(), 4);
 
-        $result = attempt_pull::preview($this->instanceid, $this->course->id, $this->local_source());
+        $result = $this->pull_attempts($this->local_source(), false);
 
         $this->assertTrue($result->preview);
         $this->assertSame(grade_pull_result::ADD, $this->only_entry($result)->outcome);
@@ -137,14 +160,14 @@ final class attempt_pull_test extends advanced_testcase {
      */
     public function test_pulling_again(): void {
         $this->source_attempt($this->student, $this->answers(), 4);
-        attempt_pull::run($this->instanceid, $this->course->id, $this->local_source());
+        $this->pull_attempts($this->local_source());
 
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
         $this->assertSame(grade_pull_result::SAME, $entry->outcome);
         $this->assertCount(1, $this->copy_attempts());
 
         $this->source_attempt($this->student, [1 => ['answer' => 'frog']]);
-        $result = attempt_pull::run($this->instanceid, $this->course->id, $this->local_source());
+        $result = $this->pull_attempts($this->local_source());
 
         $this->assertSame([grade_pull_result::SAME, grade_pull_result::ADD], array_column($result->entries, 'outcome'));
         $this->assertSame([1, 2], array_map(static fn($a) => (int) $a->attempt, $this->copy_attempts()));
@@ -156,13 +179,13 @@ final class attempt_pull_test extends advanced_testcase {
     public function test_an_attempt_waiting_to_be_graded_comes_later(): void {
         $source = $this->source_attempt($this->student, $this->answers());
 
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
         $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
         $this->assertSame('attemptskipnotgraded', $entry->reason);
         $this->assertSame([], $this->copy_attempts());
 
         $this->mark_source_essay((int) $source->id, 5);
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
         $this->assertSame(grade_pull_result::ADD, $entry->outcome);
         $this->assertEquals(5, $this->marks_here($this->copy_attempts()[0])[3]);
     }
@@ -175,10 +198,10 @@ final class attempt_pull_test extends advanced_testcase {
         global $DB;
 
         $source = $this->source_attempt($this->student, $this->answers(), 4);
-        attempt_pull::run($this->instanceid, $this->course->id, $this->local_source());
+        $this->pull_attempts($this->local_source());
 
         $this->mark_source_essay((int) $source->id, 5);
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
 
         $this->assertSame(grade_pull_result::UPDATE, $entry->outcome);
         $attempt = $this->copy_attempts()[0];
@@ -196,7 +219,7 @@ final class attempt_pull_test extends advanced_testcase {
         \question_engine::save_questions_usage_by_activity($quba);
         $this->mark_source_essay((int) $source->id, 2);
 
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
 
         $this->assertSame(grade_pull_result::CONFLICT, $entry->outcome);
         $this->assertSame('attemptconflict', $entry->reason);
@@ -221,11 +244,84 @@ final class attempt_pull_test extends advanced_testcase {
         quiz_attempt_save_started($local, $quba, $attempt, 1700000000);
 
         $this->source_attempt($this->student, $this->answers(), 4);
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
 
         $this->assertSame(grade_pull_result::ADD, $entry->outcome);
         $this->assertSame(['attemptoverlimit'], $entry->notes);
         $this->assertSame([1, 2], array_map(static fn($a) => (int) $a->attempt, $this->copy_attempts()));
+    }
+
+    /**
+     * Times from the source are taken as given only when they make sense: an
+     * attempt cannot have been started or finished in the future.
+     */
+    public function test_times_in_the_future_are_brought_back_to_now(): void {
+        global $DB;
+
+        $source = $this->source_attempt($this->student, $this->answers(), 4);
+        $DB->update_record('quiz_attempts', (object) [
+            'id' => $source->id,
+            'timestart' => time() + 50 * DAYSECS,
+            'timefinish' => time() + 60 * DAYSECS,
+        ]);
+
+        $before = time();
+        $this->pull_attempts($this->local_source());
+        $attempt = $this->copy_attempts()[0];
+
+        $this->assertLessThanOrEqual(time(), (int) $attempt->timestart);
+        $this->assertLessThanOrEqual(time(), (int) $attempt->timefinish);
+        $this->assertGreaterThanOrEqual($before, (int) $attempt->timefinish);
+        $this->assertLessThanOrEqual((int) $attempt->timefinish, (int) $attempt->timestart);
+    }
+
+    /**
+     * Should a student start an attempt at this quiz at the very moment one of
+     * theirs is brought across, both could claim the same attempt number. The
+     * attempt being brought is then left for the next pull - whole: nothing of
+     * it is half-written - and the rest of the pull goes on.
+     */
+    public function test_a_clash_over_the_attempt_number(): void {
+        global $DB;
+
+        // PHPUnit normally runs each test inside one transaction it rolls back
+        // afterwards; inside that, the import's own transaction could not roll
+        // back on its own. Real pages have no such outer transaction.
+        $this->preventResetByRollback();
+
+        // One attempt here already: attempt number 1.
+        $local = quiz_settings::create($this->copycm->instance, $this->student->id);
+        $quba = \question_engine::make_questions_usage_by_activity('mod_quiz', $local->get_context());
+        $quba->set_preferred_behaviour($local->get_quiz()->preferredbehaviour);
+        $attempt = quiz_create_attempt($local, 1, null, 1700000000, false, $this->student->id);
+        quiz_start_new_attempt($local, $quba, $attempt, 1, 1700000000);
+        quiz_attempt_save_started($local, $quba, $attempt, 1700000000);
+
+        $this->source_attempt($this->student, $this->answers(), 4);
+        $usages = $DB->count_records('question_usages');
+
+        // As if the student's attempt number 1 had appeared after the pull
+        // chose its number.
+        $result = local\attempt_pull_clashing::work(
+            $this->instanceid,
+            $this->course->id,
+            connection::get($this->instanceid),
+            connection::get_token($this->instanceid),
+            true,
+            $this->local_source()
+        );
+
+        $entry = $this->only_entry($result);
+        $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
+        $this->assertSame('attemptskipbusy', $entry->reason);
+        $this->assertCount(1, $this->copy_attempts(), 'only the attempt made here');
+        $this->assertSame($usages, $DB->count_records('question_usages'), 'nothing half-written');
+        $this->assertSame(0, $DB->count_records('block_coursesync_attempt'));
+
+        // The next pull brings it.
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $this->assertCount(2, $this->copy_attempts());
     }
 
     /**
@@ -238,7 +334,7 @@ final class attempt_pull_test extends advanced_testcase {
         $this->source_attempt($this->student, $this->answers(), 4);
         $DB->set_field('quiz_slots', 'maxmark', 4, ['quizid' => $this->copycm->instance, 'slot' => 1]);
 
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
 
         $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
         $this->assertSame('attemptskipchanged', $entry->reason);
@@ -251,11 +347,11 @@ final class attempt_pull_test extends advanced_testcase {
      */
     public function test_an_attempt_deleted_here_stays_deleted(): void {
         $this->source_attempt($this->student, $this->answers(), 4);
-        attempt_pull::run($this->instanceid, $this->course->id, $this->local_source());
+        $this->pull_attempts($this->local_source());
 
         quiz_delete_attempt($this->copy_attempts()[0], $this->copy_quiz());
 
-        $entry = $this->only_entry(attempt_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source()));
 
         $this->assertSame('attemptskipdeletedhere', $entry->reason);
         $this->assertSame([], $this->copy_attempts());
@@ -290,7 +386,7 @@ final class attempt_pull_test extends advanced_testcase {
 
         $sink = $this->redirectMessages();
         $emails = $this->redirectEmails();
-        attempt_pull::run($this->instanceid, $this->course->id, $this->local_source());
+        $this->pull_attempts($this->local_source());
         $this->expectOutputRegex('/graded notification/');
         (new \mod_quiz\task\quiz_notify_attempt_manual_grading_completed())->execute();
 
@@ -306,14 +402,14 @@ final class attempt_pull_test extends advanced_testcase {
         $outsider = $this->getDataGenerator()->create_and_enrol($this->source, 'student', ['username' => 'elsewhere']);
         $this->source_attempt($outsider, $this->answers(), 4);
 
-        $entry = $this->only_entry(attempt_pull::preview($this->instanceid, $this->course->id, $this->local_source()));
+        $entry = $this->only_entry($this->pull_attempts($this->local_source(), false));
         $this->assertSame('gradeskipnotenrolled', $entry->reason);
 
         // A username with no account at all here needs a source other than
         // this site, where every account exists: the real answer, renamed.
         $body = \block_coursesync\external\get_quiz_attempts::execute((int) $this->source->id, [(int) $this->quiz->cmid]);
         $body['quizzes'][0]['attempts'][0]['username'] = 'nobody';
-        $result = attempt_pull::preview($this->instanceid, $this->course->id, $this->source_saying($body));
+        $result = $this->pull_attempts($this->source_saying($body), false);
         $this->assertSame('gradeskipnouser', $this->only_entry($result)->reason);
     }
 
@@ -325,15 +421,15 @@ final class attempt_pull_test extends advanced_testcase {
         set_config('allowgradepull', 0, 'block_coursesync');
         $this->assertSame(
             'errorgradepulloff',
-            attempt_pull::run($this->instanceid, $this->course->id, $this->local_source())->errorkey
+            grade_pull::run($this->instanceid, $this->course->id, $this->local_source())->errorkey
         );
         set_config('allowgradepull', 1, 'block_coursesync');
 
         $old = $this->source_saying(['exception' => 'dml_missing_record_exception', 'errorcode' => 'invalidrecord']);
-        $this->assertSame('errorattemptsourceoutdated', attempt_pull::run($this->instanceid, $this->course->id, $old)->errorkey);
+        $this->assertSame('errorattemptsourceoutdated', $this->pull_attempts($old)->errorkey);
 
         $bad = $this->source_saying(['formatversion' => 1, 'quizzes' => [['cmid' => 1]]]);
-        $this->assertSame('errorbadresponse', attempt_pull::run($this->instanceid, $this->course->id, $bad)->errorkey);
+        $this->assertSame('errorbadresponse', $this->pull_attempts($bad)->errorkey);
     }
 
     /**

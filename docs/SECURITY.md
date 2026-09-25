@@ -102,6 +102,9 @@ cmid from another course is dropped silently, never answered. If the course's
 gradebook is waiting to be recalculated it recalculates first, as core's own
 user-grades web service does, so the grades sent are never stale.
 
+Both grade functions accept at most 500 activities per request
+(`MAX_CMIDS`); the destination sends longer lists in batches.
+
 `get_quiz_attempts` (v1.19.0) sits behind exactly the same switch and the same
 two permissions: the same people's data, in more detail. For each quiz asked
 about it returns the outline (each slot's question type and maximum mark) and
@@ -194,7 +197,15 @@ unless four separate people-decisions have been made:
 
 Per activity asked about: each active, graded student's **username**, final
 gradebook grade, feedback text and format, and hidden flag; the grade item's
-range, type and scale items. For a quiz (v1.19.0), also each finished attempt's
+range, type and scale items. **Only for the students the destination names**
+(v1.19.1): it sends the usernames of the students it can use - its own active
+students within the puller's reach - and the source returns nobody else's. The
+list is one parameter, one username per line, because an array parameter
+longer than PHP's `max_input_vars` is silently truncated. An empty list (what
+an older destination sends) means every student, so a destination with nobody
+to ask about does not call at all. A source older than v1.19.1 refuses the
+unknown parameter; the destination then asks again without it and gets every
+student's data, as before - the minimisation needs both sites upgraded. For a quiz (v1.19.0), also each finished attempt's
 times, total, and per-question marks and states - never the answers. Only activities in the course the sync account is
 permitted on; only the ones the destination names. Never attempts,
 submissions, responses, answers, or any other user data.
@@ -214,6 +225,15 @@ A malicious or compromised source could send wrong grades. What bounds it:
   `coursesync-<remote cmid>` idnumber), matched to the source's own activity.
 - Only students who are already **active graded users** of the course here. No
   account is created and nobody is enrolled.
+- **Separate groups** limit a pull as they limit the gradebook: someone who may
+  not see all groups reaches only their own groups' students (core's
+  gradable-users list applies the rule). The others are left out of the preview
+  and the results altogether - not listed as skipped, which would still reveal
+  that they have a grade on the other site. On the **source**, groups do not
+  limit what is shared: the sync account's authority is
+  `block/coursesync:exportgrades` on the whole course, so `get_grades` and
+  `get_quiz_attempts` list every student (`local\gradebook::gradable_users($id,
+  true)`), not just the account's (usually empty) groups.
 - A grade **anyone here gave is never overwritten** — it is reported as a
   conflict. The only grade a pull replaces is one an earlier pull wrote that is
   still exactly as written (value and a SHA-1 of the feedback, kept in

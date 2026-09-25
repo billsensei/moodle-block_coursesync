@@ -668,6 +668,154 @@ final class grade_pull_test extends advanced_testcase {
     }
 
     /**
+     * In a course with separate groups, someone who may not see all groups
+     * reaches only their own groups' students - as the gradebook would let
+     * them - and the others are left out without a word, not listed as
+     * skipped, which would still say they have a grade over there.
+     */
+    public function test_separate_groups(): void {
+        global $DB;
+
+        $DB->set_field('course', 'groupmode', SEPARATEGROUPS, ['id' => $this->course->id]);
+        $generator = $this->getDataGenerator();
+        $pat = $generator->create_and_enrol($this->course, 'student', ['username' => 'pat']);
+        $teacher = $generator->create_and_enrol($this->course, 'editingteacher');
+        $mine = $generator->create_group(['courseid' => $this->course->id]);
+        $theirs = $generator->create_group(['courseid' => $this->course->id]);
+        $generator->create_group_member(['groupid' => $mine->id, 'userid' => $teacher->id]);
+        $generator->create_group_member(['groupid' => $mine->id, 'userid' => $this->student->id]);
+        $generator->create_group_member(['groupid' => $theirs->id, 'userid' => $pat->id]);
+
+        $assign = $this->copy_of(777);
+        $this->sourceitems = [$this->remote_item(777, [
+            $this->remote_grade('sam', 80),
+            $this->remote_grade('pat', 70),
+        ])];
+
+        // The teacher's role may not see every group here.
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'editingteacher']);
+        assign_capability('moodle/site:accessallgroups', CAP_PROHIBIT, $roleid, \context_course::instance($this->course->id)->id);
+        $this->setUser($teacher);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertTrue($result->success, (string) $result->errorkey);
+        $this->assertSame(['sam'], array_column($result->entries, 'username'));
+        $this->assertEquals(80, $this->grade_here($assign)->finalgrade);
+        $patgrade = $this->grade_here($assign, (int) $pat->id);
+        $this->assertTrue(!$patgrade || $patgrade->finalgrade === null, "the other group's student is untouched");
+
+        // Allowed to see every group, the same person reaches everyone.
+        $this->setAdminUser();
+        $context = \context_course::instance($this->course->id);
+        assign_capability('moodle/site:accessallgroups', CAP_ALLOW, $roleid, $context->id, true);
+        $this->setUser($teacher);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+        $this->assertEqualsCanonicalizing(['sam', 'pat'], array_column($result->entries, 'username'));
+        $this->assertEquals(70, $this->grade_here($assign, (int) $pat->id)->finalgrade);
+    }
+
+    /**
+     * The source is told which students this course can use, and so sends
+     * only theirs - one username per line, in one parameter.
+     */
+    public function test_the_source_is_told_which_students(): void {
+        $this->getDataGenerator()->create_and_enrol($this->course, 'student', ['username' => 'pat']);
+        $this->copy_of(777);
+
+        grade_pull::preview($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertCount(1, $this->calls);
+        $this->assertEqualsCanonicalizing(['sam', 'pat'], explode("\n", $this->calls[0]['usernames']));
+    }
+
+    /**
+     * A source from before the student list refuses the extra parameter, as
+     * Moodle refuses any it does not know. The pull asks again without it,
+     * and works as it always did.
+     */
+    public function test_a_source_that_does_not_know_the_student_list(): void {
+        $assign = $this->copy_of(777);
+        $this->sourceitems = [$this->remote_item(777, [$this->remote_grade('sam', 80)])];
+
+        $older = new http_client(['mock' => function (RequestInterface $request) {
+            parse_str((string) $request->getBody(), $params);
+            $this->calls[] = $params;
+
+            if (isset($params['usernames'])) {
+                $body = ['exception' => 'invalid_parameter_exception', 'errorcode' => 'invalidparameter',
+                    'message' => 'Unexpected keys (usernames) detected in parameter array.'];
+            } else if ($params['wsfunction'] === 'block_coursesync_get_quiz_attempts') {
+                $body = ['exception' => 'dml_missing_record_exception', 'errorcode' => 'invalidrecord'];
+            } else {
+                $body = ['items' => $this->sourceitems];
+            }
+
+            return Create::promiseFor(new Response(200, [], json_encode($body)));
+        }]);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $older);
+
+        $this->assertTrue($result->success, (string) $result->errorkey);
+        $this->assertCount(2, $this->calls, 'asked once with the list, once without');
+        $this->assertArrayNotHasKey('usernames', $this->calls[1]);
+        $this->assertEquals(80, $this->grade_here($assign)->finalgrade);
+    }
+
+    /**
+     * With nobody within reach - here, a teacher in no group of a course
+     * with separate groups - the source is not asked at all: an empty list
+     * of students would mean every student to it.
+     */
+    public function test_nobody_within_reach_asks_nothing(): void {
+        global $DB;
+
+        $DB->set_field('course', 'groupmode', SEPARATEGROUPS, ['id' => $this->course->id]);
+        $teacher = $this->getDataGenerator()->create_and_enrol($this->course, 'editingteacher');
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'editingteacher']);
+        assign_capability('moodle/site:accessallgroups', CAP_PROHIBIT, $roleid, \context_course::instance($this->course->id)->id);
+        $this->copy_of(777);
+        $this->setUser($teacher);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertTrue($result->success);
+        $this->assertSame([], $result->entries);
+        $this->assertSame([], $this->calls);
+    }
+
+    /**
+     * Visible groups, or no groups, restrict nobody: the gradebook shows
+     * everyone then too.
+     */
+    public function test_visible_groups_restrict_nobody(): void {
+        global $DB;
+
+        $DB->set_field('course', 'groupmode', VISIBLEGROUPS, ['id' => $this->course->id]);
+        $generator = $this->getDataGenerator();
+        $pat = $generator->create_and_enrol($this->course, 'student', ['username' => 'pat']);
+        $teacher = $generator->create_and_enrol($this->course, 'editingteacher');
+        $group = $generator->create_group(['courseid' => $this->course->id]);
+        $generator->create_group_member(['groupid' => $group->id, 'userid' => $teacher->id]);
+        $generator->create_group_member(['groupid' => $group->id, 'userid' => $this->student->id]);
+
+        $this->copy_of(777);
+        $this->sourceitems = [$this->remote_item(777, [
+            $this->remote_grade('sam', 80),
+            $this->remote_grade('pat', 70),
+        ])];
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'editingteacher']);
+        assign_capability('moodle/site:accessallgroups', CAP_PROHIBIT, $roleid, \context_course::instance($this->course->id)->id);
+        $this->setUser($teacher);
+
+        $result = grade_pull::preview($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertEqualsCanonicalizing(['sam', 'pat'], array_column($result->entries, 'username'));
+        $this->assertNotEmpty($pat);
+    }
+
+    /**
      * Refused for lack of the grades permission, the teacher is told which
      * permission it is.
      */

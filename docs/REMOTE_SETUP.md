@@ -166,9 +166,17 @@ Then two things, both on this source site:
    is simplest. No role has it by default, not even manager, so an existing sync
    account gains nothing until you do this.
 
-What the destination can then read: for each activity it asks about, each
-active student's final gradebook grade, its feedback, and whether it is hidden —
-keyed by username. For a quiz (v1.19.0 and later), also each student's finished
+The sync account does not need to be in any group, or to be allowed to see all
+groups: a course with separate groups still shares every student's grades.
+
+This permission covers grades hidden from students as well. They travel with
+their hidden flag and stay hidden on the destination, but the sync account can
+read them - in effect it holds `moodle/grade:viewhidden` wherever you give it
+`block/coursesync:exportgrades`.
+
+What the destination can then read: for each activity it asks about, the final
+gradebook grade, its feedback, and whether it is hidden, of each active student
+**it names** — it asks only about its own students, by username. For a quiz (v1.19.0 and later), also each student's finished
 attempts: when they were started and submitted, and the mark for each question.
 Never the answers themselves, submissions, or anything else.
 

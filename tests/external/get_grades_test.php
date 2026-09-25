@@ -382,6 +382,72 @@ final class get_grades_test extends advanced_testcase {
     }
 
     /**
+     * A course with separate groups hands over every student's grades. The
+     * sync account is authorised by its permission on the whole course and
+     * is rarely in any group; core's list of gradable users, limited to the
+     * caller's groups, used to leave it with nobody.
+     */
+    public function test_separate_groups_on_the_source(): void {
+        global $DB;
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $DB->set_field('course', 'groupmode', SEPARATEGROUPS, ['id' => $course->id]);
+        $sam = $generator->create_and_enrol($course, 'student', ['username' => 'sam']);
+        $pat = $generator->create_and_enrol($course, 'student', ['username' => 'pat']);
+        $group = $generator->create_group(['courseid' => $course->id]);
+        $generator->create_group_member(['groupid' => $group->id, 'userid' => $sam->id]);
+        $assign = $generator->create_module('assign', ['course' => $course->id]);
+        $this->grade($assign, 'assign', $sam->id, 50);
+        $this->grade($assign, 'assign', $pat->id, 60);
+
+        // A sync account as REMOTE_SETUP.md sets it up: no accessallgroups, no group.
+        $syncuser = $generator->create_user();
+        $roleid = $generator->create_role();
+        $context = \context_course::instance($course->id);
+        foreach (['block/coursesync:sync', 'block/coursesync:exportgrades', 'moodle/course:view'] as $capability) {
+            assign_capability($capability, CAP_ALLOW, $roleid, $context->id, true);
+        }
+        role_assign($roleid, $syncuser->id, $context->id);
+        $this->setUser($syncuser);
+
+        $result = external_api::clean_returnvalue(
+            get_grades::execute_returns(),
+            get_grades::execute($course->id, [$assign->cmid])
+        );
+
+        $this->assertEqualsCanonicalizing(['sam', 'pat'], array_column($result['items'][0]['grades'], 'username'));
+    }
+
+    /**
+     * Asked for particular students - the ones the destination can use -
+     * only their grades leave this site. Unknown names are ignored, and an
+     * empty list, which is what a destination from before this sends, means
+     * every student.
+     */
+    public function test_only_the_students_asked_for(): void {
+        $this->setAdminUser();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $assign = $generator->create_module('assign', ['course' => $course->id]);
+
+        foreach (['sam', 'pat', 'lee'] as $username) {
+            $user = $generator->create_and_enrol($course, 'student', ['username' => $username]);
+            $this->grade($assign, 'assign', $user->id, 50);
+        }
+
+        $ask = fn(string $usernames) => array_column(external_api::clean_returnvalue(
+            get_grades::execute_returns(),
+            get_grades::execute($course->id, [$assign->cmid], $usernames)
+        )['items'][0]['grades'], 'username');
+
+        $this->assertEqualsCanonicalizing(['sam', 'lee'], $ask("sam\nlee\nnobody"));
+        $this->assertEqualsCanonicalizing(['sam', 'pat', 'lee'], $ask(''));
+        $this->assertSame(['pat'], $ask("  PAT \r\n\n"), 'trimmed and cleaned like any username');
+    }
+
+    /**
      * No archetype holds the grades permission by default - not even a
      * manager - so an upgrade never hands grades to an existing account.
      */
@@ -406,6 +472,18 @@ final class get_grades_test extends advanced_testcase {
         $this->expectException(\moodle_exception::class);
         $this->expectExceptionMessage(get_string('errorgradeexportdisabled', 'block_coursesync'));
         get_grades::execute(999999, []);
+    }
+
+    /**
+     * A request may name at most get_grades::MAX_CMIDS activities; the
+     * destination sends longer lists in batches.
+     */
+    public function test_too_many_activities(): void {
+        $this->setAdminUser();
+        $course = $this->getDataGenerator()->create_course();
+
+        $this->expectException(\invalid_parameter_exception::class);
+        get_grades::execute($course->id, range(1, get_grades::MAX_CMIDS + 1));
     }
 
     /**

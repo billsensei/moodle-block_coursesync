@@ -273,6 +273,10 @@ You will only see a **Pull grades** button in the block if:
 - you are allowed to edit grades in this course (editing teachers are, by
   default; non-editing teachers are not).
 
+If your course uses **separate groups** and you are not allowed to see all
+groups, you only see and pull grades and attempts for students in your own
+groups, just as in the gradebook.
+
 ### What happens
 
 **Pull grades** first shows you what it *would* do. Nothing is written until you
@@ -283,9 +287,12 @@ involved). Under **Gradebook grades** the page lists:
   someone on this site. That grade is **never replaced**. Both grades are shown
   side by side; if the other site's is the right one, change it in the gradebook
   yourself.
-- **Skipped** — a grade that could not be used, and why: nobody here has that
-  username, the student is not active in your course, the grade is locked, or
-  the activity is graded differently here (a different scale, say).
+- **Skipped** — a grade that could not be used, and why: the grade is locked, or
+  the activity is graded differently here (a different scale, say). Only your
+  own students' grades are asked for, so students who are not in your course
+  here do not appear at all. (If the other site's Course Sync is older, it may
+  send everyone's; those show as skipped because nobody here has that username,
+  or the student is not active in your course.)
 - **Grades to pull** — students who have no grade here yet. A grade out of a
   different maximum is converted: 40 out of 50 there becomes 80 out of 100 here.
 

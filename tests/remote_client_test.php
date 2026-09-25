@@ -500,4 +500,48 @@ final class remote_client_test extends advanced_testcase {
         $this->assertSame('errorredirected', $result->errorkey);
         $this->assertFalse($seen['allow_redirects']);
     }
+
+    /**
+     * A long list of activities is asked for in batches the source accepts,
+     * and the answers are put back together - for grades and for attempts.
+     */
+    public function test_many_activities_are_asked_for_in_batches(): void {
+        $this->resetAfterTest();
+
+        $calls = [];
+        $client = new http_client(['mock' => function (\Psr\Http\Message\RequestInterface $request) use (&$calls) {
+            parse_str((string) $request->getBody(), $params);
+            $calls[] = $params;
+            $cmids = array_map('intval', $params['cmids']);
+
+            $body = $params['wsfunction'] === 'block_coursesync_get_grades'
+                ? ['items' => array_map(static fn($cmid) => [
+                    'cmid' => $cmid, 'itemnumber' => 0, 'gradetype' => 1, 'grademin' => 0, 'grademax' => 10,
+                    'scale' => '', 'hidden' => 0, 'grades' => [],
+                ], $cmids)]
+                : ['formatversion' => 1, 'quizzes' => array_map(static fn($cmid) => [
+                    'cmid' => $cmid, 'sumgrades' => 1, 'grade' => 10, 'slots' => [], 'attempts' => [],
+                ], $cmids)];
+
+            return \GuzzleHttp\Promise\Create::promiseFor(new Response(200, [], json_encode($body)));
+        }]);
+
+        $wanted = range(1, \block_coursesync\external\get_grades::MAX_CMIDS + 1);
+
+        $grades = remote_client::get_grades('https://source.example.edu', str_repeat('a', 32), 42, $wanted, $client, ['sam']);
+        $attempts = remote_client::get_quiz_attempts(
+            'https://source.example.edu',
+            str_repeat('a', 32),
+            42,
+            $wanted,
+            $client,
+            ['sam']
+        );
+
+        $this->assertTrue($grades->success);
+        $this->assertSame($wanted, array_column($grades->items, 'cmid'));
+        $this->assertTrue($attempts->success);
+        $this->assertSame($wanted, array_column($attempts->quizzes, 'cmid'));
+        $this->assertSame([500, 1, 500, 1], array_map(static fn($call) => count($call['cmids']), $calls));
+    }
 }

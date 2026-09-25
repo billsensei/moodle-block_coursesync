@@ -21,6 +21,7 @@ use core_external\external_function_parameters;
 use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
+use block_coursesync\local\gradebook;
 
 /**
  * Returns the gradebook grades of the students in a course, for chosen activities.
@@ -42,6 +43,9 @@ use core_external\external_value;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class get_grades extends external_api {
+    /** @var int Most activities one request may name; the destination sends longer lists in batches. */
+    public const MAX_CMIDS = 500;
+
     /**
      * Describes the parameters.
      *
@@ -55,6 +59,13 @@ class get_grades extends external_api {
                 'Activities whose grades are wanted.',
                 VALUE_REQUIRED
             ),
+            'usernames' => new external_value(
+                PARAM_RAW,
+                'Only these students, one username per line: the ones the destination can use. '
+                    . 'Empty (as older destinations send) for every student.',
+                VALUE_DEFAULT,
+                ''
+            ),
         ]);
     }
 
@@ -63,9 +74,10 @@ class get_grades extends external_api {
      *
      * @param int $courseid
      * @param int[] $cmids
+     * @param string $usernames one per line; empty for every student
      * @return array
      */
-    public static function execute(int $courseid, array $cmids): array {
+    public static function execute(int $courseid, array $cmids, string $usernames = ''): array {
         global $CFG, $DB;
 
         require_once($CFG->libdir . '/gradelib.php');
@@ -74,9 +86,11 @@ class get_grades extends external_api {
         [
             'courseid' => $courseid,
             'cmids' => $cmids,
+            'usernames' => $usernames,
         ] = self::validate_parameters(self::execute_parameters(), [
             'courseid' => $courseid,
             'cmids' => $cmids,
+            'usernames' => $usernames,
         ]);
 
         // Off until an administrator here turns it on. Checked before
@@ -84,6 +98,10 @@ class get_grades extends external_api {
         // caller the same answer and nothing about its courses.
         if (!get_config('block_coursesync', 'allowgradeexport')) {
             throw new \moodle_exception('errorgradeexportdisabled', 'block_coursesync');
+        }
+
+        if (count($cmids) > self::MAX_CMIDS) {
+            throw new \invalid_parameter_exception('At most ' . self::MAX_CMIDS . ' activities per request.');
         }
 
         $course = $DB->get_record('course', ['id' => $courseid]);
@@ -117,15 +135,12 @@ class get_grades extends external_api {
             return ['items' => []];
         }
 
-        // A course whose gradebook is waiting to be recalculated holds stale
-        // final grades, and the gradable-users list refuses to run at all
-        // until it is done. Recalculate now, as core's own user-grades web
-        // service does - the grader report would do the same on opening.
-        if (grade_needs_regrade_final_grades($course->id)) {
-            grade_regrade_final_grades($course->id);
-        }
+        // Recalculated first if it needs it: see gradebook::gradable_users().
+        // Every student, not only the sync account's groups: see gradebook.
+        $students = gradebook::gradable_users($course->id, true);
 
-        $students = get_gradable_users($course->id, null, true);
+        // Only the students the destination can use leave this site.
+        $students = gradebook::only($students, $usernames);
         $items = [];
 
         foreach ($cms as $cm) {

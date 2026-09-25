@@ -43,6 +43,7 @@ $string['attemptsgroupconflict'] = 'Attempts kept as they are';
 $string['attemptsgroupskipped'] = 'Attempts skipped';
 $string['attemptsgrouptowrite'] = 'Attempts to bring across';
 $string['attemptsgroupwritten'] = 'Attempts brought across';
+$string['attemptskipbusy'] = 'The student was starting an attempt at this quiz at the same moment. This one will come across on the next pull.';
 $string['attemptskipchanged'] = 'The quiz here no longer matches the one on the other site - its questions or their marks have been changed - so its attempts cannot be brought across.';
 $string['attemptskipdeletedhere'] = 'This attempt was brought across before and has since been deleted here, so it is not brought across again.';
 $string['attemptskipnomarks'] = 'This quiz has no marks set up here, so attempts cannot be added to it.';

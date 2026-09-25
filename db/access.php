@@ -71,7 +71,10 @@ $capabilities = [
     // account, never by default: copying activities and handing out people's
     // grades are separate decisions, and an account set up for the first must
     // not quietly gain the second on upgrade. Read-only here - the grades are
-    // written on the other site, under its own permissions.
+    // written on the other site, under its own permissions. It covers grades
+    // hidden from students too (they travel with their hidden flag and stay
+    // hidden there), so for this account it amounts to moodle/grade:viewhidden
+    // in the courses where it is given.
     'block/coursesync:exportgrades' => [
         'riskbitmask' => RISK_PERSONAL,
         'captype' => 'read',

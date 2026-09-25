@@ -229,6 +229,73 @@ final class get_quiz_attempts_test extends advanced_testcase {
     }
 
     /**
+     * A course waiting for its gradebook to be recalculated is recalculated
+     * first, as get_grades does. Without that, core's list of gradable
+     * students refuses to run ("gradesneedregrading") - and since a pull asks
+     * for attempts before grades, the whole pull failed.
+     */
+    public function test_course_waiting_for_recalculation(): void {
+        global $CFG;
+
+        require_once($CFG->libdir . '/gradelib.php');
+
+        $student = $this->getDataGenerator()->create_and_enrol($this->course, 'student', ['username' => 'sam']);
+        $this->attempt($student, [1 => ['answer' => 'frog'], 2 => ['answer' => 'toad']]);
+
+        grade_force_full_regrading($this->course->id);
+        $this->assertNotEmpty(grade_needs_regrade_final_grades($this->course->id));
+
+        $attempts = $this->call([$this->quiz->cmid])['quizzes'][0]['attempts'];
+
+        $this->assertSame(['sam'], array_column($attempts, 'username'));
+        $this->assertEmpty(grade_needs_regrade_final_grades($this->course->id));
+    }
+
+    /**
+     * A course with separate groups hands over every student's attempts,
+     * whatever groups the sync account is (not) in - see get_grades_test.
+     */
+    public function test_separate_groups_on_the_source(): void {
+        global $DB;
+
+        $DB->set_field('course', 'groupmode', SEPARATEGROUPS, ['id' => $this->course->id]);
+        $sam = $this->getDataGenerator()->create_and_enrol($this->course, 'student', ['username' => 'sam']);
+        $this->attempt($sam, [1 => ['answer' => 'frog']]);
+
+        $syncuser = $this->getDataGenerator()->create_user();
+        $roleid = $this->getDataGenerator()->create_role();
+        $context = \context_course::instance($this->course->id);
+        foreach (['block/coursesync:sync', 'block/coursesync:exportgrades', 'moodle/course:view'] as $capability) {
+            assign_capability($capability, CAP_ALLOW, $roleid, $context->id, true);
+        }
+        role_assign($roleid, $syncuser->id, $context->id);
+        $this->setUser($syncuser);
+
+        $attempts = $this->call([$this->quiz->cmid])['quizzes'][0]['attempts'];
+
+        $this->assertSame(['sam'], array_column($attempts, 'username'));
+    }
+
+    /**
+     * Asked for particular students, only their attempts leave this site -
+     * see get_grades_test.
+     */
+    public function test_only_the_students_asked_for(): void {
+        $sam = $this->getDataGenerator()->create_and_enrol($this->course, 'student', ['username' => 'sam']);
+        $pat = $this->getDataGenerator()->create_and_enrol($this->course, 'student', ['username' => 'pat']);
+        $this->attempt($sam, [1 => ['answer' => 'frog']]);
+        $this->attempt($pat, [1 => ['answer' => 'frog']]);
+
+        $ask = fn(string $usernames) => array_column(external_api::clean_returnvalue(
+            get_quiz_attempts::execute_returns(),
+            get_quiz_attempts::execute($this->course->id, [$this->quiz->cmid], $usernames)
+        )['quizzes'][0]['attempts'], 'username');
+
+        $this->assertSame(['pat'], $ask('pat'));
+        $this->assertEqualsCanonicalizing(['sam', 'pat'], $ask(''));
+    }
+
+    /**
      * Only finished attempts are results: not one in progress, and never a
      * teacher's preview. Several finished attempts come back in order.
      */
@@ -278,6 +345,16 @@ final class get_quiz_attempts_test extends advanced_testcase {
 
         $this->assertSame([(int) $this->quiz->cmid], array_column($result['quizzes'], 'cmid'));
         $this->assertSame([], $this->call([])['quizzes']);
+    }
+
+    /**
+     * A request may name at most get_quiz_attempts::MAX_CMIDS activities; the
+     * destination sends longer lists in batches.
+     */
+    public function test_too_many_activities(): void {
+
+        $this->expectException(\invalid_parameter_exception::class);
+        get_quiz_attempts::execute($this->course->id, range(1, get_quiz_attempts::MAX_CMIDS + 1));
     }
 
     /**

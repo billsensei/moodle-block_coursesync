@@ -218,6 +218,69 @@ final class grade_pull_quiz_test extends advanced_testcase {
     }
 
     /**
+     * A source course waiting for its gradebook to be recalculated - after a
+     * teacher there changes a grade setting, say - still hands over its
+     * attempts and grades. It used to fail the whole pull, because the
+     * attempts are asked for first and their list of students refused to run.
+     */
+    public function test_a_source_waiting_for_recalculation(): void {
+        $this->source_attempt($this->student, $this->answers(), 4);
+        grade_force_full_regrading($this->source->id);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->local_source());
+
+        $this->assertTrue($result->success, (string) $result->errorkey);
+        $this->assertSame(
+            [grade_pull_result::ADD],
+            array_column($this->of_kind($result, grade_pull_result::KIND_ATTEMPT), 'outcome')
+        );
+        $this->assertCount(1, $this->copy_attempts());
+    }
+
+    /**
+     * In a course with separate groups, someone who may not see all groups
+     * brings across only their own groups' students' attempts; the others
+     * are left out without a word.
+     */
+    public function test_separate_groups(): void {
+        global $DB;
+
+        $generator = $this->getDataGenerator();
+        $pat = $generator->create_and_enrol($this->source, 'student', ['username' => 'pat']);
+        $generator->enrol_user($pat->id, $this->course->id, 'student');
+        $this->source_attempt($this->student, $this->answers(), 4);
+        $this->source_attempt($pat, $this->answers(), 3);
+
+        $DB->set_field('course', 'groupmode', SEPARATEGROUPS, ['id' => $this->course->id]);
+        $teacher = $generator->create_and_enrol($this->course, 'editingteacher');
+        $mine = $generator->create_group(['courseid' => $this->course->id]);
+        $theirs = $generator->create_group(['courseid' => $this->course->id]);
+        $generator->create_group_member(['groupid' => $mine->id, 'userid' => $teacher->id]);
+        $generator->create_group_member(['groupid' => $mine->id, 'userid' => $this->student->id]);
+        $generator->create_group_member(['groupid' => $theirs->id, 'userid' => $pat->id]);
+
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'editingteacher']);
+        assign_capability('moodle/site:accessallgroups', CAP_PROHIBIT, $roleid, \context_course::instance($this->course->id)->id);
+
+        // The fake source runs its web services as whoever is logged in, so
+        // the teacher also gets what a sync account has on the source.
+        $reader = $generator->create_role();
+        foreach (['block/coursesync:sync', 'block/coursesync:exportgrades', 'moodle/course:view'] as $capability) {
+            assign_capability($capability, CAP_ALLOW, $reader, \context_system::instance()->id, true);
+        }
+        role_assign($reader, $teacher->id, \context_system::instance()->id);
+        $this->setUser($teacher);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->local_source());
+
+        $this->assertTrue($result->success, (string) $result->errorkey);
+        $this->assertSame(['sam'], array_column($this->of_kind($result, grade_pull_result::KIND_ATTEMPT), 'username'));
+        $this->assertSame([], $this->of_kind($result, grade_pull_result::KIND_GRADE));
+        $this->assertCount(1, $this->copy_attempts());
+        $this->assertSame(0, $DB->count_records('quiz_attempts', ['quiz' => $this->copycm->instance, 'userid' => $pat->id]));
+    }
+
+    /**
      * A copy that no longer lines up cannot take the attempts, so its grade
      * comes as an override, as before.
      */

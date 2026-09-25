@@ -260,7 +260,7 @@ class provider implements
 
         foreach ($rows as $row) {
             $grades[] = [
-                'gradeitem' => $row->itemname !== null ? format_string($row->itemname) : '',
+                'gradeitem' => $row->itemname !== null ? format_string($row->itemname, true, ['context' => $context]) : '',
                 'finalgrade' => $row->finalgrade,
                 'timepulled' => transform::datetime($row->timepulled),
                 'timechangedonothersite' => $row->remotetime ? transform::datetime($row->remotetime) : '',
@@ -302,7 +302,7 @@ class provider implements
 
         foreach ($rows as $row) {
             $attempts[] = [
-                'quiz' => $row->quizname !== null ? format_string($row->quizname) : '',
+                'quiz' => $row->quizname !== null ? format_string($row->quizname, true, ['context' => $context]) : '',
                 'attempt' => $row->attemptnumber,
                 'marks' => json_decode((string) $row->marks, true) ?: [],
                 'timeimported' => transform::datetime($row->timeimported),

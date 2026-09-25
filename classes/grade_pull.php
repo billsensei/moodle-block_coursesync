@@ -203,6 +203,15 @@ class grade_pull {
             return $result;
         }
 
+        // Who this pull is for, before the source is asked anything: it is
+        // told these students and sends only theirs. With nobody, there is
+        // nothing to ask for - and an empty list would mean "everyone".
+        [$students, $outofreach] = self::reach($courseid);
+
+        if (!$students) {
+            return $result;
+        }
+
         // Quizzes first: where the source's attempts can come into a quiz
         // here, they do, and that quiz then works out its own grade - so it
         // is left out of the overrides below (see pull_item()).
@@ -228,14 +237,13 @@ class grade_pull {
             $token,
             (int) $record->remotecourseid,
             array_keys($copies),
-            $client
+            $client,
+            array_map('strval', array_keys($students))
         );
 
         if (!$found->success) {
             return grade_pull_result::failure($found->errorkey);
         }
-
-        $students = self::students($courseid);
 
         $usernames = [];
 
@@ -281,6 +289,7 @@ class grade_pull {
                     $localitems[$itemnumber] ?? null,
                     $students,
                     $knownhere,
+                    $outofreach,
                     $result->attemptquizzes[(int) $cm->id] ?? null
                 );
             }
@@ -310,6 +319,8 @@ class grade_pull {
      * @param \grade_item|null $gradeitem the matching grade item here
      * @param \stdClass[] $students gradable users here, by username
      * @param bool[] $knownhere username => true for accounts that exist here
+     * @param bool[] $outofreach username => true for students here outside
+     *      the pulling person's groups, left out without a word
      * @param bool[]|null $byattempts for a quiz whose attempts come across:
      *      username => true for everyone with attempts on the source
      * @return void
@@ -325,6 +336,7 @@ class grade_pull {
         ?\grade_item $gradeitem,
         array $students,
         array $knownhere,
+        array $outofreach,
         ?array $byattempts = null
     ): void {
         global $DB;
@@ -361,6 +373,13 @@ class grade_pull {
             $entry = self::entry($cm, $remoteitem->itemnumber, $gradeitem, grade_pull_result::SKIPPED, null);
             $entry->username = $remotegrade->username;
             $user = $students[$remotegrade->username] ?? null;
+
+            // Outside this person's groups: not theirs to see or grade, and
+            // not even to hear of - a "skipped" line would still say that
+            // this student has a grade over there.
+            if (isset($outofreach[$remotegrade->username])) {
+                continue;
+            }
 
             // The student's attempts come into this quiz, and it works out
             // their grade from them. An override would hide that, so none
@@ -651,33 +670,33 @@ class grade_pull {
     }
 
     /**
-     * The students a pull may give grades or attempts to: active graded users
-     * of the course, by username.
+     * The students a pull by the current user may reach, and those it may not.
      *
-     * Final grades are only current once any pending recalculation of the
-     * gradebook has run, and core's list of gradable users refuses to run at
-     * all before it ("gradesneedregrading"), so it runs first.
+     * Everyone is an active graded user of the course once the gradebook is
+     * up to date. Someone in a course with separate groups who may not see
+     * all groups reaches only their own groups' students - core's own list
+     * already applies that rule, the gradebook's rule - and the rest are out
+     * of reach: not previewed, not written, and not mentioned (a "skipped"
+     * line would still say they have a grade on the other site).
      *
      * @param int $courseid
-     * @return \stdClass[] username => user
+     * @return array [username => user within reach, username => true out of reach]
      */
-    public static function students(int $courseid): array {
-        global $CFG;
-
-        require_once($CFG->libdir . '/gradelib.php');
-        require_once($CFG->dirroot . '/grade/lib.php');
-
-        if (grade_needs_regrade_final_grades($courseid)) {
-            grade_regrade_final_grades($courseid);
-        }
-
+    public static function reach(int $courseid): array {
         $students = [];
+        $outofreach = [];
 
-        foreach (get_gradable_users($courseid, null, true) as $user) {
+        foreach (local\gradebook::gradable_users($courseid) as $user) {
             $students[$user->username] = $user;
         }
 
-        return $students;
+        foreach (local\gradebook::gradable_users($courseid, true) as $user) {
+            if (!isset($students[$user->username])) {
+                $outofreach[$user->username] = true;
+            }
+        }
+
+        return [$students, $outofreach];
     }
 
     /**

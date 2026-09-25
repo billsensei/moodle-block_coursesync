@@ -544,6 +544,12 @@ runs `grade_regrade_final_grades()` first if the course needs it: the iterator
 behind `get_gradable_users()` throws `gradesneedregrading` otherwise, and final
 grades would be stale anyway.
 
+**Only the students needed:** both engines work out `grade_pull::reach()`
+before asking anything, and send those usernames (`usernames`, one per line -
+not an array, which `max_input_vars` would truncate). An empty list means
+"everyone" to the source (older destinations), so with nobody in reach the
+source is not asked at all. The source filters with `local\gradebook::only()`.
+
 **Destination:** `grade_pull::preview()` / `run()`, returning a
 `grade_pull_result` (one entry per student per grade item: ADD, UPDATE, SAME,
 CONFLICT or SKIPPED with a reason). `grades.php` is a thin page over it.

@@ -193,6 +193,8 @@ class remote_client {
      * @param int $courseid the resolved remote course id
      * @param int[] $cmids course module ids on the source site
      * @param \core\http_client|null $client injected only by tests
+     * @param string[] $usernames the only students wanted (never empty: an
+     *      empty list means every student to the source)
      * @return grades_result
      */
     public static function get_grades(
@@ -200,31 +202,45 @@ class remote_client {
         string $token,
         int $courseid,
         array $cmids,
-        ?http_client $client = null
+        ?http_client $client = null,
+        array $usernames = []
     ): grades_result {
-        $outcome = self::call($baseurl, $token, 'block_coursesync_get_grades', [
-            'courseid' => $courseid,
-            'cmids' => array_values(array_map('intval', $cmids)),
-        ], $client);
+        $items = [];
 
-        if ($outcome['errorkey'] === 'errornopermission') {
-            // The account may well hold the sync permission: what it lacks
-            // here is the separate one for grades, so say that.
-            return grades_result::failure('errornogradepermission');
+        // In batches the source accepts; the answers are put back together.
+        foreach (array_chunk(array_values(array_map('intval', $cmids)), external\get_grades::MAX_CMIDS) as $batch) {
+            $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_grades', [
+                'courseid' => $courseid,
+                'cmids' => $batch,
+            ], $usernames, $client);
+
+            if ($outcome['errorkey'] === 'errornopermission') {
+                // The account may well hold the sync permission: what it
+                // lacks here is the separate one for grades, so say that.
+                return grades_result::failure('errornogradepermission');
+            }
+
+            if ($outcome['errorkey'] === 'errorpluginmissing') {
+                // The source answered as Course Sync (the connection test
+                // passed), so what it lacks is this one function: a version
+                // from before grade sync.
+                return grades_result::failure('errorgradesourceoutdated');
+            }
+
+            if ($outcome['errorkey'] !== null) {
+                return grades_result::failure($outcome['errorkey']);
+            }
+
+            $answer = grades_result::from_response($outcome['data']);
+
+            if (!$answer->success) {
+                return $answer;
+            }
+
+            $items = array_merge($items, $answer->items);
         }
 
-        if ($outcome['errorkey'] === 'errorpluginmissing') {
-            // The source answered as Course Sync (the connection test passed),
-            // so what it lacks is this one function: a version from before
-            // grade sync.
-            return grades_result::failure('errorgradesourceoutdated');
-        }
-
-        if ($outcome['errorkey'] !== null) {
-            return grades_result::failure($outcome['errorkey']);
-        }
-
-        return grades_result::from_response($outcome['data']);
+        return grades_result::success($items);
     }
 
     /**
@@ -236,6 +252,8 @@ class remote_client {
      * @param int $courseid the resolved remote course id
      * @param int[] $cmids course module ids of quizzes on the source site
      * @param \core\http_client|null $client injected only by tests
+     * @param string[] $usernames the only students wanted (never empty: an
+     *      empty list means every student to the source)
      * @return quiz_attempts_result
      */
     public static function get_quiz_attempts(
@@ -243,25 +261,38 @@ class remote_client {
         string $token,
         int $courseid,
         array $cmids,
-        ?http_client $client = null
+        ?http_client $client = null,
+        array $usernames = []
     ): quiz_attempts_result {
-        $outcome = self::call($baseurl, $token, 'block_coursesync_get_quiz_attempts', [
-            'courseid' => $courseid,
-            'cmids' => array_values(array_map('intval', $cmids)),
-        ], $client);
-
         // Refused for the same permission as grades; and a source that
         // answers as Course Sync but lacks this function is from before it.
         $translate = [
             'errornopermission' => 'errornogradepermission',
             'errorpluginmissing' => 'errorattemptsourceoutdated',
         ];
+        $answers = [];
 
-        if ($outcome['errorkey'] !== null) {
-            return quiz_attempts_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
+        // In batches the source accepts; the answers are put back together.
+        foreach (array_chunk(array_values(array_map('intval', $cmids)), external\get_quiz_attempts::MAX_CMIDS) as $batch) {
+            $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_quiz_attempts', [
+                'courseid' => $courseid,
+                'cmids' => $batch,
+            ], $usernames, $client);
+
+            if ($outcome['errorkey'] !== null) {
+                return quiz_attempts_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
+            }
+
+            $answer = quiz_attempts_result::from_response($outcome['data']);
+
+            if (!$answer->success) {
+                return $answer;
+            }
+
+            $answers[] = $answer;
         }
 
-        return quiz_attempts_result::from_response($outcome['data']);
+        return quiz_attempts_result::merge($answers);
     }
 
     /**
@@ -333,6 +364,45 @@ class remote_client {
             (int) ($data['filesize'] ?? 0),
             (string) ($data['contenthash'] ?? '')
         );
+    }
+
+    /**
+     * Call a grade function for only some students - and, if the source is
+     * from before it could be told which, again for all of them.
+     *
+     * The list goes as one parameter, one username per line: see
+     * local\gradebook::only(). A source that does not know the parameter
+     * refuses the whole call, as Moodle refuses any parameter it does not
+     * expect ("Unexpected keys"), so it is asked once more without it -
+     * exactly the call it answered before this parameter existed.
+     *
+     * @param string $baseurl
+     * @param string $token
+     * @param string $function
+     * @param array $params
+     * @param string[] $usernames the only students wanted; none sends no list
+     * @param http_client|null $client
+     * @return array{errorkey: string|null, data: mixed}
+     */
+    protected static function call_for_students(
+        string $baseurl,
+        string $token,
+        string $function,
+        array $params,
+        array $usernames,
+        ?http_client $client
+    ): array {
+        if (!$usernames) {
+            return self::call($baseurl, $token, $function, $params, $client);
+        }
+
+        $outcome = self::call($baseurl, $token, $function, $params + ['usernames' => implode("\n", $usernames)], $client);
+
+        if ($outcome['errorkey'] === 'errorbadrequest') {
+            $outcome = self::call($baseurl, $token, $function, $params, $client);
+        }
+
+        return $outcome;
     }
 
     /**

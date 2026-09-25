@@ -144,7 +144,7 @@ if ($result->entries === []) {
 }
 
 // A table of counts per activity, for one kind of entry.
-$rendersummary = static function (array $activities, array $columns, string $captionkey, string $id): void {
+$rendersummary = static function (array $activities, array $columns, string $captionkey, string $id) use ($coursecontext): void {
     $head = html_writer::tag('tr', implode('', array_map(
         static fn(string $key): string => html_writer::tag('th', get_string($key, 'block_coursesync'), ['scope' => 'col']),
         array_keys($columns)
@@ -152,7 +152,7 @@ $rendersummary = static function (array $activities, array $columns, string $cap
     $rows = '';
 
     foreach ($activities as $activity) {
-        $cells = html_writer::tag('td', s($activity['name']));
+        $cells = html_writer::tag('td', format_string($activity['name'], true, ['context' => $coursecontext]));
 
         foreach (array_slice($columns, 1) as $outcome) {
             $cells .= html_writer::tag('td', $activity[$outcome]);
@@ -219,7 +219,8 @@ $rendergrades = static function (
 ) use (
     $rendertable,
     $studentname,
-    $showgrade
+    $showgrade,
+    $coursecontext
 ): void {
     if ($entries === []) {
         return;
@@ -239,7 +240,7 @@ $rendergrades = static function (
         $rows .= html_writer::tag(
             'tr',
             html_writer::tag('td', s($studentname($entry)))
-            . html_writer::tag('td', s($entry->activity))
+            . html_writer::tag('td', format_string($entry->activity, true, ['context' => $coursecontext]))
             . html_writer::tag('td', $entry->userid ? $showgrade($entry->grade, $entry->gradeitemid) : '-')
             . html_writer::tag('td', $showgrade($entry->localgrade, $entry->gradeitemid))
             . html_writer::tag('td', $reason)
@@ -255,7 +256,15 @@ $rendergrades = static function (
 };
 
 // Students' quiz attempts, for one outcome or more.
-$renderattempts = static function (array $entries, string $headingkey, string $id) use ($rendertable, $studentname): void {
+$renderattempts = static function (
+    array $entries,
+    string $headingkey,
+    string $id
+) use (
+    $rendertable,
+    $studentname,
+    $coursecontext
+): void {
     if ($entries === []) {
         return;
     }
@@ -279,7 +288,7 @@ $renderattempts = static function (array $entries, string $headingkey, string $i
         $rows .= html_writer::tag(
             'tr',
             html_writer::tag('td', s($studentname($entry)))
-            . html_writer::tag('td', s($entry->activity))
+            . html_writer::tag('td', format_string($entry->activity, true, ['context' => $coursecontext]))
             . html_writer::tag('td', $entry->attempt ? (int) $entry->attempt : '-')
             . html_writer::tag('td', $entry->username !== '' ? $marks($entry->grade) : '-')
             . html_writer::tag('td', $marks($entry->localgrade))

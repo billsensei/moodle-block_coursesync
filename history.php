@@ -116,7 +116,7 @@ if ($runs === []) {
     // Renders a grade pull's per-activity counts - gradebook grades, then
     // quiz attempts - or a line saying there were none. A run from before
     // attempts came has no kind on its rows: they are all grades.
-    $rendergradecounts = function (array $activities): string {
+    $rendergradecounts = function (array $activities) use ($coursecontext): string {
         if ($activities === []) {
             return html_writer::tag('p', get_string('historynothing', 'block_coursesync'));
         }
@@ -145,7 +145,7 @@ if ($runs === []) {
                     continue;
                 }
 
-                $cells = html_writer::tag('td', s($activity['name'] ?? ''));
+                $cells = html_writer::tag('td', format_string($activity['name'] ?? '', true, ['context' => $coursecontext]));
 
                 foreach ($outcomes as $outcome) {
                     $cells .= html_writer::tag('td', (int) ($activity[$outcome] ?? 0));
