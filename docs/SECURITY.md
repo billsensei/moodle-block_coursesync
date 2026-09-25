@@ -60,7 +60,7 @@ Phase 7 replaced one such guard in `setup.php` with `require_sesskey()`.
 
 ### Web service functions
 
-All six check `block/coursesync:sync` in the relevant context and call
+All seven check `block/coursesync:sync` in the relevant context and call
 `validate_context()`. Sesskey does not apply: these are token-authenticated.
 
 | Function | Capability checked in |
@@ -71,6 +71,7 @@ All six check `block/coursesync:sync` in the relevant context and call
 | `block_coursesync_get_activity` | the course's context |
 | `block_coursesync_get_activity_file` | the course's context |
 | `block_coursesync_get_grades` | the course's context, plus `block/coursesync:exportgrades` there |
+| `block_coursesync_get_quiz_attempts` | the course's context, plus `block/coursesync:exportgrades` there |
 
 The capability is checked **before** `validate_context()` so a missing sync
 permission is reported as that, rather than as the "course not accessible" that
@@ -100,6 +101,14 @@ responses), and only for requested activities inside the checked course: a
 cmid from another course is dropped silently, never answered. If the course's
 gradebook is waiting to be recalculated it recalculates first, as core's own
 user-grades web service does, so the grades sent are never stale.
+
+`get_quiz_attempts` (v1.19.0) sits behind exactly the same switch and the same
+two permissions: the same people's data, in more detail. For each quiz asked
+about it returns the outline (each slot's question type and maximum mark) and
+every **finished, non-preview** attempt by an active graded student: attempt
+number, start and finish times, total, and each slot's mark and question state.
+Format version 1 carries **no responses** - what a student answered is stored
+against ids that mean nothing on another site, and is left for a later version.
 
 The other direction has its own switch, "Let teachers pull grades into this
 site" (`allowgradepull`, default off), and `grade_pull::check_allowed()`
@@ -185,7 +194,8 @@ unless four separate people-decisions have been made:
 
 Per activity asked about: each active, graded student's **username**, final
 gradebook grade, feedback text and format, and hidden flag; the grade item's
-range, type and scale items. Only activities in the course the sync account is
+range, type and scale items. For a quiz (v1.19.0), also each finished attempt's
+times, total, and per-question marks and states - never the answers. Only activities in the course the sync account is
 permitted on; only the ones the destination names. Never attempts,
 submissions, responses, answers, or any other user data.
 
@@ -215,12 +225,43 @@ A malicious or compromised source could send wrong grades. What bounds it:
   username with `PARAM_USERNAME`; the format limited to the four core formats.
   Everything is escaped again where the page shows it.
 
+### Quiz attempts (v1.19.0)
+
+For a copied quiz, a pull also builds the source's finished attempts here as
+real attempts (`attempt_pull`), marks only. The same four gates apply, plus
+`mod/quiz:grade` in each quiz for the person pulling. What bounds a wrong or
+hostile source, in addition to the grade rules above:
+
+- Attempts only come into a quiz whose outline still matches the source's:
+  same number of slots, same maximum mark and question type in each. Anything
+  else refuses the whole quiz.
+- Only finished, fully graded attempts. Marks are clamped to 0..the slot's
+  maximum, and rescaled from the attempt's own maximum.
+- An attempt is never brought twice (`block_coursesync_attempt`, unique per
+  quiz and source attempt id); one deleted here is never brought back; one a
+  teacher has regraded here is never overwritten.
+- **No messages.** The attempt is built directly - started, its questions
+  finished and manually graded, the row set to finished - rather than through
+  `process_submit()`, so no `attempt_submitted` (teacher notifications) and no
+  `attempt_graded` fire. `gradednotificationsenttime` is set, or the quiz's
+  `quiz_notify_attempt_manual_grading_completed` task would email students
+  about attempts weeks old (tested by mutation). Only `attempt_started` fires,
+  which logs the attempt as started by the teacher who pulled.
+- No responses are imported, so nothing a student typed on the source is ever
+  rendered here. The comment on each question is this plugin's own string with
+  the source site's name, which was cleaned (`PARAM_TEXT`) when the connection
+  test stored it and is escaped again with `s()` before it goes into the
+  comment; the comment is then shown through `format_text()` like any other.
+
 ### What is kept, and where
 
 - The grades themselves: the core gradebook (overrides), reported and deleted
   by `core_grades`.
 - `block_coursesync_grade`: which grades a pull wrote, and what it wrote — in the
   privacy provider, block context.
+- Imported quiz attempts: ordinary attempts in the quiz, reported and deleted by
+  `mod_quiz`. `block_coursesync_attempt` records which ones, and the marks given —
+  in the privacy provider, block context.
 - The run history for a grade pull holds **counts per activity only**, never
   students, so there is no second copy of anyone's grades outside the
   gradebook's reach.
@@ -487,6 +528,10 @@ do. Table cells use `s()`.
 - Images embedded in grade feedback are not transferred; the text is, and a
   `@@PLUGINFILE@@` link in it arrives broken.
 - A grade removed on the source is not removed on the destination.
+- An imported quiz attempt carries marks, not responses: its review shows each
+  question unanswered, with the mark and a comment saying where it was answered.
+  A random slot shows whichever question the attempt drew here. The manual-grade
+  steps carry the time of the import, not of the marking on the source.
 - A question's own files (its text, feedback, answers) do not go through
   `file_sync` at all — `qbank_handler` relies on `qformat_xml` inlining them
   as base64 inside each question's own XML, so `file_sync::MAX_CHUNKS`'s cap

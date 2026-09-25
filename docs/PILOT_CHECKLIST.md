@@ -113,6 +113,9 @@ read"*.
   never replaces a grade someone gave on this site (it lists it instead), and
   pulled grades show as **overridden** in the gradebook — that is what keeps
   them from being wiped by the activity here
+- For quizzes, the students' attempts come across and show in the quiz reports,
+  with the marks but **not the answers**; they count towards the attempt limit,
+  and the quiz works out the grade itself
 
 ## Known limitations to set expectations on
 
@@ -126,6 +129,8 @@ read"*.
 | Grades match by username only | A username that is a different person on each site gets the wrong grades — check before switching grades on |
 | Grades removed on the source stay here | Pulling only adds and updates; clear a grade here by hand |
 | Images in grade feedback do not come across | The feedback text does; pictures in it arrive as broken links |
+| Quiz attempts carry marks, not answers | Reviewing an imported attempt shows each question unanswered, with its mark |
+| A copied quiz changed here takes no attempts | Its grades come as overrides instead - the page says why |
 
 ## After the pilot
 

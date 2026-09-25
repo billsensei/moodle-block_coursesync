@@ -112,6 +112,9 @@ final class grade_pull_test extends advanced_testcase {
      * A fake source that answers get_grades with $this->sourceitems, and
      * remembers what it was asked.
      *
+     * It is a source from before quiz attempts could be shared: asked for
+     * them, it answers as such a site does, that there is no such function.
+     *
      * @return http_client
      */
     protected function source(): http_client {
@@ -119,7 +122,11 @@ final class grade_pull_test extends advanced_testcase {
             parse_str((string) $request->getBody(), $params);
             $this->calls[] = $params;
 
-            return Create::promiseFor(new Response(200, [], json_encode(['items' => $this->sourceitems])));
+            $body = $params['wsfunction'] === 'block_coursesync_get_quiz_attempts'
+                ? ['exception' => 'dml_missing_record_exception', 'errorcode' => 'invalidrecord']
+                : ['items' => $this->sourceitems];
+
+            return Create::promiseFor(new Response(200, [], json_encode($body)));
         }]);
     }
 
@@ -416,7 +423,8 @@ final class grade_pull_test extends advanced_testcase {
         );
         $this->sourceitems = [$this->remote_item(900, [$this->remote_grade('sam', 7)], ['grademax' => 10])];
 
-        grade_pull::run($this->instanceid, $this->course->id, $this->source());
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+        $this->assertSame(['attemptsunavailable'], $result->notes, 'this source cannot share attempts');
         $this->assertEquals(7, $this->grade_here($quiz, null, 'quiz')->finalgrade);
 
         // Nullify-if-none: exactly what the quiz does for a student with no
@@ -762,6 +770,7 @@ final class grade_pull_test extends advanced_testcase {
         $this->assertEquals(1, $run->conflictcount);
         $this->assertEquals(1, $run->skippedcount);
         $this->assertSame([[
+            'kind' => grade_pull_result::KIND_GRADE,
             'cmid' => (int) $assign->cmid,
             'name' => 'Essay one',
             'add' => 1,
@@ -769,6 +778,7 @@ final class grade_pull_test extends advanced_testcase {
             'same' => 0,
             'conflict' => 1,
             'skipped' => 1,
+            'released' => 0,
         ]], $run->pulled);
 
         $stored = $DB->get_record('block_coursesync_run', ['id' => $run->id]);

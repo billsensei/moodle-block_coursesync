@@ -161,6 +161,7 @@ class block_coursesync extends block_base {
         connection::delete($this->instance->id);
         \block_coursesync\history::delete_for_block_instance($this->instance->id);
         \block_coursesync\grade_pull::delete_for_block_instance($this->instance->id);
+        \block_coursesync\attempt_pull::delete_for_block_instance($this->instance->id);
 
         return true;
     }

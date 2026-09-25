@@ -200,6 +200,70 @@ final class provider_test extends provider_testcase {
     }
 
     /**
+     * Record that a pull brought one of a student's quiz attempts across.
+     *
+     * @param int $userid
+     * @return \stdClass the quiz
+     */
+    protected function record_pulled_attempt(int $userid): \stdClass {
+        global $DB;
+
+        $quiz = $this->getDataGenerator()->create_module('quiz', ['course' => $this->course->id, 'name' => 'Unit quiz']);
+        $DB->insert_record('block_coursesync_attempt', (object) [
+            'blockinstanceid' => $this->instanceid,
+            'courseid' => $this->course->id,
+            'userid' => $userid,
+            'quizid' => $quiz->id,
+            'attemptid' => 0,
+            'remotecmid' => 777,
+            'remoteattemptid' => 888 + $userid,
+            'marks' => json_encode([1 => 2.0, 2 => null]),
+            'timeimported' => 1750000200,
+        ]);
+
+        return $quiz;
+    }
+
+    /**
+     * A student whose attempt was brought across is found, exported with
+     * the quiz's name and the marks given, and deleted - for them only.
+     */
+    public function test_pulled_attempts(): void {
+        global $DB;
+
+        $student = $this->getDataGenerator()->create_user();
+        $other = $this->getDataGenerator()->create_user();
+        $this->record_pulled_attempt($student->id);
+        $this->record_pulled_attempt($other->id);
+
+        $this->assertSame(
+            [$this->blockcontext->id],
+            array_map('intval', provider::get_contexts_for_userid($student->id)->get_contextids())
+        );
+        $userlist = new userlist($this->blockcontext, 'block_coursesync');
+        provider::get_users_in_context($userlist);
+        $this->assertEqualsCanonicalizing([(int) $student->id, (int) $other->id], array_map('intval', $userlist->get_userids()));
+
+        provider::export_user_data(new approved_contextlist($student, 'block_coursesync', [$this->blockcontext->id]));
+        $data = writer::with_context($this->blockcontext)
+            ->get_data([get_string('privacy:path:attempts', 'block_coursesync')]);
+        $this->assertCount(1, $data->attempts);
+        $this->assertSame('Unit quiz', $data->attempts[0]['quiz']);
+        $this->assertEquals([1 => 2.0, 2 => null], $data->attempts[0]['marks']);
+
+        provider::delete_data_for_user(new approved_contextlist($student, 'block_coursesync', [$this->blockcontext->id]));
+        $this->assertFalse($DB->record_exists('block_coursesync_attempt', ['userid' => $student->id]));
+        $this->assertTrue($DB->record_exists('block_coursesync_attempt', ['userid' => $other->id]));
+
+        provider::delete_data_for_users(new approved_userlist($this->blockcontext, 'block_coursesync', [$other->id]));
+        $this->assertSame(0, $DB->count_records('block_coursesync_attempt'));
+
+        $this->record_pulled_attempt($student->id);
+        provider::delete_data_for_all_users_in_context($this->blockcontext);
+        $this->assertSame(0, $DB->count_records('block_coursesync_attempt'));
+    }
+
+    /**
      * The plugin says what it stores, rather than claiming it stores nothing.
      */
     public function test_metadata_is_declared(): void {
@@ -211,7 +275,9 @@ final class provider_test extends provider_testcase {
         $tables = array_map(static fn($item) => $item->get_name(), $items);
         $this->assertContains('block_coursesync_run', $tables);
         $this->assertContains('block_coursesync_grade', $tables);
+        $this->assertContains('block_coursesync_attempt', $tables);
         $this->assertContains('core_grades', $tables);
+        $this->assertContains('mod', $tables);
         $this->assertContains('othersite', $tables);
     }
 

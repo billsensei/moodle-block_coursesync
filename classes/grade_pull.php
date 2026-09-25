@@ -203,6 +203,26 @@ class grade_pull {
             return $result;
         }
 
+        // Quizzes first: where the source's attempts can come into a quiz
+        // here, they do, and that quiz then works out its own grade - so it
+        // is left out of the overrides below (see pull_item()).
+        $quizzes = array_filter($copies, static fn(\cm_info $cm) => $cm->modname === 'quiz');
+
+        if ($quizzes) {
+            $attempts = attempt_pull::work($blockinstanceid, $courseid, $record, $token, $write, $client);
+
+            if ($attempts->success) {
+                $result->entries = $attempts->entries;
+                $result->attemptquizzes = $attempts->attemptquizzes;
+            } else if ($attempts->errorkey === 'errorattemptsourceoutdated') {
+                // The source predates attempts: grades still come, as
+                // overrides, as they always have.
+                $result->notes[] = 'attemptsunavailable';
+            } else {
+                return grade_pull_result::failure($attempts->errorkey);
+            }
+        }
+
         $found = remote_client::get_grades(
             $record->remoteurl,
             $token,
@@ -215,19 +235,17 @@ class grade_pull {
             return grade_pull_result::failure($found->errorkey);
         }
 
-        // Final grades are only current once any pending recalculation has
-        // run, and the list of gradable students refuses to run before it.
-        if (grade_needs_regrade_final_grades($courseid)) {
-            grade_regrade_final_grades($courseid);
+        $students = self::students($courseid);
+
+        $usernames = [];
+
+        foreach ($found->items as $item) {
+            foreach ($item->grades as $grade) {
+                $usernames[] = $grade->username;
+            }
         }
 
-        $students = [];
-
-        foreach (get_gradable_users($courseid, null, true) as $user) {
-            $students[$user->username] = $user;
-        }
-
-        $knownhere = self::usernames_known_here($found->items, $students);
+        $knownhere = self::usernames_known_here($usernames, $students);
         $remote = [];
 
         foreach ($found->items as $item) {
@@ -262,7 +280,8 @@ class grade_pull {
                     $remoteitem,
                     $localitems[$itemnumber] ?? null,
                     $students,
-                    $knownhere
+                    $knownhere,
+                    $result->attemptquizzes[(int) $cm->id] ?? null
                 );
             }
 
@@ -291,6 +310,8 @@ class grade_pull {
      * @param \grade_item|null $gradeitem the matching grade item here
      * @param \stdClass[] $students gradable users here, by username
      * @param bool[] $knownhere username => true for accounts that exist here
+     * @param bool[]|null $byattempts for a quiz whose attempts come across:
+     *      username => true for everyone with attempts on the source
      * @return void
      */
     protected static function pull_item(
@@ -303,7 +324,8 @@ class grade_pull {
         \stdClass $remoteitem,
         ?\grade_item $gradeitem,
         array $students,
-        array $knownhere
+        array $knownhere,
+        ?array $byattempts = null
     ): void {
         global $DB;
 
@@ -339,6 +361,31 @@ class grade_pull {
             $entry = self::entry($cm, $remoteitem->itemnumber, $gradeitem, grade_pull_result::SKIPPED, null);
             $entry->username = $remotegrade->username;
             $user = $students[$remotegrade->username] ?? null;
+
+            // The student's attempts come into this quiz, and it works out
+            // their grade from them. An override would hide that, so none
+            // is written - and one an earlier pull wrote, still as it was, is
+            // taken away. A grade someone here set is left alone, as ever.
+            // (The attempt entries already say what happened to anyone who
+            // cannot be matched.)
+            if ($byattempts !== null && isset($byattempts[$remotegrade->username])) {
+                $existing = $user ? ($localgrades[$user->id] ?? null) : null;
+                $pulled = $user ? ($ours[$user->id] ?? null) : null;
+
+                if ($existing && $pulled && !$existing->is_locked() && self::untouched($existing, $pulled)) {
+                    $entry->userid = (int) $user->id;
+                    $entry->outcome = grade_pull_result::RELEASED;
+                    $entry->localgrade = self::finalgrade($existing);
+
+                    if ($write) {
+                        self::release($gradeitem, $existing, $pulled);
+                    }
+
+                    $result->add($entry);
+                }
+
+                continue;
+            }
 
             if (!$user) {
                 $entry->reason = isset($knownhere[$remotegrade->username]) ? 'gradeskipnotenrolled' : 'gradeskipnouser';
@@ -500,6 +547,34 @@ class grade_pull {
     }
 
     /**
+     * Take away an override an earlier pull wrote, so the activity's own
+     * grade shows again - and the feedback with it, if that was the pull's
+     * too and is still as it was written.
+     *
+     * @param \grade_item $gradeitem
+     * @param \grade_grade $grade the pulled grade, untouched since
+     * @param \stdClass $pulled its block_coursesync_grade row
+     * @return void
+     */
+    protected static function release(\grade_item $gradeitem, \grade_grade $grade, \stdClass $pulled): void {
+        global $DB;
+
+        $transaction = $DB->start_delegated_transaction();
+        $grade->grade_item = $gradeitem;
+
+        if ((string) $grade->feedback !== '' && sha1((string) $grade->feedback) === $pulled->feedbackhash) {
+            $grade->feedback = null;
+            $grade->feedbackformat = FORMAT_MOODLE;
+        }
+
+        // Saves the row without the override, then asks the activity for
+        // its own grade for this student.
+        $grade->set_overridden(false);
+        $DB->delete_records('block_coursesync_grade', ['id' => $pulled->id]);
+        $transaction->allow_commit();
+    }
+
+    /**
      * Put a source grade into this grade item's range.
      *
      * A scale grade is a position on the scale, which item_problem() has
@@ -576,24 +651,52 @@ class grade_pull {
     }
 
     /**
+     * The students a pull may give grades or attempts to: active graded users
+     * of the course, by username.
+     *
+     * Final grades are only current once any pending recalculation of the
+     * gradebook has run, and core's list of gradable users refuses to run at
+     * all before it ("gradesneedregrading"), so it runs first.
+     *
+     * @param int $courseid
+     * @return \stdClass[] username => user
+     */
+    public static function students(int $courseid): array {
+        global $CFG;
+
+        require_once($CFG->libdir . '/gradelib.php');
+        require_once($CFG->dirroot . '/grade/lib.php');
+
+        if (grade_needs_regrade_final_grades($courseid)) {
+            grade_regrade_final_grades($courseid);
+        }
+
+        $students = [];
+
+        foreach (get_gradable_users($courseid, null, true) as $user) {
+            $students[$user->username] = $user;
+        }
+
+        return $students;
+    }
+
+    /**
      * Of the usernames the source sent that are not students here, which
      * belong to an account on this site at all - so a skipped student can be
      * reported as "not in this course" rather than "no such account".
      *
-     * @param \stdClass[] $items from grades_result
+     * @param string[] $usernames every username the source sent
      * @param \stdClass[] $students gradable users here, by username
      * @return bool[] username => true
      */
-    protected static function usernames_known_here(array $items, array $students): array {
+    public static function usernames_known_here(array $usernames, array $students): array {
         global $CFG, $DB;
 
         $unmatched = [];
 
-        foreach ($items as $item) {
-            foreach ($item->grades as $grade) {
-                if (!isset($students[$grade->username]) && $grade->username !== '') {
-                    $unmatched[$grade->username] = true;
-                }
+        foreach ($usernames as $username) {
+            if (!isset($students[$username]) && $username !== '') {
+                $unmatched[$username] = true;
             }
         }
 
@@ -631,6 +734,7 @@ class grade_pull {
         ?string $reason
     ): \stdClass {
         return (object) [
+            'kind' => grade_pull_result::KIND_GRADE,
             'cmid' => (int) $cm->id,
             'activity' => $cm->name,
             'itemnumber' => $itemnumber,

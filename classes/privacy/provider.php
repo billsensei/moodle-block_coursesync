@@ -39,8 +39,13 @@ use core_privacy\local\request\writer;
  *   reported and deleted by core_grades), and which this site sends to another
  *   site when it is the source and grade sharing is switched on.
  *
+ * Quiz attempts (phases 40-44) add block_coursesync_attempt: which of a
+ * student's attempts a pull brought across, and the marks it gave them. The
+ * attempts themselves are the quiz's, and its provider covers them.
+ *
  * A grade pull's run history holds counts per activity only - no students -
- * so a student's data here is only ever in block_coursesync_grade.
+ * so a student's data here is only ever in block_coursesync_grade and
+ * block_coursesync_attempt.
  *
  * The connection record - the remote address and its encrypted token - is course
  * configuration rather than anything about a person, and is not reported here.
@@ -80,8 +85,22 @@ class provider implements
             'timepulled' => 'privacy:metadata:grade:timepulled',
         ], 'privacy:metadata:grade');
 
+        $collection->add_database_table('block_coursesync_attempt', [
+            'userid' => 'privacy:metadata:attempt:userid',
+            'quizid' => 'privacy:metadata:attempt:quizid',
+            'attemptid' => 'privacy:metadata:attempt:attemptid',
+            'remotecmid' => 'privacy:metadata:attempt:remotecmid',
+            'remoteattemptid' => 'privacy:metadata:attempt:remoteattemptid',
+            'marks' => 'privacy:metadata:attempt:marks',
+            'timeimported' => 'privacy:metadata:attempt:timeimported',
+        ], 'privacy:metadata:attempt');
+
         // Pulled grades are written into the gradebook, which reports them.
         $collection->add_subsystem_link('core_grades', [], 'privacy:metadata:core_grades');
+
+        // Quiz attempts brought across are ordinary attempts in the quiz,
+        // which reports and deletes them.
+        $collection->add_plugintype_link('mod', [], 'privacy:metadata:mod');
 
         // When this site is the source and grade sharing is on, students'
         // grades leave it for the site that asks.
@@ -89,6 +108,7 @@ class provider implements
             'username' => 'privacy:metadata:othersite:username',
             'grade' => 'privacy:metadata:othersite:grade',
             'feedback' => 'privacy:metadata:othersite:feedback',
+            'attempts' => 'privacy:metadata:othersite:attempts',
         ], 'privacy:metadata:othersite');
 
         return $collection;
@@ -117,16 +137,18 @@ class provider implements
             'userid' => $userid,
         ]);
 
-        $sql = "SELECT ctx.id
-                  FROM {block_coursesync_grade} g
-                  JOIN {block_instances} bi ON bi.id = g.blockinstanceid
-                  JOIN {context} ctx ON ctx.instanceid = bi.id AND ctx.contextlevel = :contextlevel
-                 WHERE g.userid = :userid";
+        foreach (['block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
+            $sql = "SELECT ctx.id
+                      FROM {{$table}} t
+                      JOIN {block_instances} bi ON bi.id = t.blockinstanceid
+                      JOIN {context} ctx ON ctx.instanceid = bi.id AND ctx.contextlevel = :contextlevel
+                     WHERE t.userid = :userid";
 
-        $contextlist->add_from_sql($sql, [
-            'contextlevel' => CONTEXT_BLOCK,
-            'userid' => $userid,
-        ]);
+            $contextlist->add_from_sql($sql, [
+                'contextlevel' => CONTEXT_BLOCK,
+                'userid' => $userid,
+            ]);
+        }
 
         return $contextlist;
     }
@@ -153,14 +175,13 @@ class provider implements
             ['blockinstanceid' => $context->instanceid]
         );
 
-        $userlist->add_from_sql(
-            'userid',
-            "
-                SELECT g.userid
-                  FROM {block_coursesync_grade} g
-                 WHERE g.blockinstanceid = :blockinstanceid",
-            ['blockinstanceid' => $context->instanceid]
-        );
+        foreach (['block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
+            $userlist->add_from_sql(
+                'userid',
+                "SELECT t.userid FROM {{$table}} t WHERE t.blockinstanceid = :blockinstanceid",
+                ['blockinstanceid' => $context->instanceid]
+            );
+        }
     }
 
     /**
@@ -180,6 +201,7 @@ class provider implements
             }
 
             self::export_pulled_grades($context, (int) $user->id);
+            self::export_pulled_attempts($context, (int) $user->id);
 
             $runs = $DB->get_records('block_coursesync_run', [
                 'blockinstanceid' => $context->instanceid,
@@ -252,6 +274,48 @@ class provider implements
     }
 
     /**
+     * Export which of a student's quiz attempts a pull brought across, from
+     * one block. The attempts themselves are the quiz's to export.
+     *
+     * @param \context_block $context
+     * @param int $userid
+     * @return void
+     */
+    protected static function export_pulled_attempts(\context_block $context, int $userid): void {
+        global $DB;
+
+        $rows = $DB->get_records_sql(
+            "SELECT a.*, q.name AS quizname, qa.attempt AS attemptnumber
+               FROM {block_coursesync_attempt} a
+          LEFT JOIN {quiz} q ON q.id = a.quizid
+          LEFT JOIN {quiz_attempts} qa ON qa.id = a.attemptid
+              WHERE a.blockinstanceid = :blockinstanceid AND a.userid = :userid
+           ORDER BY a.timeimported ASC, a.id ASC",
+            ['blockinstanceid' => $context->instanceid, 'userid' => $userid]
+        );
+
+        if (!$rows) {
+            return;
+        }
+
+        $attempts = [];
+
+        foreach ($rows as $row) {
+            $attempts[] = [
+                'quiz' => $row->quizname !== null ? format_string($row->quizname) : '',
+                'attempt' => $row->attemptnumber,
+                'marks' => json_decode((string) $row->marks, true) ?: [],
+                'timeimported' => transform::datetime($row->timeimported),
+            ];
+        }
+
+        writer::with_context($context)->export_data(
+            [get_string('privacy:path:attempts', 'block_coursesync')],
+            (object) ['attempts' => $attempts]
+        );
+    }
+
+    /**
      * Delete everything this plugin holds in a context.
      *
      * @param \context $context
@@ -266,6 +330,7 @@ class provider implements
 
         $DB->delete_records('block_coursesync_run', ['blockinstanceid' => $context->instanceid]);
         $DB->delete_records('block_coursesync_grade', ['blockinstanceid' => $context->instanceid]);
+        $DB->delete_records('block_coursesync_attempt', ['blockinstanceid' => $context->instanceid]);
     }
 
     /**
@@ -286,7 +351,7 @@ class provider implements
 
             // Only this plugin's own record of the pull. The grade itself is
             // in the gradebook, and core_grades deletes that.
-            foreach (['block_coursesync_run', 'block_coursesync_grade'] as $table) {
+            foreach (['block_coursesync_run', 'block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
                 $DB->delete_records($table, [
                     'blockinstanceid' => $context->instanceid,
                     'userid' => $userid,
@@ -319,7 +384,7 @@ class provider implements
         [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
         $params['blockinstanceid'] = $context->instanceid;
 
-        foreach (['block_coursesync_run', 'block_coursesync_grade'] as $table) {
+        foreach (['block_coursesync_run', 'block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
             $DB->delete_records_select($table, "blockinstanceid = :blockinstanceid AND userid {$insql}", $params);
         }
     }

@@ -99,8 +99,8 @@ class history {
     /**
      * Write a finished grade pull to the history.
      *
-     * Only counts, per activity, are kept - never which students or what
-     * grades. The results page shows those at the time; keeping them here
+     * Only counts, per activity and kind (grades, quiz attempts), are kept -
+     * never which students or what grades. The results page shows those at the time; keeping them here
      * would put a second copy of students' grades where the gradebook's own
      * history and privacy handling do not reach.
      *
@@ -130,6 +130,16 @@ class history {
             $status = self::STATUS_OK;
         }
 
+        // One row per activity and kind - a quiz can have both its grade
+        // released and its attempts brought across in one pull.
+        $activities = [];
+
+        foreach ([grade_pull_result::KIND_GRADE, grade_pull_result::KIND_ATTEMPT] as $kind) {
+            foreach ($result->by_activity($kind) as $activity) {
+                $activities[] = ['kind' => $kind] + $activity;
+            }
+        }
+
         $record = (object) [
             'blockinstanceid' => $blockinstanceid,
             'courseid' => $courseid,
@@ -141,12 +151,11 @@ class history {
             'errorkey' => $result->success ? null : $result->errorkey,
             'since' => 0,
             'lastsyncmoved' => 0,
-            'pulledcount' => $counts[grade_pull_result::ADD] + $counts[grade_pull_result::UPDATE],
+            'pulledcount' => $result->changes(),
             'conflictcount' => $counts[grade_pull_result::CONFLICT],
             'skippedcount' => $counts[grade_pull_result::SKIPPED],
             'failedcount' => 0,
-            // One row per activity; see grade_pull_result::by_activity().
-            'pulled' => json_encode(array_values($result->by_activity())),
+            'pulled' => json_encode($activities),
             'conflicts' => json_encode([]),
             'others' => json_encode([]),
         ];

@@ -43,6 +43,21 @@ class grade_pull_result {
     /** @var string Could not be used; the reason says why. */
     public const SKIPPED = 'skipped';
 
+    /**
+     * @var string An override an earlier pull wrote, untouched since, is (or
+     *      would be) removed, so the quiz's own grade from its attempts shows.
+     */
+    public const RELEASED = 'released';
+
+    /** @var string[] Every outcome, in the order they are shown. */
+    public const OUTCOMES = [self::ADD, self::UPDATE, self::SAME, self::CONFLICT, self::SKIPPED, self::RELEASED];
+
+    /** @var string An entry about a gradebook grade. */
+    public const KIND_GRADE = 'grade';
+
+    /** @var string An entry about a quiz attempt. */
+    public const KIND_ATTEMPT = 'attempt';
+
     /** @var bool Whether the pull got as far as looking at grades. */
     public bool $success = true;
 
@@ -53,9 +68,21 @@ class grade_pull_result {
     public bool $preview = false;
 
     /**
-     * @var \stdClass[] cmid (local), activity, itemnumber, gradeitemid, userid
-     *      (0 if none), username, outcome, reason (language string identifier
-     *      or null), grade (pulled, local terms), localgrade (before the pull)
+     * @var array[] Quizzes here that can take the source's attempts: local
+     *      cmid => [username => true] for everyone with attempts there.
+     */
+    public array $attemptquizzes = [];
+
+    /** @var string[] Things to tell the teacher about the pull as a whole, as language string identifiers. */
+    public array $notes = [];
+
+    /**
+     * @var \stdClass[] kind (KIND_GRADE or KIND_ATTEMPT), cmid (local), activity,
+     *      itemnumber, gradeitemid, userid (0 if none), username, outcome,
+     *      reason (language string identifier or null), grade (pulled, local
+     *      terms), localgrade (before the pull); an attempt also has attempt
+     *      (its number on the source), attemptid (here) and notes, and its
+     *      grade and localgrade are the attempt's total marks
      */
     public array $entries = [];
 
@@ -84,29 +111,43 @@ class grade_pull_result {
     }
 
     /**
+     * The entries of one kind, or all of them.
+     *
+     * @param string|null $kind KIND_GRADE, KIND_ATTEMPT, or null for every entry
+     * @return \stdClass[]
+     */
+    public function of_kind(?string $kind = null): array {
+        return $kind === null
+            ? $this->entries
+            : array_values(array_filter($this->entries, static fn($e) => ($e->kind ?? self::KIND_GRADE) === $kind));
+    }
+
+    /**
      * The entries with a given outcome.
      *
      * @param string $outcome one of the constants
+     * @param string|null $kind only entries of this kind
      * @return \stdClass[]
      */
-    public function with_outcome(string $outcome): array {
-        return array_values(array_filter($this->entries, static fn($e) => $e->outcome === $outcome));
+    public function with_outcome(string $outcome, ?string $kind = null): array {
+        return array_values(array_filter($this->of_kind($kind), static fn($e) => $e->outcome === $outcome));
     }
 
     /**
      * What happened in each activity, as counts.
      *
+     * @param string|null $kind only entries of this kind
      * @return array[] local cmid => [cmid, name, and a count for each outcome],
      *     in the order the activities were first met
      */
-    public function by_activity(): array {
+    public function by_activity(?string $kind = null): array {
         $activities = [];
 
-        foreach ($this->entries as $entry) {
+        foreach ($this->of_kind($kind) as $entry) {
             if (!isset($activities[$entry->cmid])) {
                 $activities[$entry->cmid] = array_merge(
                     ['cmid' => $entry->cmid, 'name' => $entry->activity],
-                    array_fill_keys([self::ADD, self::UPDATE, self::SAME, self::CONFLICT, self::SKIPPED], 0)
+                    array_fill_keys(self::OUTCOMES, 0)
                 );
             }
 
@@ -119,15 +160,27 @@ class grade_pull_result {
     /**
      * How many entries have each outcome.
      *
+     * @param string|null $kind only entries of this kind
      * @return int[] outcome => count, every outcome present
      */
-    public function counts(): array {
-        $counts = array_fill_keys([self::ADD, self::UPDATE, self::SAME, self::CONFLICT, self::SKIPPED], 0);
+    public function counts(?string $kind = null): array {
+        $counts = array_fill_keys(self::OUTCOMES, 0);
 
-        foreach ($this->entries as $entry) {
+        foreach ($this->of_kind($kind) as $entry) {
             $counts[$entry->outcome]++;
         }
 
         return $counts;
+    }
+
+    /**
+     * How many grades and attempts a pull writes (or, for a preview, would).
+     *
+     * @return int
+     */
+    public function changes(): int {
+        $counts = $this->counts();
+
+        return $counts[self::ADD] + $counts[self::UPDATE] + $counts[self::RELEASED];
     }
 }

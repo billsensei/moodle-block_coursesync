@@ -168,7 +168,9 @@ Then two things, both on this source site:
 
 What the destination can then read: for each activity it asks about, each
 active student's final gradebook grade, its feedback, and whether it is hidden —
-keyed by username. Never attempts, submissions, answers or anything else.
+keyed by username. For a quiz (v1.19.0 and later), also each student's finished
+attempts: when they were started and submitted, and the mark for each question.
+Never the answers themselves, submissions, or anything else.
 
 The destination site needs its own switch, **Let teachers pull grades into this
 site**, ticked there. See [INSTALL.md](INSTALL.md#grade-sync).

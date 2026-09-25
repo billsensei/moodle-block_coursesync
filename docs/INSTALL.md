@@ -147,7 +147,13 @@ Course Sync*, so turning on one side never turns on the other:
 What the destination does with them is in
 [TEACHER_GUIDE.md](TEACHER_GUIDE.md#pulling-grades): a preview first, never
 replacing a grade someone here gave, and pulled grades written as gradebook
-overrides so the activity cannot wipe them. Grades pulled stay in the gradebook
+overrides so the activity cannot wipe them.
+
+Since v1.19.0 the same switches and permissions also bring **quiz attempts**:
+for a copied quiz, each student's finished attempts become real attempts here,
+with their times and per-question marks (not the answers), and the quiz works
+out the grade itself. They count towards the quiz's attempt limit. Nobody is
+emailed about them. See [TEACHER_GUIDE.md](TEACHER_GUIDE.md#quiz-attempts). Grades pulled stay in the gradebook
 if grade sync is later switched off or the plugin removed.
 
 ## Private networks and testing
@@ -176,6 +182,7 @@ access to the server. **Do not set it on a production site.**
 | `block_coursesync_connection` | One row per configured block: the source address, the encrypted token, the mapped course, and the result of the last test |
 | `block_coursesync_run` | One row per sync run or grade pull: when, who, what was copied or flagged. A grade pull keeps counts per activity only, never which students |
 | `block_coursesync_grade` | One row per grade a grade pull wrote: the student, the grade item, and the grade as written, so a later pull can tell its own grades from a teacher's |
+| `block_coursesync_attempt` | One row per quiz attempt a pull brought across: the student, the attempt here and on the source, and the marks given, so a later pull neither brings it twice nor overwrites a teacher's marks |
 
 The token is encrypted with Moodle's own secret storage (`\core\encryption`,
 libsodium). The key lives outside the database, in the site's secret data
@@ -209,6 +216,10 @@ sides. Nothing changes for anyone until an administrator turns it on. A destinat
 on v1.18 talking to an older source tells a teacher who tries **Pull grades**
 that the other site's Course Sync is too old to share grades; copying activities
 works as before.
+
+Upgrading to v1.19.0 adds quiz attempts to grade sync, under the same switches.
+A v1.19 destination talking to a v1.18 source still pulls grades - quiz grades
+then come as overrides, and the page says the source is too old for attempts.
 
 ## Uninstalling
 

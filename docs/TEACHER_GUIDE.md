@@ -276,7 +276,8 @@ You will only see a **Pull grades** button in the block if:
 ### What happens
 
 **Pull grades** first shows you what it *would* do. Nothing is written until you
-press **Pull the grades**. The page lists:
+press **Pull the grades** (or **Pull grades and attempts**, when quizzes are
+involved). Under **Gradebook grades** the page lists:
 
 - **Kept as they were** — a student already has a different grade here, given by
   someone on this site. That grade is **never replaced**. Both grades are shown
@@ -307,7 +308,39 @@ your course has no attempts or submissions for these students, and an overridden
 grade is what stops it wiping the grade the next time it recalculates. You can
 edit or remove a pulled grade like any other.
 
+Quizzes are the exception — see the next section.
+
 Images inside feedback do not come across; the text does.
+
+### Quiz attempts
+
+For a quiz, the students' **finished attempts** come across too, and appear in
+the quiz's own reports: when each was started and submitted, and the mark for
+every question. The quiz then works out the grade from them, exactly as it does
+for attempts made here — so for a quiz there is no overridden grade.
+
+- **What does not come:** the students' actual answers. Opening an imported
+  attempt shows each question with its mark and a comment, *"Answered on …
+  Course Sync brought this mark across"*, but not what the student wrote or chose.
+  For a question drawn at random, the question shown may not be the one they saw;
+  the mark is theirs.
+- **Attempts count.** They count towards the number of attempts your quiz allows,
+  just as if they were made here. If that takes a student past the limit, the
+  attempt still comes across and the page says so.
+- **Not graded yet there.** An attempt still waiting for someone to mark it on the
+  other site (an essay, say) is skipped, and comes on a later pull once it is marked.
+- **Changed quizzes.** Attempts only come into a quiz that still matches the one
+  on the other site — the same questions, worth the same marks. If you have
+  changed yours, its attempts are refused (the page says why), and its grades come
+  as overridden grades instead.
+- **Pulling again** never brings an attempt twice. If one is regraded on the
+  other site, and nobody here has changed its marks, it is updated here; if you
+  have regraded it, yours stands. An imported attempt you delete stays deleted.
+- **Nobody is emailed** about an imported attempt.
+- If a quiz grade was pulled as an overridden grade before its attempts could
+  come, and nobody has changed it, that override is removed so the quiz's own
+  grade shows — the page lists these as **Now worked out from the quiz's
+  attempts**. A grade you set yourself stays.
 
 ## Sync history
 
@@ -323,7 +356,8 @@ was copied and flagged. Runs that did nothing are recorded too, so you can alway
 tell whether a sync was tried.
 
 A grade pull shows only how many grades each activity gained, kept or skipped —
-not which students. Who got which grade is in the gradebook's own history.
+and, for quizzes, how many attempts — not which students. Who got which grade is
+in the gradebook's own history, and the attempts are in the quiz's reports.
 
 ## Things worth knowing
 

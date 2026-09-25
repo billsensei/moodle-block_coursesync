@@ -20,6 +20,7 @@ use block_coursesync\activity_payload;
 use block_coursesync\external\get_activity;
 use block_coursesync\external\get_activity_file;
 use block_coursesync\external\get_grades;
+use block_coursesync\external\get_quiz_attempts;
 use block_coursesync\external\get_modified_activities;
 use block_coursesync\local\handler\handler_registry;
 use core\http_client;
@@ -76,6 +77,10 @@ trait source_on_this_site {
     protected function answer(string $function, array $params): array {
         if ($function === 'block_coursesync_get_modified_activities') {
             return get_modified_activities::execute((int) $params['courseid'], (int) ($params['since'] ?? 0));
+        }
+
+        if ($function === 'block_coursesync_get_quiz_attempts') {
+            return get_quiz_attempts::execute((int) $params['courseid'], array_map('intval', $params['cmids'] ?? []));
         }
 
         if ($function === 'block_coursesync_get_grades') {

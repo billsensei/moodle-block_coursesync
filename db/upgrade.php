@@ -166,5 +166,35 @@ function xmldb_block_coursesync_upgrade($oldversion) {
         upgrade_block_savepoint(true, 2026092407, 'coursesync');
     }
 
+    if ($oldversion < 2026092502) {
+        // Phase 41: which quiz attempts a pull brought across, so a later
+        // pull neither duplicates them nor overwrites a teacher's marks.
+        $table = new xmldb_table('block_coursesync_attempt');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('blockinstanceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('quizid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('attemptid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('remotecmid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('remoteattemptid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('marks', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('timeimported', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+        $table->add_index('quizid-remoteattemptid', XMLDB_INDEX_UNIQUE, ['quizid', 'remoteattemptid']);
+        $table->add_index('attemptid', XMLDB_INDEX_NOTUNIQUE, ['attemptid']);
+        $table->add_index('blockinstanceid', XMLDB_INDEX_NOTUNIQUE, ['blockinstanceid']);
+        $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_block_savepoint(true, 2026092502, 'coursesync');
+    }
+
     return true;
 }

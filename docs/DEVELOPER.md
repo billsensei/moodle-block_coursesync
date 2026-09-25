@@ -20,7 +20,7 @@ service, and that single fact drives the whole design:
   ───────────                              ────────────────
   db/services.php                          block instance
     defines the "Course Sync" service        holds URL + token + course mapping
-    and six read-only functions              in block_coursesync_connection
+    and seven read-only functions            in block_coursesync_connection
 
   classes/external/*                       classes/syncer.php
     ping                                     asks what changed
@@ -30,6 +30,8 @@ service, and that single fact drives the whole design:
     get_activity_file
     get_grades               ◄────────►    classes/grade_pull.php
                                              pulls grades for copies
+    get_quiz_attempts        ◄────────►    classes/attempt_pull.php
+                                             (called by grade_pull first)
 
   classes/local/handler/*                  classes/local/handler/*
     export_settings()          ◄────────►    create_from_remote_data()
@@ -565,6 +567,40 @@ CONFLICT or SKIPPED with a reason). `grades.php` is a thin page over it.
   **`history::pulled_at()` must filter `kind = activities`** — a grade run lists
   activities too, and taking one for "the run that copied this" would break
   change detection. A grade run's `pulled` holds per-activity counts only.
+
+## Quiz attempts
+
+Added in v1.19.0 (LEARNFROMME phases 40-44), marks only.
+
+**Source:** `external\get_quiz_attempts` returns, per quiz, its outline (from
+`qbank_helper::get_question_structure()`: slot, page, maxmark, qtype or
+`random`) and each finished, non-preview attempt by an active graded student,
+with each slot's mark and **question state** from
+`question_engine_data_mapper::load_questions_usage_latest_steps()`. The state
+matters: a null mark is either `needsgrading` (the attempt has no total) or
+`gaveup` (counts as nothing). `formatversion` is 1; responses are the obvious
+version 2, and would need the per-qtype id remapping core only does in restore
+(`restore_qtype_*::recode_response()`).
+
+**Destination:** `attempt_pull::work()`, called by `grade_pull::pull()` first,
+inside its lock. It refuses a quiz whose outline differs, skips attempts not
+graded yet, and builds each attempt directly:
+`quiz_create_attempt` → `quiz_start_new_attempt` →
+`quiz_attempt_save_started(…, $timestart)` → `finish_all_questions($timefinish)`
+→ `manual_grade()` per slot → the row set finished with
+`gradednotificationsenttime` → `recompute_final_grade()` + completion.
+**Never `process_submit()`** - it notifies teachers - and never leave
+`gradednotificationsenttime` null, or a scheduled task emails the student.
+
+Then `grade_pull` skips overrides for students with attempts in a quiz listed
+in `$result->attemptquizzes`, and **releases** an earlier pull's untouched
+override (`set_overridden(false)`, which refreshes from the quiz). Results
+carry `kind` (`grade` / `attempt`); `grades.php` and the history show them in
+separate sections.
+
+Tests share `tests/local/quiz_on_the_source.php`: a four-slot quiz with a
+random slot on a source course, copied by the real handler, and helpers to
+attempt and hand-mark it.
 
 ## Security
 

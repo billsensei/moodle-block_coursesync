@@ -113,37 +113,66 @@ if ($runs === []) {
             );
     };
 
-    // Renders a grade pull's per-activity counts, or a line saying there were none.
+    // Renders a grade pull's per-activity counts - gradebook grades, then
+    // quiz attempts - or a line saying there were none. A run from before
+    // attempts came has no kind on its rows: they are all grades.
     $rendergradecounts = function (array $activities): string {
         if ($activities === []) {
             return html_writer::tag('p', get_string('historynothing', 'block_coursesync'));
         }
 
-        $keys = ['gradescolactivity', 'gradescoladd', 'gradescolupdate', 'gradescolsame', 'gradescolconflict',
-            'gradescolskipped'];
-        $head = '';
+        $tables = [
+            'grade' => [
+                'gradessectiongrades',
+                ['gradescolactivity', 'gradescoladd', 'gradescolupdate', 'gradescolsame', 'gradescolconflict',
+                    'gradescolskipped', 'gradescolreleased'],
+                ['add', 'update', 'same', 'conflict', 'skipped', 'released'],
+            ],
+            'attempt' => [
+                'attemptssection',
+                ['attemptscolquiz', 'gradescoladd', 'gradescolupdate', 'attemptscolsame', 'gradescolconflict',
+                    'gradescolskipped'],
+                ['add', 'update', 'same', 'conflict', 'skipped'],
+            ],
+        ];
+        $out = '';
 
-        foreach ($keys as $key) {
-            $head .= html_writer::tag('th', get_string($key, 'block_coursesync'));
-        }
+        foreach ($tables as $kind => [$headingkey, $columns, $outcomes]) {
+            $rows = '';
 
-        $rows = '';
+            foreach ($activities as $activity) {
+                if (($activity['kind'] ?? 'grade') !== $kind) {
+                    continue;
+                }
 
-        foreach ($activities as $activity) {
-            $cells = html_writer::tag('td', s($activity['name'] ?? ''));
+                $cells = html_writer::tag('td', s($activity['name'] ?? ''));
 
-            foreach (['add', 'update', 'same', 'conflict', 'skipped'] as $outcome) {
-                $cells .= html_writer::tag('td', (int) ($activity[$outcome] ?? 0));
+                foreach ($outcomes as $outcome) {
+                    $cells .= html_writer::tag('td', (int) ($activity[$outcome] ?? 0));
+                }
+
+                $rows .= html_writer::tag('tr', $cells);
             }
 
-            $rows .= html_writer::tag('tr', $cells);
+            if ($rows === '') {
+                continue;
+            }
+
+            $head = '';
+
+            foreach ($columns as $key) {
+                $head .= html_writer::tag('th', get_string($key, 'block_coursesync'));
+            }
+
+            $out .= html_writer::tag('h5', get_string($headingkey, 'block_coursesync'), ['class' => 'mt-3'])
+                . html_writer::tag(
+                    'table',
+                    html_writer::tag('thead', html_writer::tag('tr', $head)) . html_writer::tag('tbody', $rows),
+                    ['class' => 'table table-sm table-striped']
+                );
         }
 
-        return html_writer::tag(
-            'table',
-            html_writer::tag('thead', html_writer::tag('tr', $head)) . html_writer::tag('tbody', $rows),
-            ['class' => 'table table-sm table-striped']
-        );
+        return $out;
     };
 
     foreach ($runs as $run) {

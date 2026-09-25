@@ -303,6 +303,40 @@ class behat_block_coursesync extends behat_base {
     }
 
     /**
+     * Open the quiz's own Grades report for the synced copy of a quiz.
+     *
+     * Core's quiz page steps find a quiz by name, which is ambiguous once a
+     * quiz has been copied into a course on the same site.
+     *
+     * @When /^I am on the grades report for the synced quiz "(?P<name>[^"]*)" in course "(?P<course>[^"]*)"$/
+     * @param string $name
+     * @param string $course
+     */
+    public function i_am_on_the_grades_report_for_the_synced_quiz(string $name, string $course) {
+        $url = new moodle_url('/mod/quiz/report.php', ['id' => $this->synced_cm($name, $course)->id, 'mode' => 'overview']);
+        $this->execute('behat_general::i_visit', [$url]);
+    }
+
+    /**
+     * Change a question's maximum mark in the synced copy of a quiz, as a
+     * teacher editing the copy would - so it no longer lines up with the
+     * original.
+     *
+     * @Given /^slot (?P<slot>\d+) of the synced quiz "(?P<name>[^"]*)" in "(?P<course>[^"]*)" is worth "(?P<mark>[\d.]+)"$/
+     * @param int $slot
+     * @param string $name
+     * @param string $course
+     * @param string $mark
+     */
+    public function the_maximum_mark_of_a_synced_quiz_slot_is(int $slot, string $name, string $course, string $mark) {
+        global $DB;
+
+        $cm = $this->synced_cm($name, $course);
+        $DB->set_field('quiz_slots', 'maxmark', (float) $mark, ['quizid' => $cm->instance, 'slot' => $slot]);
+        \mod_quiz\quiz_settings::create($cm->instance)->get_grade_calculator()->recompute_quiz_sumgrades();
+    }
+
+    /**
      * Switch on one direction of grade sync for this site.
      *
      * Sharing also gives the account "this site is set up as a Course Sync

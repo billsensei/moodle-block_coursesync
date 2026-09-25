@@ -79,6 +79,16 @@ $functions = [
         'loginrequired' => true,
     ],
 
+    'block_coursesync_get_quiz_attempts' => [
+        'classname' => 'block_coursesync\\external\\get_quiz_attempts',
+        'methodname' => 'execute',
+        'description' => 'Returns students\' finished quiz attempts, as marks per slot, for chosen quizzes, by username.',
+        'type' => 'read',
+        'ajax' => false,
+        'capabilities' => 'block/coursesync:sync, block/coursesync:exportgrades',
+        'loginrequired' => true,
+    ],
+
     'block_coursesync_get_grades' => [
         'classname' => 'block_coursesync\\external\\get_grades',
         'methodname' => 'execute',
@@ -103,6 +113,7 @@ $services = [
             'block_coursesync_get_activity',
             'block_coursesync_get_activity_file',
             'block_coursesync_get_grades',
+            'block_coursesync_get_quiz_attempts',
         ],
         'restrictedusers' => 1,
         'enabled' => 0,

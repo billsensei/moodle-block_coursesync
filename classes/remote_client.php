@@ -228,6 +228,43 @@ class remote_client {
     }
 
     /**
+     * Fetch students' finished quiz attempts, as marks, for some of the
+     * mapped course's quizzes.
+     *
+     * @param string $baseurl normalised base URL of the remote site
+     * @param string $token the remote site's web service token
+     * @param int $courseid the resolved remote course id
+     * @param int[] $cmids course module ids of quizzes on the source site
+     * @param \core\http_client|null $client injected only by tests
+     * @return quiz_attempts_result
+     */
+    public static function get_quiz_attempts(
+        string $baseurl,
+        string $token,
+        int $courseid,
+        array $cmids,
+        ?http_client $client = null
+    ): quiz_attempts_result {
+        $outcome = self::call($baseurl, $token, 'block_coursesync_get_quiz_attempts', [
+            'courseid' => $courseid,
+            'cmids' => array_values(array_map('intval', $cmids)),
+        ], $client);
+
+        // Refused for the same permission as grades; and a source that
+        // answers as Course Sync but lacks this function is from before it.
+        $translate = [
+            'errornopermission' => 'errornogradepermission',
+            'errorpluginmissing' => 'errorattemptsourceoutdated',
+        ];
+
+        if ($outcome['errorkey'] !== null) {
+            return quiz_attempts_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
+        }
+
+        return quiz_attempts_result::from_response($outcome['data']);
+    }
+
+    /**
      * Fetch one chunk of one of an activity's files.
      *
      * @param string $baseurl normalised base URL of the remote site
