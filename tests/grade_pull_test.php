@@ -388,6 +388,41 @@ final class grade_pull_test extends advanced_testcase {
     }
 
     /**
+     * Unenrolling a student takes their grades out of the gradebook, and
+     * enrolling them again puts them back from the grade history. What the
+     * pull remembered must survive that, or the recovered grade is no longer
+     * known as this plugin's own and the source's next change is flagged as a
+     * conflict instead of being applied.
+     */
+    public function test_a_pulled_grade_survives_unenrolling_and_reenrolling(): void {
+        global $CFG, $DB;
+
+        $CFG->recovergradesdefault = 1;
+
+        $assign = $this->copy_of(777);
+        $this->sourceitems = [$this->remote_item(777, [$this->remote_grade('sam', 80, 'First')])];
+        grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $manual = enrol_get_plugin('manual');
+        $instance = $DB->get_record('enrol', ['courseid' => $this->course->id, 'enrol' => 'manual'], '*', MUST_EXIST);
+        $manual->unenrol_user($instance, $this->student->id);
+        $this->assertFalse($DB->record_exists('grade_grades', [
+            'itemid' => $this->item($assign)->id,
+            'userid' => $this->student->id,
+        ]));
+
+        $studentrole = $DB->get_field('role', 'id', ['shortname' => 'student'], MUST_EXIST);
+        $manual->enrol_user($instance, $this->student->id, $studentrole);
+        $this->assertEquals(80, $this->grade_here($assign)->finalgrade);
+
+        $this->sourceitems = [$this->remote_item(777, [$this->remote_grade('sam', 90, 'Regraded')])];
+        $entry = $this->only_entry(grade_pull::run($this->instanceid, $this->course->id, $this->source()));
+
+        $this->assertSame(grade_pull_result::UPDATE, $entry->outcome);
+        $this->assertEquals(90, $this->grade_here($assign)->finalgrade);
+    }
+
+    /**
      * Once somebody here changes a pulled grade - mark or feedback - it is
      * theirs, and a later pull leaves it alone.
      */

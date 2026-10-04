@@ -163,7 +163,7 @@ $rendersummary = static function (array $activities, array $columns, string $cap
 
     echo html_writer::tag(
         'table',
-        html_writer::tag('caption', get_string($captionkey, 'block_coursesync'), ['class' => 'sr-only'])
+        html_writer::tag('caption', get_string($captionkey, 'block_coursesync'), ['class' => 'visually-hidden'])
         . html_writer::tag('thead', $head)
         . html_writer::tag('tbody', $rows),
         ['class' => 'table table-striped', 'id' => $id]
@@ -192,7 +192,7 @@ $rendertable = static function (array $columns, string $rows, string $headingkey
     echo $OUTPUT->heading(get_string($headingkey, 'block_coursesync'), 4);
     echo html_writer::tag(
         'table',
-        html_writer::tag('caption', get_string($headingkey, 'block_coursesync'), ['class' => 'sr-only'])
+        html_writer::tag('caption', get_string($headingkey, 'block_coursesync'), ['class' => 'visually-hidden'])
         . html_writer::tag('thead', $head)
         . html_writer::tag('tbody', $rows),
         ['class' => 'table table-sm table-striped', 'id' => $id]

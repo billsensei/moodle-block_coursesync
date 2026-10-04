@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details for block_coursesync.
+ * Event observers for block_coursesync.
  *
  * @package    block_coursesync
  * @copyright  2026 Course Sync project
@@ -24,9 +24,13 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'block_coursesync';
-$plugin->version = 2026100401;
-$plugin->requires = 2025100600;
-$plugin->supported = [501, 501];
-$plugin->maturity = MATURITY_BETA;
-$plugin->release = 'v1.20.0-beta';
+$observers = [
+    [
+        'eventname' => '\core\event\course_reset_ended',
+        'callback' => '\block_coursesync\local\observer::course_reset_ended',
+    ],
+    [
+        'eventname' => '\core\event\user_deleted',
+        'callback' => '\block_coursesync\local\observer::user_deleted',
+    ],
+];

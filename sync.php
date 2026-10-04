@@ -253,7 +253,7 @@ if (!$confirm) {
             echo $before;
             echo html_writer::tag(
                 'table',
-                html_writer::tag('caption', get_string($captionkey, 'block_coursesync'), ['class' => 'sr-only'])
+                html_writer::tag('caption', get_string($captionkey, 'block_coursesync'), ['class' => 'visually-hidden'])
                 . html_writer::tag('thead', $head)
                 . html_writer::tag('tbody', $renderrows($rows)),
                 ['class' => 'table table-striped']

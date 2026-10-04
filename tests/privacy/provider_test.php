@@ -279,6 +279,54 @@ final class provider_test extends provider_testcase {
         $this->assertContains('core_grades', $tables);
         $this->assertContains('mod', $tables);
         $this->assertContains('othersite', $tables);
+        $this->assertContains('sourcesite', $tables);
+    }
+
+    /**
+     * What leaves this site is declared in both directions. As the source it
+     * gives grades and attempts away; as the destination it sends the
+     * usernames of the students it wants them for (remote_client sends
+     * "usernames" to the source), and that has to be said too.
+     */
+    public function test_usernames_sent_to_the_source_are_declared(): void {
+        $collection = new \core_privacy\local\metadata\collection('block_coursesync');
+        $strings = get_string_manager();
+
+        foreach (provider::get_metadata($collection)->get_collection() as $item) {
+            if ($item->get_name() !== 'sourcesite') {
+                continue;
+            }
+
+            $this->assertSame(['username'], array_keys($item->get_privacy_fields()));
+
+            // Every identifier it names is a real string.
+            $this->assertTrue($strings->string_exists($item->get_summary(), 'block_coursesync'));
+            $this->assertTrue($strings->string_exists($item->get_privacy_fields()['username'], 'block_coursesync'));
+
+            return;
+        }
+
+        $this->fail('The usernames sent to the source site are not declared.');
+    }
+
+    /**
+     * Every string the metadata names exists, so the privacy report never
+     * shows a missing-string placeholder.
+     */
+    public function test_every_metadata_string_exists(): void {
+        $collection = new \core_privacy\local\metadata\collection('block_coursesync');
+        $strings = get_string_manager();
+
+        foreach (provider::get_metadata($collection)->get_collection() as $item) {
+            $this->assertTrue(
+                $strings->string_exists($item->get_summary(), 'block_coursesync'),
+                $item->get_summary()
+            );
+
+            foreach ($item->get_privacy_fields() as $identifier) {
+                $this->assertTrue($strings->string_exists($identifier, 'block_coursesync'), $identifier);
+            }
+        }
     }
 
     /**

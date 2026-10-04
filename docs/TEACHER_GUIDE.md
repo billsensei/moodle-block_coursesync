@@ -366,7 +366,9 @@ for attempts made here — so for a quiz there is no overridden grade.
   as overridden grades instead.
 - **Pulling again** never brings an attempt twice. If one is regraded on the
   other site, and nobody here has changed its marks, it is updated here; if you
-  have regraded it, yours stands. An imported attempt you delete stays deleted.
+  have regraded it, yours stands. An imported attempt you delete stays deleted -
+  but if the course is reset with "Delete all quiz attempts" ticked, the
+  course starts afresh and the next pull brings the attempts back.
 - **Nobody is emailed** about an imported attempt.
 - If a quiz grade was pulled as an overridden grade before its attempts could
   come, and nobody has changed it, that override is removed so the quiz's own

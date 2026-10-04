@@ -262,8 +262,9 @@ hostile source, in addition to the grade rules above:
 - Only finished, fully graded attempts. Marks are clamped to 0..the slot's
   maximum, and rescaled from the attempt's own maximum.
 - An attempt is never brought twice (`block_coursesync_attempt`, unique per
-  quiz and source attempt id); one deleted here is never brought back; one a
-  teacher has regraded here is never overwritten.
+  quiz and source attempt id); one deleted here is never brought back, unless
+  the course was reset with the quiz attempts removed (see "What is kept, and
+  where"); one a teacher has regraded here is never overwritten.
 - **No messages.** The attempt is built directly - started, its questions
   finished and manually graded, the row set to finished - rather than through
   `process_submit()`, so no `attempt_submitted` (teacher notifications) and no
@@ -286,6 +287,14 @@ hostile source, in addition to the grade rules above:
 - Imported quiz attempts: ordinary attempts in the quiz, reported and deleted by
   `mod_quiz`. `block_coursesync_attempt` records which ones, and the marks given —
   in the privacy provider, block context.
+- **When a course is reset or a user is deleted**, `local\observer` forgets
+  what a pull remembered, so nothing lingers about people who are gone:
+  `block_coursesync_attempt` rows for the course when its quiz attempts are
+  reset; `block_coursesync_grade` rows when the gradebook's grades or items are
+  reset; both tables' rows for a user when the user is deleted. The run history
+  is kept (it records what was copied into a course, and shows "unknown user"
+  for a person who no longer exists); the privacy provider still erases it on
+  request.
 - The run history for a grade pull holds **counts per activity only**, never
   students, so there is no second copy of anyone's grades outside the
   gradebook's reach.

@@ -358,6 +358,48 @@ final class attempt_pull_test extends advanced_testcase {
     }
 
     /**
+     * An attempt removed by a course reset, unlike one deleted by hand, is
+     * brought back: a reset starts the course afresh, and the source still
+     * has the attempt.
+     */
+    public function test_an_attempt_removed_by_a_course_reset_comes_back(): void {
+        $this->source_attempt($this->student, $this->answers(), 4);
+        $this->pull_attempts($this->local_source());
+        $this->assertCount(1, $this->copy_attempts());
+
+        reset_course_userdata((object) ['id' => $this->course->id, 'reset_quiz_attempts' => 1]);
+        $this->assertSame([], $this->copy_attempts());
+
+        $this->pull_attempts($this->local_source());
+
+        $this->assertCount(1, $this->copy_attempts());
+    }
+
+    /**
+     * Unenrolling a student leaves their quiz attempts in the quiz, so what
+     * the pull remembered about them must stay too: forget it, and enrolling
+     * the student again would bring every attempt across a second time.
+     */
+    public function test_an_unenrolled_students_attempts_are_not_imported_twice(): void {
+        global $DB;
+
+        $this->source_attempt($this->student, $this->answers(), 4);
+        $this->pull_attempts($this->local_source());
+        $this->assertCount(1, $this->copy_attempts());
+
+        $manual = enrol_get_plugin('manual');
+        $instance = $DB->get_record('enrol', ['courseid' => $this->course->id, 'enrol' => 'manual'], '*', MUST_EXIST);
+        $manual->unenrol_user($instance, $this->student->id);
+        $this->assertCount(1, $this->copy_attempts());
+
+        $studentrole = $DB->get_field('role', 'id', ['shortname' => 'student'], MUST_EXIST);
+        $manual->enrol_user($instance, $this->student->id, $studentrole);
+        $this->pull_attempts($this->local_source());
+
+        $this->assertCount(1, $this->copy_attempts());
+    }
+
+    /**
      * Nobody is emailed about an attempt made elsewhere - not on import, and
      * not later by the task that tells students a marked attempt is graded.
      */

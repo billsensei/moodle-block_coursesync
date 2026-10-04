@@ -111,6 +111,13 @@ class provider implements
             'attempts' => 'privacy:metadata:othersite:attempts',
         ], 'privacy:metadata:othersite');
 
+        // And the other way round: when this site is the destination, the
+        // usernames of the students it wants grades or attempts for go to the
+        // source, which matches them to its own students.
+        $collection->add_external_location_link('sourcesite', [
+            'username' => 'privacy:metadata:sourcesite:username',
+        ], 'privacy:metadata:sourcesite');
+
         return $collection;
     }
 

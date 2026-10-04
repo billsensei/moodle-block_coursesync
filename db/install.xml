@@ -9,7 +9,7 @@
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The block instance this connection belongs to."/>
         <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Denormalised course id of the block instance, for reporting."/>
-        <FIELD NAME="remoteurl" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="" SEQUENCE="false" COMMENT="Base URL of the remote source site, always https."/>
+        <FIELD NAME="remoteurl" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Base URL of the remote source site, always https."/>
         <FIELD NAME="token" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Web service token for the remote site, encrypted with core\encryption. Never stored in plain text."/>
         <FIELD NAME="tokenhint" TYPE="char" LENGTH="8" NOTNULL="false" SEQUENCE="false" COMMENT="Last few characters of the token, shown in the UI so an admin can tell which token is stored."/>
         <FIELD NAME="remotesitename" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Site name reported by the remote site at the last successful ping."/>

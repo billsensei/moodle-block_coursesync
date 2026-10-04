@@ -40,7 +40,7 @@ function xmldb_block_coursesync_upgrade($oldversion) {
         $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
         $table->add_field('blockinstanceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
         $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
-        $table->add_field('remoteurl', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('remoteurl', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
         $table->add_field('token', XMLDB_TYPE_TEXT, null, null, null, null, null);
         $table->add_field('tokenhint', XMLDB_TYPE_CHAR, '8', null, null, null, null);
         $table->add_field('remotesitename', XMLDB_TYPE_CHAR, '255', null, null, null, null);

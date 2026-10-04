@@ -631,6 +631,40 @@ Tests share `tests/local/quiz_on_the_source.php`: a four-slot quiz with a
 random slot on a source course, copied by the real handler, and helpers to
 attempt and hand-mark it.
 
+### Course reset and user deletion
+
+A pull remembers what it wrote (`block_coursesync_grade`,
+`block_coursesync_attempt`). Core's reset and user deletion remove the grades
+and attempts but know nothing of that memory, so `db/events.php` registers
+`local\observer` for two events. A block gets no `<mod>_reset_userdata()`
+callbacks - core calls those for activity modules only - so reset is observed
+through `course_reset_ended`, whose `other['reset_options']` carries the options
+that were ticked:
+
+- `reset_quiz_attempts` → forget the course's attempt rows. Without this a
+  reset makes the next pull say `attemptskipdeletedhere` ("somebody's decision")
+  and the attempts never return. An attempt deleted by hand, with no reset, is
+  still respected.
+- `reset_gradebook_grades` or `reset_gradebook_items` → forget the course's grade
+  rows.
+- `user_deleted` (`objectid` is the user id) → forget that user's grade and
+  attempt rows, in every course. Run rows stay: `history.php` already shows
+  "unknown user".
+
+Tests drive core's own `reset_course_userdata()` and `delete_user()` (see
+`tests/local/observer_test.php`), plus an end-to-end case in `attempt_pull_test`.
+
+**Unenrolling a student is deliberately not handled.** It looks like the same
+case and is the opposite one. Core's `grade_user_unenrol()` moves the student's
+grades to grade history and re-enrolling restores them
+(`recovergradesdefault`), and their quiz attempts never leave the quiz. So the
+rows still describe real data: forget them and a re-enrolled student's
+attempts are imported a second time, and a recovered grade is no longer known
+as this plugin's, so the source's next change is flagged as a conflict
+instead of applied. `test_an_unenrolled_students_attempts_are_not_imported_twice`
+and `test_a_pulled_grade_survives_unenrolling_and_reenrolling` fail if a
+`user_enrolment_deleted` observer is added that deletes them (checked).
+
 ## Security
 
 The full audit is in [SECURITY.md](SECURITY.md). The parts that constrain how you
@@ -703,6 +737,29 @@ PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:8001 -t /path/to/moodle/public
 
 **After changing `$plugin->version`, re-initialise both test sites** — PHPUnit
 and Behat each refuse to run against a site built for a different version.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` is moodle-plugin-ci's own template with a Moodle 5.1
+matrix (PHP 8.2 and 8.4, PostgreSQL 15 and MariaDB 10.11 - the minimums read from
+5.1's `environment.xml`). It was rehearsed locally on PHP 8.4 against both
+databases (not PHP 8.2), and the rehearsal found three things worth knowing:
+
+- **Test a fresh install, not only an upgrade.** `install.xml` is only checked by
+  XMLDB on a fresh install: a CHAR NOT NULL column with `DEFAULT=""` prints a
+  debugging notice that PHPUnit's initialisation treats as fatal.
+- **Behat needs the private-address flag.** The suite points the site at itself,
+  and the SSRF guard refuses a loopback address unless
+  `$CFG->block_coursesync_allowprivateurls` is set in `config.php`. The workflow
+  adds it in a step *after* PHPUnit, because the SSRF unit tests must run without
+  it. Behat's web requests read `config.php`, so a step definition cannot set it.
+- **The template runs Behat with `--scss-deprecations`**, which fails any page
+  using a Bootstrap 4 class: use `visually-hidden`, not `sr-only`.
+
+`moodle-plugin-ci grunt <path>` rewrites the directory it is given (it deletes
+`amd/build`, rebuilds, and restores from a copy, which fails on `.git`). Run
+`moodle-plugin-ci grunt` with no path against the installed copy, as CI does,
+never against the repository.
 
 ## Known limitations
 
