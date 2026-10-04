@@ -71,6 +71,8 @@ class provider implements
             'timestarted' => 'privacy:metadata:run:timestarted',
             'timefinished' => 'privacy:metadata:run:timefinished',
             'status' => 'privacy:metadata:run:status',
+            'pulledcount' => 'privacy:metadata:run:pulledcount',
+            'conflictcount' => 'privacy:metadata:run:conflictcount',
             'pulled' => 'privacy:metadata:run:pulled',
             'conflicts' => 'privacy:metadata:run:conflicts',
         ], 'privacy:metadata:run');
@@ -223,6 +225,7 @@ class provider implements
 
             foreach ($runs as $run) {
                 $data[] = [
+                    'kind' => $run->kind,
                     'timestarted' => transform::datetime($run->timestarted),
                     'timefinished' => transform::datetime($run->timefinished),
                     'status' => $run->status,
@@ -271,6 +274,8 @@ class provider implements
                 'finalgrade' => $row->finalgrade,
                 'timepulled' => transform::datetime($row->timepulled),
                 'timechangedonothersite' => $row->remotetime ? transform::datetime($row->remotetime) : '',
+                'remoteactivity' => (int) $row->remotecmid,
+                'feedbackfingerprint' => $row->feedbackhash,
             ];
         }
 
@@ -313,6 +318,8 @@ class provider implements
                 'attempt' => $row->attemptnumber,
                 'marks' => json_decode((string) $row->marks, true) ?: [],
                 'timeimported' => transform::datetime($row->timeimported),
+                'remotequiz' => (int) $row->remotecmid,
+                'remoteattempt' => (int) $row->remoteattemptid,
             ];
         }
 

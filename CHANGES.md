@@ -48,6 +48,12 @@ version file goes from v1.13.0 straight to v1.15.0.
 - The privacy provider now declares the other direction of data flow: when this
   site is the destination, it sends the usernames of the students it wants grades
   and attempts for to the source site (`sourcesite` external location).
+- What the provider declares and what a data export contains now match. The
+  sync-run record also declares its two counts (`pulledcount`, `conflictcount`),
+  which were already exported, and its export now includes `kind`; a pulled grade
+  and an imported attempt now export the other site's activity and attempt ids and
+  the feedback fingerprint, which were declared but left out. A test fails if the
+  two drift apart again.
 
 ## v1.20.0-beta (2026-09-25)
 

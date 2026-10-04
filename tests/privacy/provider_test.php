@@ -310,6 +310,85 @@ final class provider_test extends provider_testcase {
     }
 
     /**
+     * What the metadata says is stored about a person is what the export gives
+     * them: no declared field is left out of it, and nothing is exported that
+     * was not declared.
+     *
+     * The export uses friendlier names than the columns, so each table's
+     * declared fields are mapped to the key that carries them. Adding a field to
+     * either side without the other fails here, and so does a field with no
+     * mapping.
+     */
+    public function test_the_export_matches_what_is_declared(): void {
+        $student = $this->getDataGenerator()->create_user();
+        $this->record_run($student->id, 1750000000);
+        $this->record_pulled_grade($student->id, 80);
+        $this->record_pulled_attempt($student->id);
+
+        provider::export_user_data(new approved_contextlist($student, 'block_coursesync', [$this->blockcontext->id]));
+        $writer = writer::with_context($this->blockcontext);
+
+        // Each table: its declared fields (userid is who the export is for, so it
+        // is not a field in it) => the key that carries each one; and the export.
+        $expected = [
+            'block_coursesync_run' => [
+                'fields' => [
+                    'kind' => 'kind',
+                    'timestarted' => 'timestarted',
+                    'timefinished' => 'timefinished',
+                    'status' => 'status',
+                    'pulledcount' => 'pulledcount',
+                    'conflictcount' => 'conflictcount',
+                    'pulled' => 'pulled',
+                    'conflicts' => 'conflicts',
+                ],
+                'export' => $writer->get_data([get_string('privacy:path:runs', 'block_coursesync')])->runs[0] ?? null,
+            ],
+            'block_coursesync_grade' => [
+                'fields' => [
+                    'gradeitemid' => 'gradeitem',
+                    'finalgrade' => 'finalgrade',
+                    'timepulled' => 'timepulled',
+                    'remotetime' => 'timechangedonothersite',
+                    'remotecmid' => 'remoteactivity',
+                    'feedbackhash' => 'feedbackfingerprint',
+                ],
+                'export' => $writer->get_data([get_string('privacy:path:grades', 'block_coursesync')])->grades[0] ?? null,
+            ],
+            'block_coursesync_attempt' => [
+                'fields' => [
+                    'quizid' => 'quiz',
+                    'attemptid' => 'attempt',
+                    'marks' => 'marks',
+                    'timeimported' => 'timeimported',
+                    'remotecmid' => 'remotequiz',
+                    'remoteattemptid' => 'remoteattempt',
+                ],
+                'export' => $writer->get_data([get_string('privacy:path:attempts', 'block_coursesync')])->attempts[0] ?? null,
+            ],
+        ];
+
+        $collection = new \core_privacy\local\metadata\collection('block_coursesync');
+        $declared = [];
+
+        foreach (provider::get_metadata($collection)->get_collection() as $item) {
+            if (isset($expected[$item->get_name()])) {
+                $declared[$item->get_name()] = array_values(array_diff(array_keys($item->get_privacy_fields()), ['userid']));
+            }
+        }
+
+        foreach ($expected as $table => $info) {
+            $this->assertNotNull($info['export'], "{$table}: nothing was exported");
+            $this->assertEqualsCanonicalizing(array_keys($info['fields']), $declared[$table], "{$table}: declared fields");
+            $this->assertEqualsCanonicalizing(
+                array_values($info['fields']),
+                array_keys($info['export']),
+                "{$table}: exported keys"
+            );
+        }
+    }
+
+    /**
      * Every string the metadata names exists, so the privacy report never
      * shows a missing-string placeholder.
      */
