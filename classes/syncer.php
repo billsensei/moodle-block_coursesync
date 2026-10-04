@@ -351,6 +351,46 @@ class syncer {
     }
 
     /**
+     * The block's connection and token, or why there is no usable one.
+     *
+     * @param int $blockinstanceid
+     * @return array [the connection record, the token, the error identifier]; the
+     *      error is null when the other two can be used
+     */
+    protected static function open_connection(int $blockinstanceid): array {
+        $record = connection::get($blockinstanceid);
+
+        if (!connection::is_mapped($record)) {
+            return [null, null, 'errornotmapped'];
+        }
+
+        $token = connection::get_token($blockinstanceid);
+
+        if ($token === null) {
+            return [$record, null, 'errortokenunreadable'];
+        }
+
+        return [$record, $token, null];
+    }
+
+    /**
+     * The activities with subsections first, so that anything inside one, copied
+     * in the same run, finds this course's copy of it already there. Otherwise
+     * the order is the source's: oldest change first.
+     *
+     * @param activity[] $activities
+     * @return activity[]
+     */
+    protected static function subsections_first(array $activities): array {
+        usort(
+            $activities,
+            static fn(activity $a, activity $b): int => ($b->modname === 'subsection') <=> ($a->modname === 'subsection')
+        );
+
+        return $activities;
+    }
+
+    /**
      * The run itself, once run() holds the lock for this block.
      *
      * @param int $blockinstanceid
@@ -370,28 +410,10 @@ class syncer {
         global $USER;
 
         $timestarted = time();
-        $record = connection::get($blockinstanceid);
+        [$record, $token, $problem] = self::open_connection($blockinstanceid);
 
-        if (!connection::is_mapped($record)) {
-            return self::finish(
-                $blockinstanceid,
-                $courseid,
-                (int) $USER->id,
-                $timestarted,
-                sync_result::failure('errornotmapped')
-            );
-        }
-
-        $token = connection::get_token($blockinstanceid);
-
-        if ($token === null) {
-            return self::finish(
-                $blockinstanceid,
-                $courseid,
-                (int) $USER->id,
-                $timestarted,
-                sync_result::failure('errortokenunreadable')
-            );
+        if ($problem !== null) {
+            return self::finish($blockinstanceid, $courseid, (int) $USER->id, $timestarted, sync_result::failure($problem));
         }
 
         $course = get_course($courseid);
@@ -429,14 +451,7 @@ class syncer {
         // in the request.
         $chosen = $only === null ? null : array_map('intval', $only);
 
-        // Subsections first, so that anything inside one, copied in this
-        // same run, finds this course's copy of it already there. Otherwise
-        // the order is the source's: oldest change first.
-        $activities = $found->activities;
-        usort(
-            $activities,
-            static fn(activity $a, activity $b): int => ($b->modname === 'subsection') <=> ($a->modname === 'subsection')
-        );
+        $activities = self::subsections_first($found->activities);
 
         // Activities already here under another guise - same type and name,
         // no marker - are linked now, ticked or not: see link_matches().
@@ -448,88 +463,7 @@ class syncer {
             // still get their turn, and the run is still written to the
             // history, with the marker held because of the failure.
             try {
-                // Asked before the chosen set, and deliberately. Something this
-                // plugin cannot handle was never on offer, so saying the teacher
-                // chose to leave it out would be untrue - and worse, it would hold
-                // the last synced marker back forever waiting for a choice that can
-                // never be made.
-                if (!handler_registry::supports($activity->modname)) {
-                    $result->add_skipped(
-                        $activity->name,
-                        $activity->modname,
-                        $activity->cmid,
-                        'syncskippedtype'
-                    );
-
-                    continue;
-                }
-
-                $ticked = $chosen !== null && in_array((int) $activity->cmid, $chosen, true);
-
-                // Matched with one here that has its own ID number: that is
-                // never touched. Ticked, the original goes beside it as a
-                // separate copy; otherwise it is simply already here.
-                if (isset($owned[(int) $activity->cmid])) {
-                    if ($ticked) {
-                        self::copy_beside($course, $record, $token, $activity, $owned[(int) $activity->cmid], $result, $client);
-                    } else {
-                        $result->add_skipped($activity->name, $activity->modname, $activity->cmid, 'syncskippedowned');
-                    }
-
-                    continue;
-                }
-
-                // Linked just now. Ticked, it is copied again as anything
-                // already here is: replaced when nobody has work in it,
-                // otherwise the original added beside it. The link itself is
-                // already in the result.
-                if (isset($linked[(int) $activity->cmid])) {
-                    if ($ticked) {
-                        $here = $linked[(int) $activity->cmid];
-                        self::handle_update($course, $record, $token, $activity, $here, $result, $client, true);
-                    }
-
-                    continue;
-                }
-
-                if ($chosen !== null && !$ticked) {
-                    // Same reasoning again: something already in this course is not
-                    // on the list either, so it was not a choice the teacher made.
-                    // Calling it one would hold the marker back for good - it can
-                    // never be ticked, because it is never offered.
-                    // A changed one was on the list, though, so leaving it unticked
-                    // is a choice like any other, and it is offered again.
-                    $existing = self::find_existing($course->id, $activity->cmid);
-                    $alreadyhere = $existing > 0 && !self::is_changed($blockinstanceid, $activity, $existing);
-
-                    $result->add_skipped(
-                        $activity->name,
-                        $activity->modname,
-                        $activity->cmid,
-                        $alreadyhere ? 'syncskippedpresent' : 'syncskippeddeselected'
-                    );
-
-                    continue;
-                }
-
-                // Updating or copying again is only ever something a teacher
-                // ticked. A run that was not given a choice keeps to what it always
-                // did with a copy that is already here: flag it and leave it alone.
-                $existing = self::find_existing($course->id, $activity->cmid);
-
-                if ($chosen !== null && $existing > 0) {
-                    if (self::is_changed($blockinstanceid, $activity, $existing)) {
-                        self::handle_update($course, $record, $token, $activity, $existing, $result, $client);
-                    } else if (history::was_pulled_here($blockinstanceid, $activity->cmid, $existing)) {
-                        self::handle_update($course, $record, $token, $activity, $existing, $result, $client, true);
-                    } else {
-                        self::copy_beside($course, $record, $token, $activity, $existing, $result, $client);
-                    }
-
-                    continue;
-                }
-
-                self::handle_one($course, $blockinstanceid, $record, $token, $activity, $result, $client);
+                self::sync_activity($course, $record, $token, $activity, $result, $client, $chosen, $linked, $owned);
             } catch (\Throwable $e) {
                 debugging('block_coursesync: unexpected failure on remote cmid ' . $activity->cmid . ': '
                     . $e->getMessage(), DEBUG_DEVELOPER);
@@ -548,6 +482,118 @@ class syncer {
         }
 
         return self::finish($blockinstanceid, $courseid, (int) $USER->id, $timestarted, $result);
+    }
+
+    /**
+     * Decide what to do with one activity the source reported, and do it.
+     *
+     * @param \stdClass $course the destination course
+     * @param \stdClass $record the block's connection record
+     * @param string $token the source's web service token
+     * @param activity $activity what the source reported
+     * @param sync_result $result updated in place
+     * @param http_client|null $client injected only by tests
+     * @param int[]|null $chosen remote course module ids the teacher chose; null means everything
+     * @param int[] $linked remote course module id => the activity here that was just linked to it
+     * @param int[] $owned remote course module id => the activity here, matched, that has its own ID number
+     * @return void
+     */
+    protected static function sync_activity(
+        \stdClass $course,
+        \stdClass $record,
+        string $token,
+        activity $activity,
+        sync_result $result,
+        ?http_client $client,
+        ?array $chosen,
+        array $linked,
+        array $owned
+    ): void {
+        // The record is the block's own row, found by its block instance id.
+        $blockinstanceid = (int) $record->blockinstanceid;
+
+        // Asked before the chosen set, and deliberately. Something this
+        // plugin cannot handle was never on offer, so saying the teacher
+        // chose to leave it out would be untrue - and worse, it would hold
+        // the last synced marker back forever waiting for a choice that can
+        // never be made.
+        if (!handler_registry::supports($activity->modname)) {
+            $result->add_skipped(
+                $activity->name,
+                $activity->modname,
+                $activity->cmid,
+                'syncskippedtype'
+            );
+
+            return;
+        }
+
+        $ticked = $chosen !== null && in_array((int) $activity->cmid, $chosen, true);
+
+        // Matched with one here that has its own ID number: that is
+        // never touched. Ticked, the original goes beside it as a
+        // separate copy; otherwise it is simply already here.
+        if (isset($owned[(int) $activity->cmid])) {
+            if ($ticked) {
+                self::copy_beside($course, $record, $token, $activity, $owned[(int) $activity->cmid], $result, $client);
+            } else {
+                $result->add_skipped($activity->name, $activity->modname, $activity->cmid, 'syncskippedowned');
+            }
+
+            return;
+        }
+
+        // Linked just now. Ticked, it is copied again as anything
+        // already here is: replaced when nobody has work in it,
+        // otherwise the original added beside it. The link itself is
+        // already in the result.
+        if (isset($linked[(int) $activity->cmid])) {
+            if ($ticked) {
+                $here = $linked[(int) $activity->cmid];
+                self::handle_update($course, $record, $token, $activity, $here, $result, $client, true);
+            }
+
+            return;
+        }
+
+        if ($chosen !== null && !$ticked) {
+            // Same reasoning again: something already in this course is not
+            // on the list either, so it was not a choice the teacher made.
+            // Calling it one would hold the marker back for good - it can
+            // never be ticked, because it is never offered.
+            // A changed one was on the list, though, so leaving it unticked
+            // is a choice like any other, and it is offered again.
+            $existing = self::find_existing($course->id, $activity->cmid);
+            $alreadyhere = $existing > 0 && !self::is_changed($blockinstanceid, $activity, $existing);
+
+            $result->add_skipped(
+                $activity->name,
+                $activity->modname,
+                $activity->cmid,
+                $alreadyhere ? 'syncskippedpresent' : 'syncskippeddeselected'
+            );
+
+            return;
+        }
+
+        // Updating or copying again is only ever something a teacher
+        // ticked. A run that was not given a choice keeps to what it always
+        // did with a copy that is already here: flag it and leave it alone.
+        $existing = self::find_existing($course->id, $activity->cmid);
+
+        if ($chosen !== null && $existing > 0) {
+            if (self::is_changed($blockinstanceid, $activity, $existing)) {
+                self::handle_update($course, $record, $token, $activity, $existing, $result, $client);
+            } else if (history::was_pulled_here($blockinstanceid, $activity->cmid, $existing)) {
+                self::handle_update($course, $record, $token, $activity, $existing, $result, $client, true);
+            } else {
+                self::copy_beside($course, $record, $token, $activity, $existing, $result, $client);
+            }
+
+            return;
+        }
+
+        self::handle_one($course, $blockinstanceid, $record, $token, $activity, $result, $client);
     }
 
     /**

@@ -18,6 +18,7 @@ namespace block_coursesync;
 
 use core\http_client;
 use GuzzleHttp\RequestOptions;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Talks to the remote source site.
@@ -483,6 +484,18 @@ class remote_client {
             return ['errorkey' => self::classify_transport_error($e), 'data' => null];
         }
 
+        return self::interpret_response($response, $function);
+    }
+
+    /**
+     * Turn the remote site's answer into a result: the decoded data, or one of
+     * this plugin's error identifiers.
+     *
+     * @param ResponseInterface $response what came back
+     * @param string $function the external function that was called, for the debug log
+     * @return array{errorkey: string|null, data: mixed}
+     */
+    protected static function interpret_response(ResponseInterface $response, string $function): array {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
 

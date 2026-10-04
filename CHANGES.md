@@ -43,6 +43,13 @@ version file goes from v1.13.0 straight to v1.15.0.
 - Tests for all of the above, including the real reset, delete-user and
   unenrol-then-re-enrol paths.
 
+### Changed
+
+- Internal only, no change in behaviour: the seven longest methods in the plugin
+  (sync run, grade pull, quiz-attempt pull, remote calls, quiz export and import)
+  are split into smaller named steps. Behaviour is pinned by the existing tests,
+  which were not changed.
+
 ### Privacy
 
 - The privacy provider now declares the other direction of data flow: when this

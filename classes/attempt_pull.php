@@ -191,25 +191,8 @@ class attempt_pull {
 
         $quiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
         $context = \context_module::instance($cm->id);
-        $problem = self::quiz_problem($quiz, $context, $remotequiz);
 
-        if ($problem !== null) {
-            // Only worth saying when there was something to bring.
-            if ($remotequiz->attempts) {
-                $result->add(self::entry($cm, null, grade_pull_result::SKIPPED, $problem));
-            }
-
-            return;
-        }
-
-        // This quiz can take the source's attempts: for everyone who made
-        // any there, its own grade is the one that counts from now on.
-        $result->attemptquizzes[(int) $cm->id] = array_fill_keys(
-            array_map(static fn(\stdClass $attempt) => $attempt->username, $remotequiz->attempts),
-            true
-        );
-
-        if (!$remotequiz->attempts) {
+        if (!self::quiz_has_attempts_to_bring($result, $cm, $quiz, $context, $remotequiz)) {
             return;
         }
 
@@ -268,29 +251,100 @@ class attempt_pull {
             }
 
             if ($write) {
-                try {
-                    $entry->attemptid = static::create_attempt(
-                        $blockinstanceid,
-                        $courseid,
-                        $quiz,
-                        $cm,
-                        $user,
-                        $remote,
-                        $marks,
-                        $sitename
-                    );
-                    $entry->localgrade = self::sumgrades($entry->attemptid);
-                } catch (\dml_write_exception $e) {
-                    // The student started an attempt at this quiz at the
-                    // same moment, and took the number: this one waits for
-                    // the next pull, and the rest go on.
-                    $entry->outcome = grade_pull_result::SKIPPED;
-                    $entry->reason = 'attemptskipbusy';
-                    $entry->notes = [];
-                }
+                self::write_attempt($entry, $blockinstanceid, $courseid, $quiz, $cm, $user, $remote, $marks, $sitename);
             }
 
             $result->add($entry);
+        }
+    }
+
+    /**
+     * Whether a quiz has attempts to bring, saying so on the result when it
+     * cannot take them.
+     *
+     * Also records, for everyone who made an attempt over there, that this
+     * quiz's own grade is the one that counts from now on.
+     *
+     * @param grade_pull_result $result
+     * @param \cm_info $cm the copy here
+     * @param \stdClass $quiz the quiz row here
+     * @param \context_module $context
+     * @param \stdClass $remotequiz from quiz_attempts_result
+     * @return bool false when the quiz cannot take them or there are none
+     */
+    protected static function quiz_has_attempts_to_bring(
+        grade_pull_result $result,
+        \cm_info $cm,
+        \stdClass $quiz,
+        \context_module $context,
+        \stdClass $remotequiz
+    ): bool {
+        $problem = self::quiz_problem($quiz, $context, $remotequiz);
+
+        if ($problem !== null) {
+            // Only worth saying when there was something to bring.
+            if ($remotequiz->attempts) {
+                $result->add(self::entry($cm, null, grade_pull_result::SKIPPED, $problem));
+            }
+
+            return false;
+        }
+
+        // This quiz can take the source's attempts: for everyone who made
+        // any there, its own grade is the one that counts from now on.
+        $result->attemptquizzes[(int) $cm->id] = array_fill_keys(
+            array_map(static fn(\stdClass $attempt) => $attempt->username, $remotequiz->attempts),
+            true
+        );
+
+        return (bool) $remotequiz->attempts;
+    }
+
+    /**
+     * Create one attempt here, or leave its entry skipped if the student took
+     * the attempt number first.
+     *
+     * @param \stdClass $entry the result entry for it, updated in place
+     * @param int $blockinstanceid
+     * @param int $courseid
+     * @param \stdClass $quiz
+     * @param \cm_info $cm
+     * @param \stdClass $user the student here
+     * @param \stdClass $remote the attempt on the source
+     * @param array $marks the mark for each slot here
+     * @param string $sitename the source, as named in the comment on each mark
+     * @return void
+     */
+    protected static function write_attempt(
+        \stdClass $entry,
+        int $blockinstanceid,
+        int $courseid,
+        \stdClass $quiz,
+        \cm_info $cm,
+        \stdClass $user,
+        \stdClass $remote,
+        array $marks,
+        string $sitename
+    ): void {
+        try {
+            $entry->attemptid = static::create_attempt(
+                $blockinstanceid,
+                $courseid,
+                $quiz,
+                $cm,
+                $user,
+                $remote,
+                $marks,
+                $sitename
+            );
+            $entry->localgrade = self::sumgrades($entry->attemptid);
+        } catch (\dml_write_exception $e) {
+            // The student started an attempt at this quiz at the
+            // same moment, and took the number: this one waits for
+            // the next pull, and the rest go on.
+            $entry->outcome = grade_pull_result::SKIPPED;
+            $entry->reason = 'attemptskipbusy';
+            $entry->notes = [];
         }
     }
 

@@ -183,87 +183,118 @@ class quiz_handler extends activity_handler {
 
             if ($fixed) {
                 $neededcategoryids[(int) $fixed->categoryid] = true;
-
-                $slotchildren[] = [
-                    'type' => 'slot',
-                    'sortorder' => $order++,
-                    'fields' => [
-                        'kind' => 'fixed',
-                        'maxmark' => (string) (float) $slot->maxmark,
-                        'questionref' => (int) $fixed->questionbankentryid,
-                        'categoryref' => 0,
-                        'includesubcategories' => 0,
-                        'catjointype' => 0,
-                        'tagnames' => '[]',
-                        'tagjointype' => 0,
-                    ],
-                ];
+                $slotchildren[] = self::fixed_slot_child($slot, $fixed, $order++);
 
                 continue;
             }
 
-            $setref = $DB->get_record('question_set_references', [
-                'component' => 'mod_quiz', 'questionarea' => 'slot', 'itemid' => $slot->id,
-            ]);
+            $child = self::random_slot_child($slot, $order, $neededcategoryids);
 
-            if (!$setref) {
-                // Neither reference kind exists - a dangling slot. Nothing to
-                // export for it; the import side counts it as unresolved.
-                continue;
+            if ($child !== null) {
+                $slotchildren[] = $child;
+                $order++;
             }
-
-            $filter = json_decode((string) $setref->filtercondition, true) ?: [];
-            $categoryid = (int) ($filter['filter']['category']['values'][0] ?? 0);
-
-            if ($categoryid === 0 || !$DB->record_exists('question_categories', ['id' => $categoryid])) {
-                continue;
-            }
-
-            $includesub = !empty($filter['filter']['category']['filteroptions']['includesubcategories']);
-            $neededcategoryids[$categoryid] = true;
-
-            if ($includesub) {
-                foreach (\question_categorylist($categoryid) as $descendantid) {
-                    $neededcategoryids[(int) $descendantid] = true;
-                }
-            }
-
-            // Tag ids are site-local; the name is what travels, resolved
-            // back to an id (creating it if missing) on the way in - the
-            // same pattern core itself uses when migrating this filter
-            // shape (question_reference_manager::convert_legacy_set_reference_filter_condition()).
-            // Carried as JSON rather than a comma-joined string - a tag name
-            // is free text and PARAM_TAG does not forbid a comma in one, so
-            // joining would risk splitting one real tag into two on import.
-            $tagids = $filter['filter']['qtagids']['values'] ?? [];
-            $tagnames = [];
-
-            foreach (\core_tag_tag::get_bulk($tagids) as $tag) {
-                $tagnames[] = $tag->name;
-            }
-
-            $slotchildren[] = [
-                'type' => 'slot',
-                'sortorder' => $order++,
-                'fields' => [
-                    'kind' => 'random',
-                    'maxmark' => (string) (float) $slot->maxmark,
-                    'questionref' => 0,
-                    'categoryref' => $categoryid,
-                    'includesubcategories' => $includesub ? 1 : 0,
-                    'catjointype' => (int) ($filter['filter']['category']['jointype']
-                        ?? \qbank_managecategories\category_condition::JOINTYPE_DEFAULT),
-                    'tagnames' => json_encode($tagnames),
-                    'tagjointype' => (int) ($filter['filter']['qtagids']['jointype']
-                        ?? \qbank_tagquestion\tag_condition::JOINTYPE_DEFAULT),
-                ],
-            ];
         }
 
         $bankchildren = $this->export_question_bank_children(array_keys($neededcategoryids), $order);
         $order += count($bankchildren);
 
         return array_merge($slotchildren, $bankchildren, self::export_overall_feedback((int) $instance->id, $order));
+    }
+
+    /**
+     * SOURCE SIDE. The child record for a slot that holds one fixed question.
+     *
+     * @param \stdClass $slot the quiz_slots row
+     * @param \stdClass $fixed the slot's question reference
+     * @param int $order the child's place among the quiz's children
+     * @return array
+     */
+    protected static function fixed_slot_child(\stdClass $slot, \stdClass $fixed, int $order): array {
+        return [
+            'type' => 'slot',
+            'sortorder' => $order,
+            'fields' => [
+                'kind' => 'fixed',
+                'maxmark' => (string) (float) $slot->maxmark,
+                'questionref' => (int) $fixed->questionbankentryid,
+                'categoryref' => 0,
+                'includesubcategories' => 0,
+                'catjointype' => 0,
+                'tagnames' => '[]',
+                'tagjointype' => 0,
+            ],
+        ];
+    }
+
+    /**
+     * SOURCE SIDE. The child record for a random slot, and the categories it
+     * draws from added to the set that has to be exported.
+     *
+     * @param \stdClass $slot the quiz_slots row
+     * @param int $order the child's place among the quiz's children
+     * @param bool[] $neededcategoryids category id => true, added to in place
+     * @return array|null null when the slot has nothing to export
+     */
+    protected static function random_slot_child(\stdClass $slot, int $order, array &$neededcategoryids): ?array {
+        global $DB;
+
+        $setref = $DB->get_record('question_set_references', [
+            'component' => 'mod_quiz', 'questionarea' => 'slot', 'itemid' => $slot->id,
+        ]);
+
+        if (!$setref) {
+            // Neither reference kind exists - a dangling slot. Nothing to
+            // export for it; the import side counts it as unresolved.
+            return null;
+        }
+
+        $filter = json_decode((string) $setref->filtercondition, true) ?: [];
+        $categoryid = (int) ($filter['filter']['category']['values'][0] ?? 0);
+
+        if ($categoryid === 0 || !$DB->record_exists('question_categories', ['id' => $categoryid])) {
+            return null;
+        }
+
+        $includesub = !empty($filter['filter']['category']['filteroptions']['includesubcategories']);
+        $neededcategoryids[$categoryid] = true;
+
+        if ($includesub) {
+            foreach (\question_categorylist($categoryid) as $descendantid) {
+                $neededcategoryids[(int) $descendantid] = true;
+            }
+        }
+
+        // Tag ids are site-local; the name is what travels, resolved
+        // back to an id (creating it if missing) on the way in - the
+        // same pattern core itself uses when migrating this filter
+        // shape (question_reference_manager::convert_legacy_set_reference_filter_condition()).
+        // Carried as JSON rather than a comma-joined string - a tag name
+        // is free text and PARAM_TAG does not forbid a comma in one, so
+        // joining would risk splitting one real tag into two on import.
+        $tagids = $filter['filter']['qtagids']['values'] ?? [];
+        $tagnames = [];
+
+        foreach (\core_tag_tag::get_bulk($tagids) as $tag) {
+            $tagnames[] = $tag->name;
+        }
+
+        return [
+            'type' => 'slot',
+            'sortorder' => $order,
+            'fields' => [
+                'kind' => 'random',
+                'maxmark' => (string) (float) $slot->maxmark,
+                'questionref' => 0,
+                'categoryref' => $categoryid,
+                'includesubcategories' => $includesub ? 1 : 0,
+                'catjointype' => (int) ($filter['filter']['category']['jointype']
+                    ?? \qbank_managecategories\category_condition::JOINTYPE_DEFAULT),
+                'tagnames' => json_encode($tagnames),
+                'tagjointype' => (int) ($filter['filter']['qtagids']['jointype']
+                    ?? \qbank_tagquestion\tag_condition::JOINTYPE_DEFAULT),
+            ],
+        ];
     }
 
     /**
@@ -385,37 +416,7 @@ class quiz_handler extends activity_handler {
         $sectionnum = $this->target_section($course, $payload);
         $cmid = $this->create_course_module($course, $payload, $idnumber);
 
-        $data = $this->make_instance_data($course, $cmid, $payload, $idnumber);
-
-        foreach (self::carried_fields() as $field => $default) {
-            $data->$field = $payload->setting_int($field, $default);
-        }
-
-        // Clamped as well as cast: a negative maximum grade is not a scale here
-        // the way it is in an assignment, it is simply not a grade.
-        $data->grade = max(0.0, (float) $payload->setting('grade', '0'));
-
-        $data->overduehandling = self::clean_choice(
-            $payload->setting('overduehandling'),
-            ['autosubmit', 'graceperiod', 'autoabandon'],
-            'autoabandon'
-        );
-        $data->navmethod = self::clean_choice($payload->setting('navmethod'), ['free', 'sequential'], 'free');
-        $data->preferredbehaviour = self::clean_behaviour($payload->setting('preferredbehaviour'));
-
-        // Starting point before any slots exist; sync_quiz_slots() below
-        // recomputes this once the real questions are in place.
-        $data->sumgrades = 0;
-
-        // Access rule settings that name something local, or are a secret of
-        // the source site, do not travel; the teacher sets them here.
-        $data->quizpassword = '';
-        $data->subnet = '';
-        $data->browsersecurity = '-';
-
-        foreach (self::review_checkboxes($payload) as $field => $value) {
-            $data->$field = $value;
-        }
+        $data = $this->build_quiz_data($course, $cmid, $payload, $idnumber);
 
         $instanceid = \quiz_add_instance($data);
 
@@ -476,6 +477,51 @@ class quiz_handler extends activity_handler {
         }
 
         return $cm;
+    }
+
+    /**
+     * DESTINATION SIDE. The settings the new quiz is created with, cleaned.
+     *
+     * @param \stdClass $course the destination course
+     * @param int $cmid the new quiz's course module id
+     * @param activity_payload $payload what the source site sent
+     * @param string $idnumber the ID number that marks this as synced
+     * @return \stdClass the data for quiz_add_instance()
+     */
+    protected function build_quiz_data(\stdClass $course, int $cmid, activity_payload $payload, string $idnumber): \stdClass {
+        $data = $this->make_instance_data($course, $cmid, $payload, $idnumber);
+
+        foreach (self::carried_fields() as $field => $default) {
+            $data->$field = $payload->setting_int($field, $default);
+        }
+
+        // Clamped as well as cast: a negative maximum grade is not a scale here
+        // the way it is in an assignment, it is simply not a grade.
+        $data->grade = max(0.0, (float) $payload->setting('grade', '0'));
+
+        $data->overduehandling = self::clean_choice(
+            $payload->setting('overduehandling'),
+            ['autosubmit', 'graceperiod', 'autoabandon'],
+            'autoabandon'
+        );
+        $data->navmethod = self::clean_choice($payload->setting('navmethod'), ['free', 'sequential'], 'free');
+        $data->preferredbehaviour = self::clean_behaviour($payload->setting('preferredbehaviour'));
+
+        // Starting point before any slots exist; sync_quiz_slots() recomputes
+        // this once the real questions are in place.
+        $data->sumgrades = 0;
+
+        // Access rule settings that name something local, or are a secret of
+        // the source site, do not travel; the teacher sets them here.
+        $data->quizpassword = '';
+        $data->subnet = '';
+        $data->browsersecurity = '-';
+
+        foreach (self::review_checkboxes($payload) as $field => $value) {
+            $data->$field = $value;
+        }
+
+        return $data;
     }
 
     /**

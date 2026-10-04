@@ -215,21 +215,10 @@ class grade_pull {
         // Quizzes first: where the source's attempts can come into a quiz
         // here, they do, and that quiz then works out its own grade - so it
         // is left out of the overrides below (see pull_item()).
-        $quizzes = array_filter($copies, static fn(\cm_info $cm) => $cm->modname === 'quiz');
+        $failed = self::bring_attempts($result, $copies, $blockinstanceid, $courseid, $record, $token, $write, $client);
 
-        if ($quizzes) {
-            $attempts = attempt_pull::work($blockinstanceid, $courseid, $record, $token, $write, $client);
-
-            if ($attempts->success) {
-                $result->entries = $attempts->entries;
-                $result->attemptquizzes = $attempts->attemptquizzes;
-            } else if ($attempts->errorkey === 'errorattemptsourceoutdated') {
-                // The source predates attempts: grades still come, as
-                // overrides, as they always have.
-                $result->notes[] = 'attemptsunavailable';
-            } else {
-                return grade_pull_result::failure($attempts->errorkey);
-            }
+        if ($failed !== null) {
+            return $failed;
         }
 
         $found = remote_client::get_grades(
@@ -245,15 +234,7 @@ class grade_pull {
             return grade_pull_result::failure($found->errorkey);
         }
 
-        $usernames = [];
-
-        foreach ($found->items as $item) {
-            foreach ($item->grades as $grade) {
-                $usernames[] = $grade->username;
-            }
-        }
-
-        $knownhere = self::usernames_known_here($usernames, $students);
+        $knownhere = self::usernames_known_here(self::usernames_in($found->items), $students);
         $remote = [];
 
         foreach ($found->items as $item) {
@@ -261,21 +242,7 @@ class grade_pull {
         }
 
         foreach ($copies as $remotecmid => $cm) {
-            $localitems = [];
-            $gradeitems = \grade_item::fetch_all([
-                'courseid' => $courseid,
-                'itemtype' => 'mod',
-                'itemmodule' => $cm->modname,
-                'iteminstance' => $cm->instance,
-            ]) ?: [];
-
-            foreach ($gradeitems as $gradeitem) {
-                if ((int) $gradeitem->gradetype !== GRADE_TYPE_NONE) {
-                    $localitems[(int) $gradeitem->itemnumber] = $gradeitem;
-                }
-            }
-
-            ksort($localitems);
+            $localitems = self::local_grade_items($courseid, $cm);
 
             foreach ($remote[$remotecmid] ?? [] as $itemnumber => $remoteitem) {
                 self::pull_item(
@@ -294,16 +261,127 @@ class grade_pull {
                 );
             }
 
-            // Graded here, but the source said nothing about it: most often
-            // the original was deleted there.
-            foreach ($localitems as $itemnumber => $gradeitem) {
-                if (!isset($remote[$remotecmid][$itemnumber])) {
-                    $result->add(self::entry($cm, $itemnumber, $gradeitem, grade_pull_result::SKIPPED, 'gradeskipnotonsource'));
-                }
-            }
+            self::skip_items_not_on_source($result, $cm, $localitems, $remote[$remotecmid] ?? []);
         }
 
         return $result;
+    }
+
+    /**
+     * Bring the source's quiz attempts into the quizzes here, before any grades.
+     *
+     * Where the attempts can come into a quiz, they do, and that quiz then works
+     * out its own grade. A source that predates attempts is noted, and grades
+     * still come as overrides.
+     *
+     * @param grade_pull_result $result updated in place
+     * @param \cm_info[] $copies the synced activities here, by course module id on the source
+     * @param int $blockinstanceid
+     * @param int $courseid
+     * @param \stdClass $record the block's connection
+     * @param string $token the source's web service token
+     * @param bool $write false for a preview
+     * @param http_client|null $client
+     * @return grade_pull_result|null the failure to return, or null to carry on
+     */
+    protected static function bring_attempts(
+        grade_pull_result $result,
+        array $copies,
+        int $blockinstanceid,
+        int $courseid,
+        \stdClass $record,
+        string $token,
+        bool $write,
+        ?http_client $client
+    ): ?grade_pull_result {
+        $quizzes = array_filter($copies, static fn(\cm_info $cm) => $cm->modname === 'quiz');
+
+        if (!$quizzes) {
+            return null;
+        }
+
+        $attempts = attempt_pull::work($blockinstanceid, $courseid, $record, $token, $write, $client);
+
+        if ($attempts->success) {
+            $result->entries = $attempts->entries;
+            $result->attemptquizzes = $attempts->attemptquizzes;
+        } else if ($attempts->errorkey === 'errorattemptsourceoutdated') {
+            // The source predates attempts: grades still come, as
+            // overrides, as they always have.
+            $result->notes[] = 'attemptsunavailable';
+        } else {
+            return grade_pull_result::failure($attempts->errorkey);
+        }
+
+        return null;
+    }
+
+    /**
+     * Note the grade items that are graded here but that the source said nothing
+     * about: most often the original was deleted there.
+     *
+     * @param grade_pull_result $result
+     * @param \cm_info $cm the copy here
+     * @param \grade_item[] $localitems the copy's grade items here, by item number
+     * @param \stdClass[] $remoteitems the source's grade items for it, by item number
+     * @return void
+     */
+    protected static function skip_items_not_on_source(
+        grade_pull_result $result,
+        \cm_info $cm,
+        array $localitems,
+        array $remoteitems
+    ): void {
+        foreach ($localitems as $itemnumber => $gradeitem) {
+            if (!isset($remoteitems[$itemnumber])) {
+                $result->add(self::entry($cm, $itemnumber, $gradeitem, grade_pull_result::SKIPPED, 'gradeskipnotonsource'));
+            }
+        }
+    }
+
+    /**
+     * Every username the source sent a grade for.
+     *
+     * @param \stdClass[] $items the source's grade items, from grades_result
+     * @return string[]
+     */
+    protected static function usernames_in(array $items): array {
+        $usernames = [];
+
+        foreach ($items as $item) {
+            foreach ($item->grades as $grade) {
+                $usernames[] = $grade->username;
+            }
+        }
+
+        return $usernames;
+    }
+
+    /**
+     * The grade items of one synced activity that can hold a grade, by item number.
+     *
+     * @param int $courseid
+     * @param \cm_info $cm the copy here
+     * @return \grade_item[]
+     */
+    protected static function local_grade_items(int $courseid, \cm_info $cm): array {
+        $localitems = [];
+        $gradeitems = \grade_item::fetch_all([
+            'courseid' => $courseid,
+            'itemtype' => 'mod',
+            'itemmodule' => $cm->modname,
+            'iteminstance' => $cm->instance,
+        ]) ?: [];
+
+        foreach ($gradeitems as $gradeitem) {
+            if ((int) $gradeitem->gradetype !== GRADE_TYPE_NONE) {
+                $localitems[(int) $gradeitem->itemnumber] = $gradeitem;
+            }
+        }
+
+        ksort($localitems);
+
+        return $localitems;
     }
 
     /**
@@ -339,8 +417,6 @@ class grade_pull {
         array $outofreach,
         ?array $byattempts = null
     ): void {
-        global $DB;
-
         if (!$remoteitem->grades) {
             return;
         }
@@ -353,21 +429,7 @@ class grade_pull {
             return;
         }
 
-        $userids = [];
-
-        foreach ($remoteitem->grades as $remotegrade) {
-            if (isset($students[$remotegrade->username])) {
-                $userids[] = (int) $students[$remotegrade->username]->id;
-            }
-        }
-
-        $localgrades = $userids ? \grade_grade::fetch_users_grades($gradeitem, $userids, false) : [];
-        $pulled = $DB->get_records('block_coursesync_grade', ['gradeitemid' => $gradeitem->id], '', '*');
-        $ours = [];
-
-        foreach ($pulled as $row) {
-            $ours[(int) $row->userid] = $row;
-        }
+        [$localgrades, $ours] = self::existing_grades($gradeitem, $remoteitem, $students);
 
         foreach ($remoteitem->grades as $remotegrade) {
             $entry = self::entry($cm, $remoteitem->itemnumber, $gradeitem, grade_pull_result::SKIPPED, null);
@@ -388,20 +450,7 @@ class grade_pull {
             // (The attempt entries already say what happened to anyone who
             // cannot be matched.)
             if ($byattempts !== null && isset($byattempts[$remotegrade->username])) {
-                $existing = $user ? ($localgrades[$user->id] ?? null) : null;
-                $pulled = $user ? ($ours[$user->id] ?? null) : null;
-
-                if ($existing && $pulled && !$existing->is_locked() && self::untouched($existing, $pulled)) {
-                    $entry->userid = (int) $user->id;
-                    $entry->outcome = grade_pull_result::RELEASED;
-                    $entry->localgrade = self::finalgrade($existing);
-
-                    if ($write) {
-                        self::release($gradeitem, $existing, $pulled);
-                    }
-
-                    $result->add($entry);
-                }
+                self::release_pulled_override($result, $entry, $write, $gradeitem, $user, $localgrades, $ours);
 
                 continue;
             }
@@ -418,17 +467,7 @@ class grade_pull {
             $entry->grade = $incoming;
             $entry->localgrade = self::has_grade($existing) ? self::finalgrade($existing) : null;
 
-            if ($existing && $existing->is_locked()) {
-                $entry->reason = 'gradeskiplocked';
-            } else if (!self::has_grade($existing)) {
-                $entry->outcome = grade_pull_result::ADD;
-            } else if (self::says($existing, $incoming, $remotegrade->feedback)) {
-                $entry->outcome = grade_pull_result::SAME;
-            } else if (isset($ours[$user->id]) && self::untouched($existing, $ours[$user->id])) {
-                $entry->outcome = grade_pull_result::UPDATE;
-            } else {
-                $entry->outcome = grade_pull_result::CONFLICT;
-            }
+            self::classify_grade($entry, $existing, $incoming, $remotegrade->feedback, $ours[$user->id] ?? null);
 
             $writes = in_array($entry->outcome, [grade_pull_result::ADD, grade_pull_result::UPDATE], true);
 
@@ -443,6 +482,106 @@ class grade_pull {
             }
 
             $result->add($entry);
+        }
+    }
+
+    /**
+     * The grades already here for the students a source grade item names, and
+     * what an earlier pull wrote for the item.
+     *
+     * @param \grade_item $gradeitem the matching grade item here
+     * @param \stdClass $remoteitem from grades_result
+     * @param \stdClass[] $students gradable users here, by username
+     * @return array [the grades here by user id, the block_coursesync_grade rows by user id]
+     */
+    protected static function existing_grades(\grade_item $gradeitem, \stdClass $remoteitem, array $students): array {
+        global $DB;
+
+        $userids = [];
+
+        foreach ($remoteitem->grades as $remotegrade) {
+            if (isset($students[$remotegrade->username])) {
+                $userids[] = (int) $students[$remotegrade->username]->id;
+            }
+        }
+
+        $localgrades = $userids ? \grade_grade::fetch_users_grades($gradeitem, $userids, false) : [];
+        $pulled = $DB->get_records('block_coursesync_grade', ['gradeitemid' => $gradeitem->id], '', '*');
+        $ours = [];
+
+        foreach ($pulled as $row) {
+            $ours[(int) $row->userid] = $row;
+        }
+
+        return [$localgrades, $ours];
+    }
+
+    /**
+     * Take away an override an earlier pull wrote for a quiz that now works out
+     * its own grade from the attempts, if nobody has touched it since.
+     *
+     * @param grade_pull_result $result
+     * @param \stdClass $entry the result entry for this student's grade
+     * @param bool $write false for a preview
+     * @param \grade_item $gradeitem
+     * @param \stdClass|null $user the student here, if there is one
+     * @param \grade_grade[] $localgrades the grades here by user id
+     * @param \stdClass[] $ours what earlier pulls wrote, by user id
+     * @return void
+     */
+    protected static function release_pulled_override(
+        grade_pull_result $result,
+        \stdClass $entry,
+        bool $write,
+        \grade_item $gradeitem,
+        ?\stdClass $user,
+        array $localgrades,
+        array $ours
+    ): void {
+        $existing = $user ? ($localgrades[$user->id] ?? null) : null;
+        $pulled = $user ? ($ours[$user->id] ?? null) : null;
+
+        if ($existing && $pulled && !$existing->is_locked() && self::untouched($existing, $pulled)) {
+            $entry->userid = (int) $user->id;
+            $entry->outcome = grade_pull_result::RELEASED;
+            $entry->localgrade = self::finalgrade($existing);
+
+            if ($write) {
+                self::release($gradeitem, $existing, $pulled);
+            }
+
+            $result->add($entry);
+        }
+    }
+
+    /**
+     * Decide what a pull would do with one grade: add it, leave it, update it,
+     * or flag it.
+     *
+     * @param \stdClass $entry the result entry, given its outcome or reason here
+     * @param \grade_grade|null $existing the grade here, if any
+     * @param float|null $incoming the source's grade, converted for this item
+     * @param string $feedback the source's feedback
+     * @param \stdClass|null $pulled what an earlier pull wrote for this student, if anything
+     * @return void
+     */
+    protected static function classify_grade(
+        \stdClass $entry,
+        ?\grade_grade $existing,
+        ?float $incoming,
+        string $feedback,
+        ?\stdClass $pulled
+    ): void {
+        if ($existing && $existing->is_locked()) {
+            $entry->reason = 'gradeskiplocked';
+        } else if (!self::has_grade($existing)) {
+            $entry->outcome = grade_pull_result::ADD;
+        } else if (self::says($existing, $incoming, $feedback)) {
+            $entry->outcome = grade_pull_result::SAME;
+        } else if ($pulled !== null && self::untouched($existing, $pulled)) {
+            $entry->outcome = grade_pull_result::UPDATE;
+        } else {
+            $entry->outcome = grade_pull_result::CONFLICT;
         }
     }
 
