@@ -117,6 +117,26 @@ $functions = [
         'capabilities' => 'block/coursesync:sync, block/coursesync:exportsubmissions',
         'loginrequired' => true,
     ],
+
+    'block_coursesync_get_marks' => [
+        'classname' => 'block_coursesync\\external\\get_marks',
+        'methodname' => 'execute',
+        'description' => 'Describes teachers\' marks and written feedback on assignments, identified by student username.',
+        'type' => 'read',
+        'ajax' => false,
+        'capabilities' => 'block/coursesync:sync, block/coursesync:exportmarks',
+        'loginrequired' => true,
+    ],
+
+    'block_coursesync_get_mark_file' => [
+        'classname' => 'block_coursesync\\external\\get_mark_file',
+        'methodname' => 'execute',
+        'description' => 'Serves one chunk of one file embedded in a teacher\'s comment on a student\'s assignment mark.',
+        'type' => 'read',
+        'ajax' => false,
+        'capabilities' => 'block/coursesync:sync, block/coursesync:exportmarks',
+        'loginrequired' => true,
+    ],
 ];
 
 // A pre-built service so an administrator can generate a token without having to
@@ -135,6 +155,8 @@ $services = [
             'block_coursesync_get_quiz_attempts',
             'block_coursesync_get_submissions',
             'block_coursesync_get_submission_file',
+            'block_coursesync_get_marks',
+            'block_coursesync_get_mark_file',
         ],
         'restrictedusers' => 1,
         'enabled' => 0,

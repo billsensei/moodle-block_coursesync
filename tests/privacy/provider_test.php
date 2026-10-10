@@ -330,6 +330,72 @@ final class provider_test extends provider_testcase {
     }
 
     /**
+     * Record that a pull brought a student's assignment mark across.
+     *
+     * @param int $userid
+     * @return \stdClass the assignment
+     */
+    protected function record_pulled_mark(int $userid): \stdClass {
+        global $DB;
+
+        $assign = $this->getDataGenerator()->create_module('assign', ['course' => $this->course->id, 'name' => 'Marked essay']);
+        $DB->insert_record('block_coursesync_mark', (object) [
+            'blockinstanceid' => $this->instanceid,
+            'courseid' => $this->course->id,
+            'userid' => $userid,
+            'assignid' => $assign->id,
+            'gradeid' => 0,
+            'remotecmid' => 556,
+            'remoteattempt' => 0,
+            'fingerprint' => sha1('there'),
+            'localfingerprint' => sha1('here'),
+            'remotetime' => 1750000100,
+            'timeimported' => 1750000300,
+        ]);
+
+        return $assign;
+    }
+
+    /**
+     * A student whose mark was brought across is found, exported with the
+     * assignment's name, and deleted - for them only.
+     */
+    public function test_pulled_marks(): void {
+        global $DB;
+
+        $student = $this->getDataGenerator()->create_user();
+        $other = $this->getDataGenerator()->create_user();
+        $this->record_pulled_mark($student->id);
+        $this->record_pulled_mark($other->id);
+
+        $this->assertSame(
+            [$this->blockcontext->id],
+            array_map('intval', provider::get_contexts_for_userid($student->id)->get_contextids())
+        );
+        $userlist = new userlist($this->blockcontext, 'block_coursesync');
+        provider::get_users_in_context($userlist);
+        $this->assertEqualsCanonicalizing([(int) $student->id, (int) $other->id], array_map('intval', $userlist->get_userids()));
+
+        provider::export_user_data(new approved_contextlist($student, 'block_coursesync', [$this->blockcontext->id]));
+        $data = writer::with_context($this->blockcontext)
+            ->get_data([get_string('privacy:path:marks', 'block_coursesync')]);
+        $this->assertCount(1, $data->marks);
+        $this->assertSame('Marked essay', $data->marks[0]['assignment']);
+        $this->assertSame(sha1('there'), $data->marks[0]['fingerprint']);
+
+        provider::delete_data_for_user(new approved_contextlist($student, 'block_coursesync', [$this->blockcontext->id]));
+        $this->assertFalse($DB->record_exists('block_coursesync_mark', ['userid' => $student->id]));
+        $this->assertTrue($DB->record_exists('block_coursesync_mark', ['userid' => $other->id]));
+
+        provider::delete_data_for_users(new approved_userlist($this->blockcontext, 'block_coursesync', [$other->id]));
+        $this->assertSame(0, $DB->count_records('block_coursesync_mark'));
+
+        $this->record_pulled_mark($student->id);
+        provider::delete_data_for_all_users_in_context($this->blockcontext);
+        $this->assertSame(0, $DB->count_records('block_coursesync_mark'));
+    }
+
+    /**
      * The plugin says what it stores, rather than claiming it stores nothing.
      */
     public function test_metadata_is_declared(): void {
@@ -343,6 +409,7 @@ final class provider_test extends provider_testcase {
         $this->assertContains('block_coursesync_grade', $tables);
         $this->assertContains('block_coursesync_attempt', $tables);
         $this->assertContains('block_coursesync_submission', $tables);
+        $this->assertContains('block_coursesync_mark', $tables);
         $this->assertContains('core_grades', $tables);
         $this->assertContains('mod', $tables);
         $this->assertContains('othersite', $tables);
@@ -392,6 +459,7 @@ final class provider_test extends provider_testcase {
         $this->record_pulled_grade($student->id, 80);
         $this->record_pulled_attempt($student->id);
         $this->record_pulled_submission($student->id);
+        $this->record_pulled_mark($student->id);
 
         provider::export_user_data(new approved_contextlist($student, 'block_coursesync', [$this->blockcontext->id]));
         $writer = writer::with_context($this->blockcontext);
@@ -446,6 +514,19 @@ final class provider_test extends provider_testcase {
                     'timeimported' => 'timeimported',
                 ],
                 'export' => $writer->get_data([get_string('privacy:path:submissions', 'block_coursesync')])->submissions[0] ?? null,
+            ],
+            'block_coursesync_mark' => [
+                'fields' => [
+                    'assignid' => 'assignment',
+                    'gradeid' => 'gradeid',
+                    'remotecmid' => 'remoteactivity',
+                    'remoteattempt' => 'remoteattempt',
+                    'fingerprint' => 'fingerprint',
+                    'localfingerprint' => 'localfingerprint',
+                    'remotetime' => 'timechangedonothersite',
+                    'timeimported' => 'timeimported',
+                ],
+                'export' => $writer->get_data([get_string('privacy:path:marks', 'block_coursesync')])->marks[0] ?? null,
             ],
         ];
 

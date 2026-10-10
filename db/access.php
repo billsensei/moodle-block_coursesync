@@ -123,4 +123,31 @@ $capabilities = [
             'manager' => CAP_ALLOW,
         ],
     ],
+
+    // Who may read teachers' marks and written feedback on assignments through
+    // the Course Sync web service. Held by the source site's sync account,
+    // never by default, and separate from exportgrades and exportsubmissions:
+    // sharing a gradebook grade, the work it was given for, and what the
+    // teacher wrote about it are separate decisions. Read-only here.
+    'block/coursesync:exportmarks' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [],
+    ],
+
+    // Who may pull teachers' marks and written feedback from the other site
+    // into this course. They are written as if the person pulling had given
+    // them, so marks_pull also requires mod/assign:grade here. Nothing happens
+    // either way until an administrator turns marks pulling on for the site
+    // (block_coursesync | allowmarkspull).
+    'block/coursesync:pullmarks' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
 ];

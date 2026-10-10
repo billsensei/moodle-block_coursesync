@@ -74,6 +74,8 @@ All nine check `block/coursesync:sync` in the relevant context and call
 | `block_coursesync_get_quiz_attempts` | the course's context, plus `block/coursesync:exportgrades` there |
 | `block_coursesync_get_submissions` | the course's context, plus `block/coursesync:exportsubmissions` there |
 | `block_coursesync_get_submission_file` | the course's context (found from the activity), plus `block/coursesync:exportsubmissions` there |
+| `block_coursesync_get_marks` | the course's context, plus `block/coursesync:exportmarks` there |
+| `block_coursesync_get_mark_file` | the course's context (found from the activity), plus `block/coursesync:exportmarks` there |
 
 The capability is checked **before** `validate_context()` so a missing sync
 permission is reported as that, rather than as the "course not accessible" that
@@ -360,6 +362,63 @@ file, 512 MB of files per pull, 100 assignments per request.
   provider, block context. A course reset of assignment submissions, and
   deleting a user, forget those rows (`local\observer`). The history of a
   submission pull holds counts per assignment only, never students.
+- Brought-across marks: ordinary grades and comments in the assignment, reported
+  and deleted by `mod_assign` (and the gradebook). `block_coursesync_mark`
+  records which ones and two fingerprints (never the mark or the comment), in the
+  privacy provider, block context. A course reset of assignment submissions (which
+  removes the grades with them), and deleting a user, forget those rows. The
+  history of a marks pull holds counts per assignment only, never students.
+
+## Assignment marks and feedback
+
+v1.22.0. What a teacher *gave and wrote* about a student's work is more than a
+grade and more than the work, so it has **its own four decisions**; sharing grades
+or submissions shares no marks (`test_needs_its_own_permission`,
+`test_switches_and_permission`).
+
+1. **Source switch** `allowmarksexport`, default off. Checked first, before
+   anything is looked up (`marks::require_export()`).
+2. **Source permission** `block/coursesync:exportmarks` (`RISK_PERSONAL`, no
+   archetypes) as well as `:sync`.
+3. **Destination switch** `allowmarkspull`, default off.
+4. **Destination permission**: `block/coursesync:pullmarks` **and**
+   `mod/assign:grade` in the course, checked in `marks_pull::check_allowed()`
+   for a preview as well as a pull. A pull writes grades as if the person pulling
+   had given them.
+
+**What travels:** for each requested assignment and each named student the
+gradebook lists, the mark (a number) and the comments-plugin text and format of
+the grade for the student's latest submitted attempt, and each embedded file's
+name, path, size and SHA-1, then the bytes in chunks. **Never who graded**: a
+teacher on the other site is not a user here. Never a team assignment, a scale,
+or an ungraded assignment (the answer says why and describes nothing), never a
+mark under a marking workflow that is not yet released, never other feedback
+plugins, rubrics, annotations or feedback files.
+
+**`get_mark_file` is not `get_submission_file`.** It asks, in order: switch,
+`:sync`, `:exportmarks`; is the activity an assignment in that course; is it a
+point-graded, non-team assignment with the comments plugin on; is the named user a
+gradebook student; does that student have a mark that `get_marks` would describe
+(`test_files_only_where_a_mark_is_described`, `test_no_files_where_comments_are_off`);
+only then the file in the area of *that* grade.
+
+**What the destination trusts:** nothing the source says about a file.
+`marks_result` refuses the whole answer for a file outside the one area, a path
+or name that cleaning would change, or a hash that is not 40 hex characters
+(`test_a_dishonest_file_description_is_refused`); each file is checked against
+its SHA-1 before storage and a mismatch writes nothing for that student. A
+non-numeric mark refuses the answer. A mark is converted to this assignment's
+range before it is compared or written and never exceeds it (mod_assign's
+`update_grade()` refuses a value above the maximum).
+
+**Never overwritten.** A mark is written only where the student has no mark and
+no comment here, or where an earlier pull wrote it and nobody has touched it since
+(compared by fingerprint, including the comment). Anything else is flagged and
+left as it is; one a person removed is not brought back. The one thing it does
+remove is a **gradebook override that grade sync wrote and nobody has changed**
+(`grade_pull::untouched()`), and only after the real grade is in; a teacher's own
+override stays (`test_an_override_changed_here_stays`). Grade sync in turn skips a
+student whose mark a marks pull wrote.
 
 ## Outgoing requests
 

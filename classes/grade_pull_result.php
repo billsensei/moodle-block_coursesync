@@ -61,6 +61,9 @@ class grade_pull_result {
     /** @var string An entry about an assignment submission. */
     public const KIND_SUBMISSION = 'submission';
 
+    /** @var string An entry about a teacher's mark and feedback on an assignment. */
+    public const KIND_MARK = 'mark';
+
     /** @var bool Whether the pull got as far as looking at grades. */
     public bool $success = true;
 

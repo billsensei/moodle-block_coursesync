@@ -393,6 +393,98 @@ class remote_client {
     }
 
     /**
+     * Fetch the marks and written feedback teachers gave on some of the
+     * mapped course's assignments.
+     *
+     * @param string $baseurl normalised base URL of the remote site
+     * @param string $token the remote site's web service token
+     * @param int $courseid the resolved remote course id
+     * @param int[] $cmids course module ids of assignments on the source site
+     * @param \core\http_client|null $client injected only by tests
+     * @param string[] $usernames the only students wanted (never empty: an
+     *      empty list means every student to the source)
+     * @return marks_result
+     */
+    public static function get_marks(
+        string $baseurl,
+        string $token,
+        int $courseid,
+        array $cmids,
+        ?http_client $client = null,
+        array $usernames = []
+    ): marks_result {
+        // Refused for its own permission, not the grades one; and a source
+        // that answers as Course Sync but lacks the function is from before it.
+        $translate = [
+            'errornopermission' => 'errornomarkspermission',
+            'errorpluginmissing' => 'errormarkssourceoutdated',
+        ];
+        $answers = [];
+
+        foreach (array_chunk(array_values(array_map('intval', $cmids)), external\get_marks::MAX_CMIDS) as $batch) {
+            $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_marks', [
+                'courseid' => $courseid,
+                'cmids' => $batch,
+            ], $usernames, $client);
+
+            if ($outcome['errorkey'] !== null) {
+                return marks_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
+            }
+
+            $answer = marks_result::from_response($outcome['data']);
+
+            if (!$answer->success) {
+                return $answer;
+            }
+
+            $answers[] = $answer;
+        }
+
+        return marks_result::merge($answers);
+    }
+
+    /**
+     * Fetch one chunk of one file embedded in a teacher's comment on a mark.
+     *
+     * @param string $baseurl normalised base URL of the remote site
+     * @param string $token the remote site's web service token
+     * @param int $cmid course module id of the assignment on the source site
+     * @param string $username the student
+     * @param string $filepath
+     * @param string $filename
+     * @param int $offset byte to start at
+     * @param int $length how many bytes to ask for
+     * @param \core\http_client|null $client injected only by tests
+     * @return file_chunk
+     */
+    public static function get_mark_file(
+        string $baseurl,
+        string $token,
+        int $cmid,
+        string $username,
+        string $filepath,
+        string $filename,
+        int $offset,
+        int $length,
+        ?http_client $client = null
+    ): file_chunk {
+        $outcome = self::call($baseurl, $token, 'block_coursesync_get_mark_file', [
+            'cmid' => $cmid,
+            'username' => $username,
+            'filepath' => $filepath,
+            'filename' => $filename,
+            'offset' => $offset,
+            'length' => $length,
+        ], $client);
+
+        if ($outcome['errorkey'] !== null) {
+            return file_chunk::failure($outcome['errorkey']);
+        }
+
+        return self::chunk_from($outcome['data']);
+    }
+
+    /**
      * Fetch one chunk of one of an activity's files.
      *
      * @param string $baseurl normalised base URL of the remote site
@@ -717,6 +809,7 @@ class remote_client {
             'errorfilenotallowed' => 'errorfilenotallowed',
             'errorgradeexportdisabled' => 'errorgradeexportoff',
             'errorsubmissionexportdisabled' => 'errorsubmissionexportoff',
+            'errormarksexportdisabled' => 'errormarksexportoff',
             'invalidparameter' => 'errorbadrequest',
             'invalidrecordunknown' => 'errorcoursenotfound',
         ];

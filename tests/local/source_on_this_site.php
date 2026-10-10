@@ -21,6 +21,8 @@ use block_coursesync\external\get_activity;
 use block_coursesync\external\get_activity_file;
 use block_coursesync\external\get_grades;
 use block_coursesync\external\get_quiz_attempts;
+use block_coursesync\external\get_mark_file;
+use block_coursesync\external\get_marks;
 use block_coursesync\external\get_submission_file;
 use block_coursesync\external\get_submissions;
 use block_coursesync\external\get_modified_activities;
@@ -102,6 +104,25 @@ trait source_on_this_site {
                 (int) $params['cmid'],
                 (string) $params['username'],
                 (string) $params['area'],
+                (string) $params['filepath'],
+                (string) $params['filename'],
+                (int) $params['offset'],
+                (int) $params['length']
+            );
+        }
+
+        if ($function === 'block_coursesync_get_marks') {
+            return get_marks::execute(
+                (int) $params['courseid'],
+                array_map('intval', $params['cmids'] ?? []),
+                (string) ($params['usernames'] ?? '')
+            );
+        }
+
+        if ($function === 'block_coursesync_get_mark_file') {
+            return get_mark_file::execute(
+                (int) $params['cmid'],
+                (string) $params['username'],
                 (string) $params['filepath'],
                 (string) $params['filename'],
                 (int) $params['offset'],

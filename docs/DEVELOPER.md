@@ -720,7 +720,7 @@ is never a second `latest` row.
 Not done on purpose: the student-facing `save_submission()` (it enforces
 deadlines, cut-offs and locks and sends notifications), events (none are fired;
 completion is updated directly with `completion_info::update_state()`), and
-`assign_grades` (marks are the grade pull's business).
+`assign_grades` (marks are the marks pull's business since v1.22.0).
 
 Limits: the **site's and the course's** `maxbytes` per file - not
 `get_max_upload_file_size()`, which also folds in PHP's upload limits, about a
@@ -735,6 +735,58 @@ fixtures set it to 0). `submission_pull_test` drives the real source functions
 on the same site; its fake source runs them **as admin** whoever is pulling,
 and can be made to lie (`$this->tamper`) for corrupt hashes, oversized files
 and failing transfers.
+
+## Assignment marks and feedback
+
+Added in v1.22.0 (LEARNFROMME phases 66-). Designed in
+[DESIGN_ASSIGN_MARKS.md](DESIGN_ASSIGN_MARKS.md). The same shape as submissions
+and the same gates (see [SECURITY.md](SECURITY.md#assignment-marks-and-feedback)).
+
+**Shared:** `local\marks` holds what both ends must agree on: which assignments
+can carry marks (`assignment_problem()`: not team, point grades only), which grade
+row counts (`mark_for()`: the row for the student's latest *submitted* attempt, or
+their latest attempt if they have handed nothing in; under a marking workflow only
+if released), the comment (`comment()`: the comments plugin's text, format and
+files in `assignfeedback_comments` / `feedback`), `fingerprint()` over the number
+(five decimals), text, format and each file's path/name/hash, and `convert()` for
+a different maximum.
+
+**Source:** `external\get_marks` and `external\get_mark_file`, both starting with
+`marks::require_export()`. Who graded is not in the answer.
+
+**Destination:** `marks_pull::preview()` / `run()` return a `grade_pull_result` of
+`KIND_MARK` entries (`history::KIND_MARKS`), and `marks.php` is a thin page.
+`classify()` is the submissions table with marks for work: nothing here and no
+ledger row → ADD; ledger row but nothing here → SKIPPED `markreasondeleted`; a mark
+not written by a pull → SAME if it equals what would be written, else CONFLICT;
+ledger row with the source fingerprint unchanged → SAME; changed and the local
+fingerprint is still the recorded one → UPDATE, else CONFLICT. "A mark here" is a
+number **or** a comment (`mark_writer::has_mark()`).
+
+`local\mark_writer::write()` goes through mod_assign: `get_user_grade($uid, true)`
+(which makes the submission row too if there is none, as marking does), the comment
+row and files, then `update_grade()` - which pushes to the gradebook for the latest
+attempt and fires `submission_graded`. In one transaction with the ledger row
+(`block_coursesync_mark`). The grader is the person pulling. Under a local marking
+workflow the user flag is set to released.
+
+**Takes over from grade sync:** after the grade is in, `release_override()` removes a
+`block_coursesync_grade` override that is still as grade sync wrote it
+(`grade_pull::untouched()` / `release()`, now public). A RELEASED entry says so.
+`grade_pull` in turn skips (`gradeskipmarks`) any student with a
+`block_coursesync_mark` row for the assignment.
+
+Not done on purpose: other feedback plugins (files, offline, rubrics, annotated
+PDF), the grader's identity, earlier attempts, scales, team assignments, marker
+allocation and extensions.
+
+Tests: `tests/local/mark_fixtures.php` gives marks through `update_grade()` and the
+comments plugin's table. `marks_pull_test` drives the real source functions on the
+same site (as the submissions test does); `external/get_marks_test` covers the
+gates. Mutation-checked: each switch, each permission, the workflow gate, the
+student gate on the file function, the scaling, the "changed here is kept" and
+"existing is kept" rules, "removed is not brought back", the lock, the override
+release and the grade-sync skip.
 
 ## Security
 

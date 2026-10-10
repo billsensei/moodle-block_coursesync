@@ -200,6 +200,25 @@ online text and files of the **latest attempt each student it names has handed
 in**. Drafts and team assignments are never shared. Usernames must be the same
 people on both sites.
 
+## 10. Optional: share assignment marks and feedback
+
+Separate from grades and from submissions, and off by default. Only turn it on
+if teachers on the destination should be able to bring across the marks and
+comments teachers gave here.
+
+1. *Site administration > Plugins > Blocks > Course Sync*: tick **Let other
+   sites read assignment marks and feedback from this site**.
+2. Give the sync account `block/coursesync:exportmarks` ("Let another site read
+   assignment marks and feedback through Course Sync") in the same category or
+   course as its other permissions. No role has it by default, and neither
+   `exportgrades` nor `exportsubmissions` stands in for it.
+
+What the destination can then read: for each assignment it asks about, the
+**mark and written comment for each named student's latest handed-in attempt**,
+and files embedded in the comment. Team assignments, scales and assignments with
+no grade are never shared, and under a marking workflow only released marks are.
+Who graded is never shared. Usernames must be the same people on both sites.
+
 ## If the test fails
 
 | What the block says | Usually means |

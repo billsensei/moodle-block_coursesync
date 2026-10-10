@@ -172,6 +172,26 @@ and uploaded files. Never drafts or team assignments, and never over work that
 is already there. The same warning as for grades applies: check that usernames
 mean the same people on both sites first.
 
+## Assignment marks and feedback
+
+Optional, and **off** until you turn it on - apart from grade sync and from
+submissions, because what a teacher wrote about a student's work is its own
+decision. Each direction has its own switch, in the same settings page:
+
+| Site | Setting | Plus |
+| --- | --- | --- |
+| Source | **Let other sites read assignment marks and feedback from this site** | Give the sync account `block/coursesync:exportmarks` where it has its other permissions - see [REMOTE_SETUP.md step 10](REMOTE_SETUP.md#10-optional-share-assignment-marks-and-feedback). No role has it by default. |
+| Destination | **Let teachers pull assignment marks and feedback into this site** | Teachers need `block/coursesync:pullmarks` (editing teachers and managers by default) and `mod/assign:grade` in the course. |
+
+What it brings: the mark for each student's latest handed-in attempt, as a real
+assignment grade (so the grader screen and the gradebook agree), with the
+teacher's written comment. It does not need submissions to be pulled first. It
+takes over from grade sync for an assignment: a grade-sync override nobody has
+touched is removed, and grade sync then leaves that student alone. Never over a
+mark that is already there. The same warning as for grades applies: check that
+usernames mean the same people on both sites first. Only point grades are
+pulled, and the comments feedback must be switched on for the assignment here.
+
 ## Private networks and testing
 
 Course Sync refuses to connect to loopback, link-local or private addresses, so
@@ -200,6 +220,7 @@ access to the server. **Do not set it on a production site.**
 | `block_coursesync_grade` | One row per grade a grade pull wrote: the student, the grade item, and the grade as written, so a later pull can tell its own grades from a teacher's |
 | `block_coursesync_attempt` | One row per quiz attempt a pull brought across: the student, the attempt here and on the source, and the marks given, so a later pull neither brings it twice nor overwrites a teacher's marks |
 | `block_coursesync_submission` | One row per assignment submission a pull brought across: the student, the submission here and the assignment on the source, and fingerprints of the content (never the content), so a later pull neither brings it twice nor overwrites work changed here |
+| `block_coursesync_mark` | One row per assignment mark a pull brought across: the student, the grade here and the assignment on the source, and fingerprints of the mark and comment (never their content), so a later pull neither brings it twice nor overwrites a mark changed here |
 
 The token is encrypted with Moodle's own secret storage (`\core\encryption`,
 libsodium). The key lives outside the database, in the site's secret data

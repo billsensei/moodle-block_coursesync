@@ -163,6 +163,7 @@ class block_coursesync extends block_base {
         \block_coursesync\grade_pull::delete_for_block_instance($this->instance->id);
         \block_coursesync\attempt_pull::delete_for_block_instance($this->instance->id);
         \block_coursesync\submission_pull::delete_for_block_instance($this->instance->id);
+        \block_coursesync\marks_pull::delete_for_block_instance($this->instance->id);
 
         return true;
     }
@@ -283,6 +284,19 @@ class block_coursesync extends block_base {
             $out .= html_writer::tag('p', html_writer::link(
                 $submissionsurl,
                 get_string('submissionspull', 'block_coursesync'),
+                ['class' => 'btn btn-secondary btn-sm']
+            ));
+        }
+
+        // And for marks and written feedback, with theirs.
+        if (\block_coursesync\marks_pull::check_allowed($this->get_course_id()) === null) {
+            $marksurl = new moodle_url('/blocks/coursesync/marks.php', [
+                'instanceid' => $this->instance->id,
+                'courseid' => $this->get_course_id(),
+            ]);
+            $out .= html_writer::tag('p', html_writer::link(
+                $marksurl,
+                get_string('markspull', 'block_coursesync'),
                 ['class' => 'btn btn-secondary btn-sm']
             ));
         }

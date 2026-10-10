@@ -45,6 +45,9 @@ class history {
     /** @var string A pull of assignment submissions. */
     public const KIND_SUBMISSIONS = 'submissions';
 
+    /** @var string A pull of assignment marks and feedback. */
+    public const KIND_MARKS = 'marks';
+
     /**
      * Write a finished run to the history.
      *
@@ -115,7 +118,7 @@ class history {
      * @param int $userid who started the pull
      * @param int $timestarted
      * @param grade_pull_result $result
-     * @param string $runkind KIND_GRADES, or KIND_SUBMISSIONS for a pull of assignment submissions
+     * @param string $runkind KIND_GRADES, KIND_SUBMISSIONS or KIND_MARKS
      * @return int the new history row id
      */
     public static function record_grade_pull(
@@ -142,7 +145,14 @@ class history {
         // released and its attempts brought across in one pull.
         $activities = [];
 
-        foreach ([grade_pull_result::KIND_GRADE, grade_pull_result::KIND_ATTEMPT, grade_pull_result::KIND_SUBMISSION] as $kind) {
+        $kinds = [
+            grade_pull_result::KIND_GRADE,
+            grade_pull_result::KIND_ATTEMPT,
+            grade_pull_result::KIND_SUBMISSION,
+            grade_pull_result::KIND_MARK,
+        ];
+
+        foreach ($kinds as $kind) {
             foreach ($result->by_activity($kind) as $activity) {
                 $activities[] = ['kind' => $kind] + $activity;
             }

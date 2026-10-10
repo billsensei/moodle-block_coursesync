@@ -61,6 +61,20 @@ things worth checking before teachers touch it.
 - [ ] The pilot assignments are not team assignments, and have file and/or
       online text submissions switched on **here** as well as there
 
+**If the pilot includes assignment marks and feedback** (optional, separate from grades and submissions)
+
+- [ ] Source: **Let other sites read assignment marks and feedback from this
+      site** ticked, and `block/coursesync:exportmarks` given to the sync account
+- [ ] Destination: **Let teachers pull assignment marks and feedback into this
+      site** ticked
+- [ ] Pilot teachers hold `block/coursesync:pullmarks` and `mod/assign:grade`
+- [ ] The pilot assignments are graded **in points** on both sites and are not
+      team assignments, and the **comments** feedback is switched on **here** as
+      well as there
+- [ ] Decide who owns the grade: after a marks pull the real assignment grade
+      wins over a grade sync override nobody has changed, and grade sync leaves
+      that student alone
+
 ## The encryption key
 
 The token is encrypted with a key created on first use, owned by whichever

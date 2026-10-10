@@ -17,7 +17,10 @@ by hand) is recognised on its first sync, by type and name, and linked rather
 than copied again. Since v1.21.0 **submission sync** (also off by default, with
 its own switches and permissions) brings students' assignment submissions - the
 latest handed-in attempt, as online text and uploaded files - into copied
-assignments, never replacing work that is already there.
+assignments, never replacing work that is already there. Since v1.22.0 **marks
+sync** (off by default, with its own switches and permissions) brings the marks
+and written comments teachers gave on those assignments, as real assignment
+grades, never replacing a mark a teacher gave here.
 
 ## How it fits together
 
@@ -42,6 +45,8 @@ The service contains nine functions, all read-only:
 | `block_coursesync_get_quiz_attempts` | Students' finished quiz attempts - times and per-question marks, not answers - with each quiz's outline. Same gates as `get_grades` |
 | `block_coursesync_get_submissions` | Describes students' latest handed-in assignment work (online text, and each file's name, size and SHA-1), by username. Off unless the site allows it and the account holds `block/coursesync:exportsubmissions` |
 | `block_coursesync_get_submission_file` | One chunk of one file from a student's handed-in work. Refuses unless the file is in that student's own latest submitted attempt. Same gates as `get_submissions` |
+| `block_coursesync_get_marks` | Describes teachers' marks and written comments on assignments (the number, the comment, each embedded file's name, size and SHA-1), by student username. Off unless the site allows it and the account holds `block/coursesync:exportmarks` |
+| `block_coursesync_get_mark_file` | One chunk of one file embedded in a comment on a student's mark. Refuses unless that mark would be described. Same gates as `get_marks` |
 | `block_coursesync_get_grades` | Students' gradebook grades and feedback for chosen activities, by username. Off unless the site allows it and the account holds `block/coursesync:exportgrades` |
 
 The same code runs at both ends; which role a site plays depends only on how it

@@ -398,7 +398,7 @@ You will only see a **Pull submissions** button in the block if:
 
 For each student, the **latest attempt they handed in**: their online text, the
 files they uploaded, and any files in the text. Not drafts, not team
-assignments, and not marks or comments - pull grades for those. The student's
+assignments, and not marks or comments - pull marks and feedback for those. The student's
 original times are kept, nobody is emailed, and handing work in counts for
 activity completion as it would have if they had done it here.
 
@@ -431,6 +431,59 @@ soon as anyone here touches it, it is yours and later pulls leave it alone.
 The work shows as *Submitted for grading*. The assignment's grader screen does
 not know about any mark pulled with **Pull grades**, since those are gradebook
 overrides, so it may show the work as ungraded while the gradebook has a grade.
+**Pull marks and feedback** (below) gives it the real grade.
+
+## Pulling assignment marks and feedback
+
+If teachers on the other site marked the work, Course Sync can bring the **mark
+and the written comment** into the copy of the assignment in your course. It is
+separate from pulling grades and from pulling submissions, and it only works for
+assignments Course Sync copied (or recognised as already here).
+
+You will only see a **Pull marks and feedback** button in the block if an
+administrator has switched marks pulling on for this site, **and** one on the
+other site has switched marks sharing on there, **and** you hold the Course Sync
+permission to pull marks and are allowed to grade assignments in this course.
+
+### What comes across
+
+For each student, the mark for their **latest handed-in attempt**, the comment
+the teacher wrote, and any files in the comment. It is written as a real
+assignment grade, **given by you** - the grader screen shows it, the gradebook
+shows it, and the student sees it as they would any mark. The teacher's name on
+the other site is not carried. The student does not need to have handed anything
+in here: you can pull the marks without pulling the submissions.
+
+Only assignments graded **in points** on both sites. If the totals differ the
+mark is scaled (80/100 becomes 40/50). Scales, ungraded assignments and team
+assignments are skipped, and where a marking workflow is used only **released**
+marks are pulled.
+
+### What happens
+
+**Pull marks and feedback** first shows you what it *would* do. Nothing is
+written until you press **Pull the marks**. The page lists:
+
+- **Kept as it was** - the student already has a different mark or comment here,
+  or an earlier pull brought a mark across and someone has changed it since. It
+  is **never replaced**; look at it and decide.
+- **Skipped** - and why: the assignment here is not graded in points, the
+  comments feedback is not switched on here, the grade is locked in the
+  gradebook, or a file did not arrive intact. A mark a teacher removed here
+  after it was pulled is not brought back.
+- **Marks to pull** - students with no mark here yet.
+
+If **Pull grades** had already put a gradebook override on that student's grade,
+and nobody has changed it, it is removed once the real grade is in (the table
+counts them as **Override removed**). From then on **Pull grades** leaves that
+student's grade in this assignment alone. An override you set yourself stays.
+
+### Pulling again
+
+A mark Course Sync brought across, and that nobody here has changed, follows the
+other site: if the teacher there changes it, the next pull updates it here. As
+soon as anyone here touches the mark or the comment, it is yours and later pulls
+leave it alone.
 
 ## Sync history
 

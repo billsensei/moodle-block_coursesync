@@ -134,6 +134,12 @@ if ($runs === []) {
                     'gradescolskipped'],
                 ['add', 'update', 'same', 'conflict', 'skipped'],
             ],
+            'mark' => [
+                'markssection',
+                ['submissionscolassignment', 'gradescoladd', 'gradescolupdate', 'submissionscolsame', 'gradescolconflict',
+                    'gradescolskipped', 'markscolreleased'],
+                ['add', 'update', 'same', 'conflict', 'skipped', 'released'],
+            ],
             'attempt' => [
                 'attemptssection',
                 ['attemptscolquiz', 'gradescoladd', 'gradescolupdate', 'attemptscolsame', 'gradescolconflict',
@@ -192,10 +198,15 @@ if ($runs === []) {
             'class' => 'badge ' . $badgeclass . ' me-2',
         ]);
         $issubmissions = $run->kind === history::KIND_SUBMISSIONS;
-        $isgrades = $run->kind === history::KIND_GRADES || $issubmissions;
+        $ismarks = $run->kind === history::KIND_MARKS;
+        $isgrades = $run->kind === history::KIND_GRADES || $issubmissions || $ismarks;
 
         if ($isgrades) {
-            $kindlabel = get_string($issubmissions ? 'historykindsubmissions' : 'historykindgrades', 'block_coursesync');
+            $kindlabel = get_string(match (true) {
+                $issubmissions => 'historykindsubmissions',
+                $ismarks => 'historykindmarks',
+                default => 'historykindgrades',
+            }, 'block_coursesync');
             $summary .= html_writer::tag('span', $kindlabel, [
                 'class' => 'badge bg-info text-dark me-2',
             ]);
@@ -204,6 +215,7 @@ if ($runs === []) {
         $summary .= html_writer::tag('strong', userdate($run->timestarted));
         $summary .= ' — ' . get_string(match (true) {
             $issubmissions => 'historysubmissioncounts',
+            $ismarks => 'historymarkcounts',
             $isgrades => 'historygradecounts',
             default => 'historycounts',
         }, 'block_coursesync', (object) [

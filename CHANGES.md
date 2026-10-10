@@ -7,6 +7,49 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
+## Unreleased (build 2026101001, v1.22.0-beta)
+
+### Added
+
+- **Assignment marks and written feedback can be pulled.** Off by default on
+  both sites, with its own switches (`allowmarksexport`, `allowmarkspull`) and
+  permissions (`block/coursesync:exportmarks`, held by no role;
+  `block/coursesync:pullmarks`, editing teachers and managers) - sharing grades
+  or submissions does not share what a teacher wrote. A teacher previews, then
+  pulls: for each student of a copied or linked assignment, the **mark for the
+  attempt the submission pull carries** (their latest handed-in attempt), the
+  teacher's written comment, and files embedded in the comment.
+  - Written through mod_assign's own `update_grade()`, so the **grader screen
+    and the gradebook agree** - this is what grade sync's override could not do.
+    The person pulling is recorded as the grader; who graded on the other site
+    is not carried.
+  - **Marks sync takes over from grade sync for an assignment.** A gradebook
+    override that grade sync wrote, and nobody has touched since, is removed
+    once the real grade is in; an override a teacher changed stays. Grade sync
+    then leaves a student alone once a marks pull has written their mark (the
+    page says so).
+  - A mark is written only where the student has none here, or where an earlier
+    pull wrote it and nobody has touched it since; anything else is flagged and
+    left as it is, a mark a teacher removed is not brought back, and a change
+    made here is not flagged again while the source is unchanged.
+  - Point grades only: a scale, an ungraded assignment, a team assignment, a
+    locked gradebook grade, or a comment where this assignment's comments
+    feedback is off are skipped with the reason. A mark is scaled if the two
+    assignments are out of different totals. Under a marking workflow only a
+    released mark is sent, and it lands released.
+  - The person pulling needs `mod/assign:grade` in the course as well.
+- New external functions `block_coursesync_get_marks` and
+  `block_coursesync_get_mark_file` (a comment's file, for a mark that would be
+  described, never a teacher's or an unreleased one).
+- New table `block_coursesync_mark` (the upgrade step creates it); course reset
+  of assignment submissions, user deletion and the privacy provider cover it.
+
+### Changed
+
+- `grade_pull::release()` and `untouched()` are public, so the marks pull can
+  take away a grade sync override by the same rule.
+- Sync history labels a marks pull **Marks**.
+
 ## Unreleased (build 2026100501, v1.21.0-beta)
 
 ### Added

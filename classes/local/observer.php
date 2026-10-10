@@ -65,6 +65,8 @@ class observer {
         // Assignment submissions are removed by the assignment's own reset.
         if (!empty($options['reset_assign_submissions'])) {
             $DB->delete_records('block_coursesync_submission', ['courseid' => $courseid]);
+            // The assignment's reset removes its grades and feedback with its submissions.
+            $DB->delete_records('block_coursesync_mark', ['courseid' => $courseid]);
         }
 
         // Removing the items removes their grades with them, so either option
@@ -88,5 +90,6 @@ class observer {
         $DB->delete_records('block_coursesync_grade', ['userid' => $userid]);
         $DB->delete_records('block_coursesync_attempt', ['userid' => $userid]);
         $DB->delete_records('block_coursesync_submission', ['userid' => $userid]);
+        $DB->delete_records('block_coursesync_mark', ['userid' => $userid]);
     }
 }

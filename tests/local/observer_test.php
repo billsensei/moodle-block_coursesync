@@ -133,6 +133,19 @@ final class observer_test extends \advanced_testcase {
             'remotetime' => 1750000000,
             'timeimported' => 1750000100,
         ]);
+        $DB->insert_record('block_coursesync_mark', (object) [
+            'blockinstanceid' => 1,
+            'courseid' => $course->id,
+            'userid' => $user->id,
+            'assignid' => $serial,
+            'gradeid' => $serial,
+            'remotecmid' => 780,
+            'remoteattempt' => 0,
+            'fingerprint' => sha1('there'),
+            'localfingerprint' => sha1('here'),
+            'remotetime' => 1750000000,
+            'timeimported' => 1750000100,
+        ]);
     }
 
     /**
@@ -188,6 +201,9 @@ final class observer_test extends \advanced_testcase {
 
         $this->assertSame(0, $this->rows('block_coursesync_submission', $this->course->id));
         $this->assertSame(2, $this->rows('block_coursesync_submission', $this->other->id));
+        // The assignment's reset takes its marks with its submissions.
+        $this->assertSame(0, $this->rows('block_coursesync_mark', $this->course->id));
+        $this->assertSame(2, $this->rows('block_coursesync_mark', $this->other->id));
         $this->assertSame(2, $this->rows('block_coursesync_grade', $this->course->id));
         $this->assertSame(2, $this->rows('block_coursesync_attempt', $this->course->id));
     }
@@ -199,6 +215,7 @@ final class observer_test extends \advanced_testcase {
         $this->reset($this->course, ['reset_quiz_attempts']);
 
         $this->assertSame(2, $this->rows('block_coursesync_submission', $this->course->id));
+        $this->assertSame(2, $this->rows('block_coursesync_mark', $this->course->id));
     }
 
     /**
@@ -233,6 +250,7 @@ final class observer_test extends \advanced_testcase {
         $this->assertSame(4, $this->rows('block_coursesync_grade'));
         $this->assertSame(4, $this->rows('block_coursesync_attempt'));
         $this->assertSame(4, $this->rows('block_coursesync_submission'));
+        $this->assertSame(4, $this->rows('block_coursesync_mark'));
     }
 
     /**
@@ -244,7 +262,9 @@ final class observer_test extends \advanced_testcase {
 
         delete_user($this->student);
 
-        foreach (['block_coursesync_grade', 'block_coursesync_attempt', 'block_coursesync_submission'] as $table) {
+        $tables = ['block_coursesync_grade', 'block_coursesync_attempt', 'block_coursesync_submission', 'block_coursesync_mark'];
+
+        foreach ($tables as $table) {
             $this->assertSame(0, $DB->count_records($table, ['userid' => $this->student->id]), $table);
             $this->assertSame(2, $DB->count_records($table, ['userid' => $this->classmate->id]), $table);
         }

@@ -50,6 +50,7 @@ class behat_block_coursesync extends behat_base {
      * | Sync    | Course shortname | The sync page for that course's block               |
      * | History | Course shortname | The sync history for that course's block            |
      * | Grades  | Course shortname | The grade pull page for that course's block         |
+     * | Marks   | Course shortname | The marks and feedback pull page for that course's block |
      *
      * @param string $type identifies which type of page this is, e.g. 'Preview'
      * @param string $identifier identifies the particular page, here a course shortname
@@ -86,6 +87,8 @@ class behat_block_coursesync extends behat_base {
                 return new moodle_url('/blocks/coursesync/grades.php', $params);
             case 'submissions':
                 return new moodle_url('/blocks/coursesync/submissions.php', $params);
+            case 'marks':
+                return new moodle_url('/blocks/coursesync/marks.php', $params);
             default:
                 throw new Exception("Unrecognised page type '{$type}'.");
         }
@@ -410,6 +413,66 @@ class behat_block_coursesync extends behat_base {
         set_config('allowsubmissionexport', 1, 'block_coursesync');
         $roleid = $DB->get_field('role', 'id', ['shortname' => 'coursesyncservice'], MUST_EXIST);
         assign_capability('block/coursesync:exportsubmissions', CAP_ALLOW, $roleid, context_system::instance()->id, true);
+        reload_all_capabilities();
+    }
+
+    /**
+     * A teacher has marked a student's work in an assignment, with a comment.
+     *
+     * Found by name in the one course, so it works on the original even though
+     * the copy has the same name on this site.
+     *
+     * @Given /^"(?P<user>.*?)" was marked (?P<grade>[\d.]+) with "(?P<comment>.*?)" in "(?P<name>.*?)" of "(?P<course>.*?)"$/
+     * @param string $user
+     * @param string $grade
+     * @param string $comment
+     * @param string $name
+     * @param string $course
+     */
+    public function user_has_been_marked(string $user, string $grade, string $comment, string $name, string $course) {
+        global $CFG, $DB;
+
+        require_once($CFG->dirroot . '/mod/assign/locallib.php');
+
+        $courseid = $this->get_course_id($course);
+        $assigninstance = $DB->get_record('assign', ['course' => $courseid, 'name' => $name], '*', MUST_EXIST);
+        $cm = get_coursemodule_from_instance('assign', $assigninstance->id, $courseid, false, MUST_EXIST);
+        $assign = new assign(context_module::instance($cm->id), $cm, get_course($courseid));
+        $userid = $DB->get_field('user', 'id', ['username' => $user], MUST_EXIST);
+
+        $row = $assign->get_user_grade($userid, true);
+        $DB->insert_record('assignfeedback_comments', (object) [
+            'assignment' => $assigninstance->id,
+            'grade' => $row->id,
+            'commenttext' => $comment,
+            'commentformat' => FORMAT_HTML,
+        ]);
+        $row->grade = (float) $grade;
+        $row->grader = get_admin()->id;
+        $assign->update_grade($row);
+    }
+
+    /**
+     * Switch on one direction of assignment marks sync for this site.
+     *
+     * Sharing also gives the account "this site is set up as a Course Sync
+     * source" created the permission to read marks, so it needs that step first.
+     *
+     * @Given /^Course Sync marks (?P<direction>sharing|pulling) is switched on$/
+     * @param string $direction
+     */
+    public function course_sync_marks_direction_is_switched_on(string $direction) {
+        global $DB;
+
+        if ($direction === 'pulling') {
+            set_config('allowmarkspull', 1, 'block_coursesync');
+
+            return;
+        }
+
+        set_config('allowmarksexport', 1, 'block_coursesync');
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'coursesyncservice'], MUST_EXIST);
+        assign_capability('block/coursesync:exportmarks', CAP_ALLOW, $roleid, context_system::instance()->id, true);
         reload_all_capabilities();
     }
 

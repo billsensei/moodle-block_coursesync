@@ -68,4 +68,24 @@ if ($ADMIN->fulltree) {
         get_string('allowsubmissionpull_desc', 'block_coursesync'),
         0
     ));
+
+    $settings->add(new admin_setting_heading(
+        'block_coursesync/marksheading',
+        get_string('settingsmarks', 'block_coursesync'),
+        get_string('settingsmarks_desc', 'block_coursesync')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_coursesync/allowmarksexport',
+        get_string('allowmarksexport', 'block_coursesync'),
+        get_string('allowmarksexport_desc', 'block_coursesync'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_coursesync/allowmarkspull',
+        get_string('allowmarkspull', 'block_coursesync'),
+        get_string('allowmarkspull_desc', 'block_coursesync'),
+        0
+    ));
 }

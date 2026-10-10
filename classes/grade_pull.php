@@ -462,6 +462,16 @@ class grade_pull {
             }
 
             $entry->userid = (int) $user->id;
+
+            // A marks pull has given this student the assignment's real grade,
+            // and the gradebook shows it. Writing an override over it, or
+            // flagging a difference, would only undo that.
+            if ($cm->modname === 'assign' && self::marks_pulled($cm, (int) $user->id)) {
+                $entry->reason = 'gradeskipmarks';
+                $result->add($entry);
+                continue;
+            }
+
             $incoming = self::convert($remotegrade->grade, $remoteitem, $gradeitem);
             $existing = $localgrades[$user->id] ?? null;
             $entry->grade = $incoming;
@@ -483,6 +493,19 @@ class grade_pull {
 
             $result->add($entry);
         }
+    }
+
+    /**
+     * Has a marks pull written this student's mark in this assignment?
+     *
+     * @param \cm_info $cm the assignment here
+     * @param int $userid
+     * @return bool
+     */
+    protected static function marks_pulled(\cm_info $cm, int $userid): bool {
+        global $DB;
+
+        return $DB->record_exists('block_coursesync_mark', ['assignid' => $cm->instance, 'userid' => $userid]);
     }
 
     /**
@@ -714,7 +737,7 @@ class grade_pull {
      * @param \stdClass $pulled its block_coursesync_grade row
      * @return void
      */
-    protected static function release(\grade_item $gradeitem, \grade_grade $grade, \stdClass $pulled): void {
+    public static function release(\grade_item $gradeitem, \grade_grade $grade, \stdClass $pulled): void {
         global $DB;
 
         $transaction = $DB->start_delegated_transaction();
@@ -791,7 +814,7 @@ class grade_pull {
      * @param \stdClass $pulled the block_coursesync_grade row
      * @return bool
      */
-    protected static function untouched(\grade_grade $grade, \stdClass $pulled): bool {
+    public static function untouched(\grade_grade $grade, \stdClass $pulled): bool {
         $then = $pulled->finalgrade === null ? null : (float) $pulled->finalgrade;
 
         return !grade_floats_different(self::finalgrade($grade), $then)
