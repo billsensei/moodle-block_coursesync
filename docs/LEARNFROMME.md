@@ -4351,3 +4351,33 @@ rollback replaced by a rethrow, both fail, so they guard the rollback.
 check removed (M4), the rollback replaced by a rethrow (M2, both writers).
 
 **Not done (same review):** M5 per-module capability check and idnumber targeting, L1-L7.
+
+## Phase 77 - Permissions on the assignment itself (v1.23.5-beta, build 2026101007), 2026-10-10
+
+**M5 (fixed, first half).** `check_allowed()` in both pulls used `has_all_capabilities()` on the
+*course* context, so a prohibit or role override on one assignment was ignored: the pull could
+still write submissions or marks into it. **Fix:** after the teacher's selection narrows the
+copies, each remaining assignment is checked in its own module context
+(`submission_pull::refused_by_permission()`, needs `mod/assign:grade` + `editothersubmission`
+for submissions, `grade` for marks). A refused one gets a skipped entry
+(`subreasonnomodulepermission`), is taken out of `$copies` *before* the source is asked (the test
+checks the ids sent), and the rest of the pull continues. The block's own capabilities stay
+course-level: they belong to the block, not the assignment.
+
+**M5 (second half, not changed).** Copies are found by the teacher-editable idnumber
+`coursesync-<cmid>`, so a teacher could point a local assignment at another remote cmid. It
+gives nothing beyond what the legitimate pull gives them (same mapped source course, same
+students, same permissions, now checked per assignment), and the idnumber is the design's
+identity, so it is documented in SECURITY.md rather than redesigned. Duplicate idnumbers are
+not detected (Moodle's form warns).
+
+**Traps.** The test uses an editing teacher (an admin passes every capability check, so a
+prohibit would show nothing) and needs `editothersubmission` granted to the role, as core
+gives it to none. A first draft put a submission-kind entry into the marks result by sharing
+one entry helper; each pull builds its own entry, the shared helper only says who is refused.
+
+**Evidence.** submission_pull_test 46/46, marks_pull_test 31/31; both mutations caught (refusal
+loop disabled in each pull).
+
+**Not done:** L1-L7 from the review (allow-list of source `reason` values, download size by bytes
+received, marks-to-attempt note, privacy wording for marks, tests incl. `question_cleaner`).

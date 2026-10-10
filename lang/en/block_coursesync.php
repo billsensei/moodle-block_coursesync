@@ -391,6 +391,7 @@ $string['subreasonexists'] = 'This student already has different work here. It i
 $string['subreasonfailed'] = 'Could not be saved here. Nothing was written for this student.';
 $string['subreasonfilesize'] = 'A file is larger than this course allows.';
 $string['subreasongone'] = 'The other site has nothing for this assignment - most often it was deleted there.';
+$string['subreasonnomodulepermission'] = 'You are not allowed to grade, or to edit submissions in, this assignment (a permission set on the assignment itself is missing), so nothing is pulled into it.';
 $string['subreasonnoplugins'] = 'File and online text submissions are not switched on for the assignment on the other site.';
 $string['subreasonnotassign'] = 'The other site says this is not an assignment.';
 $string['subreasonplugin'] = 'This assignment here does not accept that kind of submission (files or online text). Switch it on in the assignment\'s settings.';

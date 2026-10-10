@@ -231,6 +231,13 @@ A malicious or compromised source could send wrong grades. What bounds it:
   name, with an empty ID number, when a teacher presses sync. The source
   chooses its own names, so it could only ever link an activity whose name it
   already matches exactly, of the same type, and never one with an ID number.
+  The ID number is how a copy is recognised, and a teacher who may edit an
+  activity may edit its ID number, so such a teacher can point a local assignment
+  at another assignment of the mapped source course. That gives them nothing the
+  pull does not already give them for the right assignment: the same students, the
+  same source course, the same permissions, and (since v1.23.5) the permissions
+  in that assignment itself are checked. Two activities with the same ID number
+  are not told apart; Moodle's own form warns about duplicates.
 - Only students who are already **active graded users** of the course here. No
   account is created and nobody is enrolled.
 - **Separate groups** limit a pull as they limit the gradebook: someone who may

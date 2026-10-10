@@ -615,6 +615,48 @@ final class submission_pull_test extends advanced_testcase {
     }
 
     /**
+     * The right to pull is checked for the course, but a permission taken away
+     * on one assignment still holds: that assignment is left out, and the
+     * source is not asked about it.
+     */
+    public function test_a_permission_missing_in_one_assignment_is_respected(): void {
+        global $DB;
+
+        [$there2, $here2] = $this->second_assignment();
+        $teacher = $this->getDataGenerator()->create_and_enrol($this->course, 'editingteacher');
+        $roleid = (int) $DB->get_field('role', 'id', ['shortname' => 'editingteacher'], MUST_EXIST);
+        $coursecontext = \context_course::instance($this->course->id);
+        assign_capability('mod/assign:editothersubmission', CAP_ALLOW, $roleid, $coursecontext->id, true);
+        $this->setUser($teacher);
+
+        // Allowed in both, by the course.
+        $this->assertCount(2, array_filter(
+            submission_pull::preview($this->instanceid, $this->course->id, $this->source())->entries,
+            fn($entry) => $entry->outcome === grade_pull_result::ADD
+        ));
+
+        // Not in the first, by the assignment itself.
+        $modulecontext = \context_module::instance($this->here->cmid);
+        assign_capability('mod/assign:editothersubmission', CAP_PROHIBIT, $roleid, $modulecontext->id, true);
+        $this->calls = [];
+        $result = submission_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertTrue($result->success);
+        $byid = array_column($result->entries, null, 'cmid');
+        $this->assertSame(grade_pull_result::SKIPPED, $byid[$this->here->cmid]->outcome);
+        $this->assertSame('subreasonnomodulepermission', $byid[$this->here->cmid]->reason);
+        $this->assertSame(grade_pull_result::ADD, $byid[$here2->cmid]->outcome);
+        $this->assertNull($this->row());
+        $this->assertSame(1, $DB->count_records('assign_submission', ['assignment' => $here2->id]));
+
+        $asked = array_merge(...array_map(fn($call) => $call['cmids'] ?? [], array_filter(
+            $this->calls,
+            fn($call) => ($call['wsfunction'] ?? '') === 'block_coursesync_get_submissions'
+        )));
+        $this->assertSame([$there2->cmid], array_map('intval', $asked));
+    }
+
+    /**
      * A student who only opened the assignment here has a row with no work
      * in it: the work goes into that row, and there is still just the one.
      */

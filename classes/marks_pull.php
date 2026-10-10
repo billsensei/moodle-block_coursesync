@@ -201,6 +201,13 @@ class marks_pull {
             $copies = array_intersect_key($copies, array_flip($only));
         }
 
+        // The right to grade is checked for the course; a permission set on one
+        // assignment must still hold. Those are left out before the source is asked.
+        foreach (submission_pull::refused_by_permission($copies, ['mod/assign:grade']) as $remotecmid => $cm) {
+            $result->add(self::entry($cm, null, grade_pull_result::SKIPPED, 'subreasonnomodulepermission'));
+            unset($copies[$remotecmid]);
+        }
+
         if (!$copies) {
             return $result;
         }

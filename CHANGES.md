@@ -7,6 +7,18 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
+## Unreleased (build 2026101007, v1.23.5-beta)
+
+### Security
+
+- **A permission taken away on one assignment is now respected by submission and
+  marks pulls.** A pull checked the right to grade and to edit submissions for
+  the whole course only, so a prohibit or override set on a single assignment was
+  ignored and work could still be written into it. Each assignment is now checked
+  itself; one that fails is skipped with its own reason
+  (`subreasonnomodulepermission`) and the other site is not asked about it. The
+  rest of the pull carries on.
+
 ## Unreleased (build 2026101006, v1.23.4-beta)
 
 ### Fixed

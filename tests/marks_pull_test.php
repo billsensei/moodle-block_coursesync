@@ -832,6 +832,43 @@ final class marks_pull_test extends advanced_testcase {
     }
 
     /**
+     * The right to grade is checked for the course, but a permission taken away
+     * on one assignment still holds: that assignment is left out, and the
+     * source is not asked about it.
+     */
+    public function test_a_permission_missing_in_one_assignment_is_respected(): void {
+        global $DB;
+
+        [$there2, $here2] = $this->second_marked();
+        $teacher = $this->getDataGenerator()->create_and_enrol($this->course, 'editingteacher');
+        $roleid = (int) $DB->get_field('role', 'id', ['shortname' => 'editingteacher'], MUST_EXIST);
+        $this->setUser($teacher);
+
+        $this->assertCount(2, array_filter(
+            marks_pull::preview($this->instanceid, $this->course->id, $this->source())->entries,
+            fn($entry) => $entry->outcome === grade_pull_result::ADD
+        ));
+
+        assign_capability('mod/assign:grade', CAP_PROHIBIT, $roleid, \context_module::instance($this->here->cmid)->id, true);
+        $this->calls = [];
+        $result = marks_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertTrue($result->success);
+        $byid = array_column($result->entries, null, 'cmid');
+        $this->assertSame(grade_pull_result::SKIPPED, $byid[$this->here->cmid]->outcome);
+        $this->assertSame('subreasonnomodulepermission', $byid[$this->here->cmid]->reason);
+        $this->assertSame(grade_pull_result::KIND_MARK, $byid[$this->here->cmid]->kind);
+        $this->assertSame(grade_pull_result::ADD, $byid[$here2->cmid]->outcome);
+        $this->assertNull($this->grade_here());
+
+        $asked = array_merge(...array_map(fn($call) => $call['cmids'] ?? [], array_filter(
+            $this->calls,
+            fn($call) => ($call['wsfunction'] ?? '') === 'block_coursesync_get_marks'
+        )));
+        $this->assertSame([$there2->cmid], array_map('intval', $asked));
+    }
+
+    /**
      * The grade item of the assignment here.
      *
      * @return \grade_item

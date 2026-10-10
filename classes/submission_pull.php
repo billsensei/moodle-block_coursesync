@@ -47,6 +47,9 @@ class submission_pull {
     /** @var int Most file bytes one pull brings; the rest wait for the next pull. */
     public const RUN_BYTES = 536870912;
 
+    /** @var string[] What a person needs in an assignment itself to have work written into it. */
+    public const MODULE_CAPABILITIES = ['mod/assign:grade', 'mod/assign:editothersubmission'];
+
     /**
      * Show what a pull would do, writing nothing.
      *
@@ -139,7 +142,7 @@ class submission_pull {
         // The work is written as if the student had handed it in, so the
         // person pulling it must be someone allowed to work with
         // submissions by hand.
-        $needed = ['block/coursesync:pullsubmissions', 'mod/assign:grade', 'mod/assign:editothersubmission'];
+        $needed = array_merge(['block/coursesync:pullsubmissions'], self::MODULE_CAPABILITIES);
 
         if (!has_all_capabilities($needed, $context)) {
             return 'errornosubmissionpullpermission';
@@ -219,6 +222,14 @@ class submission_pull {
             $copies = array_intersect_key($copies, array_flip($only));
         }
 
+        // The right to pull is checked for the course; a permission set on one
+        // assignment (a prohibit, an override) must still hold. Those
+        // assignments are left out before the source is asked about them.
+        foreach (self::refused_by_permission($copies, self::MODULE_CAPABILITIES) as $remotecmid => $cm) {
+            $result->add(self::entry($cm, null, grade_pull_result::SKIPPED, 'subreasonnomodulepermission'));
+            unset($copies[$remotecmid]);
+        }
+
         if (!$copies) {
             return $result;
         }
@@ -283,6 +294,21 @@ class submission_pull {
         }
 
         return $result;
+    }
+
+    /**
+     * The assignments among these that the person may not write into, because
+     * a permission is missing in the assignment itself.
+     *
+     * @param \cm_info[] $copies remote cmid => the copy here
+     * @param string[] $needed the permissions needed in each assignment
+     * @return \cm_info[] the refused ones, by the same ids
+     */
+    public static function refused_by_permission(array $copies, array $needed): array {
+        return array_filter(
+            $copies,
+            static fn(\cm_info $cm) => !has_all_capabilities($needed, \context_module::instance($cm->id))
+        );
     }
 
     /**
