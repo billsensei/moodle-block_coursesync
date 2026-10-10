@@ -27,12 +27,14 @@ Feature: Pulling students' assignment submissions from the other site
     And the following "activities" exist:
       | activity | course | name      | intro          | section | submissiondrafts | assignsubmission_onlinetext_enabled |
       | assign   | SRC    | Essay one | Write an essay | 1       | 0                | 1                                   |
+      | assign   | SRC    | Essay two | Write another  | 1       | 0                | 1                                   |
     # Handed in on the source before anything is copied: core's submission
     # generator finds an assignment by name, which is ambiguous once there are two.
     And the following "mod_assign > submissions" exist:
       | assign    | user     | onlinetext          |
       | Essay one | student1 | Sam's finished essay |
       | Essay one | student2 | Sue's finished essay |
+      | Essay two | student1 | Sam's second essay   |
     And the following "permission overrides" exist:
       | capability                      | permission | role           | contextlevel | reference |
       | block/coursesync:configure      | Allow      | editingteacher | Course       | DEST      |
@@ -66,21 +68,41 @@ Feature: Pulling students' assignment submissions from the other site
     And I should see "Sue Student" in the "coursesync-submissions-conflicts" "table"
     And I should see "already has different work here" in the "Sue Student" "table_row"
 
-    When I press "Pull the submissions (1)"
-    Then I should see "Submissions pulled: 1 (1 new, 0 updated)."
+    When I press "Pull the ticked assignments"
+    Then I should see "Submissions pulled: 2 (2 new, 0 updated)."
     And I should see "Some students already had work here that differs"
     And I should see "Sam Student" in the "coursesync-submissions-written" "table"
 
     # Pulling again changes nothing: Sam's work is already here.
     When I am on the "DEST" "block_coursesync > Submissions" page
     Then I should see "Nothing would change"
-    And "Pull the submissions" "button" should not exist
+    And "Pull the ticked assignments" "button" should not exist
 
     # The pull is in the history, as counts only.
     When I am on the "DEST" "block_coursesync > History" page
-    Then I should see "Submissions pulled: 1, kept as they were: 1, skipped: 0"
+    Then I should see "Submissions pulled: 2, kept as they were: 1, skipped: 0"
     And I should not see "Sam Student"
     And I should not see "finished essay"
+
+  Scenario: A teacher ticks which assignments to pull, and the rest wait
+    Given Course Sync submission sharing is switched on
+    And Course Sync submission pulling is switched on
+    When I am on the "DEST" "block_coursesync > Submissions" page logged in as "teacher1"
+    Then the field "Pull Essay one" matches value "1"
+    And the field "Pull Essay two" matches value "1"
+
+    When I set the field "Pull Essay two" to ""
+    And I press "Pull the ticked assignments"
+    Then I should see "Submissions pulled: 2 (2 new, 0 updated)."
+
+    # Essay two was left out, so Sam's second essay is still waiting.
+    When I am on the "DEST" "block_coursesync > Submissions" page
+    Then the field "Pull Essay two" matches value "1"
+    And the field "Pull Essay one" matches value "0"
+
+    When I set the field "Pull Essay two" to ""
+    And I press "Pull the ticked assignments"
+    Then I should see "No assignments were ticked, so nothing was pulled."
 
   Scenario: The button is only offered where submission pulling is switched on and allowed
     Given Course Sync submission sharing is switched on

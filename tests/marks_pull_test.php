@@ -729,4 +729,79 @@ final class marks_pull_test extends advanced_testcase {
         $this->assertSame('I wrote this', $this->comment_here());
         $this->assertFalse(marks::is_marked($this->grade_here()));
     }
+
+    /**
+     * A second marked assignment, copied the same way.
+     *
+     * @return array [the one on the source, the copy here]
+     */
+    protected function second_marked(): array {
+        $there = $this->markable($this->source, ['name' => 'Essay two']);
+        $here = $this->markable($this->course, ['name' => 'Essay two'], ['idnumber' => 'coursesync-' . $there->cmid]);
+        $this->give_mark($there, $this->sam, 70, 'Second');
+        $this->mark_there(80, 'First');
+
+        return [$there, $here];
+    }
+
+    /**
+     * Only the ticked assignments are pulled; the other is left for later, and
+     * the source is not even asked about it.
+     */
+    public function test_only_the_chosen_assignments_are_pulled(): void {
+        global $DB;
+
+        [$there2, $here2] = $this->second_marked();
+
+        $result = marks_pull::run($this->instanceid, $this->course->id, $this->source(), [$there2->cmid]);
+
+        $this->assertTrue($result->success);
+        $this->assertSame([$here2->cmid], array_values(array_unique(array_column($result->entries, 'cmid'))));
+        $this->assertNull($this->grade_here());
+        $this->assertEquals(70, $DB->get_field('assign_grades', 'grade', ['assignment' => $here2->id, 'userid' => $this->sam->id]));
+
+        $asked = array_merge(...array_map(fn($call) => $call['cmids'] ?? [], array_filter(
+            $this->calls,
+            fn($call) => ($call['wsfunction'] ?? '') === 'block_coursesync_get_marks'
+        )));
+        $this->assertSame([$there2->cmid], array_map('intval', $asked));
+
+        $this->assertSame(grade_pull_result::ADD, $this->only_entry(
+            marks_pull::preview($this->instanceid, $this->course->id, $this->source(), [$this->there->cmid])
+        )->outcome);
+    }
+
+    /**
+     * Ticking nothing pulls nothing, and an id that is not one of this
+     * course's copies matches nothing - a selection can only narrow a pull.
+     */
+    public function test_a_selection_can_only_narrow_a_pull(): void {
+        global $DB;
+
+        $this->second_marked();
+
+        foreach ([[], [999999]] as $only) {
+            $result = marks_pull::run($this->instanceid, $this->course->id, $this->source(), $only);
+
+            $this->assertTrue($result->success);
+            $this->assertSame([], $result->entries);
+        }
+
+        $this->assertSame(0, $DB->count_records('block_coursesync_mark'));
+        $this->assertNull($this->grade_here());
+    }
+
+    /**
+     * Without a selection, everything is pulled as before.
+     */
+    public function test_no_selection_pulls_everything(): void {
+        [, $here2] = $this->second_marked();
+
+        $result = $this->pull();
+
+        $this->assertEqualsCanonicalizing(
+            [$this->here->cmid, $here2->cmid],
+            array_unique(array_column($result->entries, 'cmid'))
+        );
+    }
 }

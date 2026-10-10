@@ -7,7 +7,25 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
-## Unreleased (build 2026101001, v1.22.0-beta)
+## Unreleased (build 2026101002, v1.23.0-beta)
+
+### Added
+
+- **Choose which assignments a submissions or marks pull covers.** The preview
+  now has a tick box beside each assignment (ticked where there is something to
+  write), and **Pull the ticked assignments** pulls only those; the others wait
+  for a later pull. Ticking nothing pulls nothing, and says so. The source is
+  asked only about the ticked assignments. A selection can only narrow a pull:
+  `submission_pull` and `marks_pull` take an optional list of source course
+  module ids, and an id that is not one of the course's copies matches nothing.
+  No schema change.
+
+### Changed
+
+- The buttons on the two preview pages read **Pull the ticked assignments**
+  (they used to carry a count, which a selection would make wrong).
+
+## Build 2026101001, v1.22.0-beta
 
 ### Added
 

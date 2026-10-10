@@ -53,10 +53,16 @@ class submission_pull {
      * @param int $blockinstanceid
      * @param int $courseid the destination course
      * @param http_client|null $client injected only by tests
+     * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
      * @return grade_pull_result
      */
-    public static function preview(int $blockinstanceid, int $courseid, ?http_client $client = null): grade_pull_result {
-        $result = self::pull($blockinstanceid, $courseid, false, $client);
+    public static function preview(
+        int $blockinstanceid,
+        int $courseid,
+        ?http_client $client = null,
+        ?array $only = null
+    ): grade_pull_result {
+        $result = self::pull($blockinstanceid, $courseid, false, $client, $only);
         $result->preview = true;
 
         return $result;
@@ -72,9 +78,15 @@ class submission_pull {
      * @param int $blockinstanceid
      * @param int $courseid the destination course
      * @param http_client|null $client injected only by tests
+     * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
      * @return grade_pull_result
      */
-    public static function run(int $blockinstanceid, int $courseid, ?http_client $client = null): grade_pull_result {
+    public static function run(
+        int $blockinstanceid,
+        int $courseid,
+        ?http_client $client = null,
+        ?array $only = null
+    ): grade_pull_result {
         global $USER;
 
         $timestarted = time();
@@ -85,7 +97,7 @@ class submission_pull {
             $result = grade_pull_result::failure('errorsyncinprogress');
         } else {
             try {
-                $result = self::pull($blockinstanceid, $courseid, true, $client);
+                $result = self::pull($blockinstanceid, $courseid, true, $client, $only);
             } finally {
                 $lock->release();
             }
@@ -170,9 +182,16 @@ class submission_pull {
      * @param int $courseid
      * @param bool $write false for a preview
      * @param http_client|null $client
+     * @param int[]|null $only remote course module ids to cover; null means every copied assignment
      * @return grade_pull_result
      */
-    protected static function pull(int $blockinstanceid, int $courseid, bool $write, ?http_client $client): grade_pull_result {
+    protected static function pull(
+        int $blockinstanceid,
+        int $courseid,
+        bool $write,
+        ?http_client $client,
+        ?array $only = null
+    ): grade_pull_result {
         $notallowed = self::check_allowed($courseid);
 
         if ($notallowed !== null) {
@@ -193,6 +212,12 @@ class submission_pull {
 
         $result = new grade_pull_result();
         $copies = self::local_copies($courseid);
+
+        // Only what the teacher chose. This can only narrow the pull: an id
+        // that is not one of this course's copies matches nothing.
+        if ($only !== null) {
+            $copies = array_intersect_key($copies, array_flip($only));
+        }
 
         if (!$copies) {
             return $result;

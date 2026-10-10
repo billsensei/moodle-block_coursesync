@@ -405,7 +405,9 @@ activity completion as it would have if they had done it here.
 ### What happens
 
 **Pull submissions** first shows you what it *would* do. Nothing is written until
-you press **Pull the submissions**. The page lists:
+you press **Pull the ticked assignments**. Each assignment has a tick box,
+ticked where there is something to pull; untick the ones you want to leave for
+later. The page lists:
 
 - **Kept as it was** - the student already has different work here, or an earlier
   pull brought work across and someone has changed it since. It is **never
@@ -462,7 +464,10 @@ marks are pulled.
 ### What happens
 
 **Pull marks and feedback** first shows you what it *would* do. Nothing is
-written until you press **Pull the marks**. The page lists:
+written until you press **Pull the ticked assignments**. Each assignment has a
+tick box, ticked where there is something to pull; untick the ones you want to
+leave for later (pulling marks writes grades, so this is the place to hold one
+back). The page lists:
 
 - **Kept as it was** - the student already has a different mark or comment here,
   or an earlier pull brought a mark across and someone has changed it since. It

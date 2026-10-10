@@ -717,6 +717,16 @@ and `test_a_corrupt_transfer_writes_nothing` pin the rest. A student who only
 opened the assignment has a `new` row holding no work: it is reused, so there
 is never a second `latest` row.
 
+**Selection (v1.23.0):** `preview()` and `run()` of both `submission_pull` and
+`marks_pull` take `?array $only` (source cmids). `pull()` narrows `$copies` with
+`array_intersect_key()` before it asks the source, so a selection can only remove
+assignments, never add them; `null` is everything, `[]` is nothing. The pages send
+`chosen[]` (an empty selection is refused before the engine is called, so nothing is
+recorded in the history). Tests: `test_only_the_chosen_assignments_are_pulled`,
+`test_a_selection_can_only_narrow_a_pull`, `test_no_selection_pulls_everything` in
+both pull tests; mutation-checked (narrowing removed, empty-means-all, `run()`
+ignoring `only`).
+
 Not done on purpose: the student-facing `save_submission()` (it enforces
 deadlines, cut-offs and locks and sends notifications), events (none are fired;
 completion is updated directly with `completion_info::update_state()`), and

@@ -27,6 +27,7 @@ Feature: Pulling teachers' marks and feedback from the other site
     And the following "activities" exist:
       | activity | course | name      | intro          | section | submissiondrafts | assignsubmission_onlinetext_enabled | assignfeedback_comments_enabled |
       | assign   | SRC    | Essay one | Write an essay | 1       | 0                | 1                                   | 1                               |
+      | assign   | SRC    | Essay two | Write another  | 1       | 0                | 1                                   | 1                               |
     And the following "permission overrides" exist:
       | capability                      | permission | role           | contextlevel | reference |
       | block/coursesync:configure      | Allow      | editingteacher | Course       | DEST      |
@@ -59,14 +60,14 @@ Feature: Pulling teachers' marks and feedback from the other site
     And I should see "Sue Student" in the "coursesync-marks-conflicts" "table"
     And I should see "already has a different mark or comment here" in the "Sue Student" "table_row"
 
-    When I press "Pull the marks (1)"
+    When I press "Pull the ticked assignments"
     Then I should see "Marks pulled: 1 (1 new, 0 updated)."
     And I should see "Some students already had a different mark or comment here"
 
     # Pulling again changes nothing: Sam's mark is already here.
     When I am on the "DEST" "block_coursesync > Marks" page
     Then I should see "Nothing would change"
-    And "Pull the marks" "button" should not exist
+    And "Pull the ticked assignments" "button" should not exist
 
     # The grade is the assignment's own: the grader screen has it.
     When I am on the "Destination Course" course page
@@ -78,6 +79,30 @@ Feature: Pulling teachers' marks and feedback from the other site
     When I am on the "DEST" "block_coursesync > History" page
     Then I should see "Marks pulled: 1, kept as they were: 1, skipped: 0"
     And I should not see "Well argued"
+
+  Scenario: A teacher ticks which assignments to pull, and the rest wait
+    Given Course Sync marks sharing is switched on
+    And Course Sync marks pulling is switched on
+    And "student1" was marked 80 with "First essay comment" in "Essay one" of "SRC"
+    And "student1" was marked 75 with "Second essay comment" in "Essay two" of "SRC"
+    When I am on the "DEST" "block_coursesync > Marks" page logged in as "teacher1"
+    Then the field "Pull Essay one" matches value "1"
+    And the field "Pull Essay two" matches value "1"
+
+    When I set the field "Pull Essay two" to ""
+    And I press "Pull the ticked assignments"
+    Then I should see "Marks pulled: 1 (1 new, 0 updated)."
+
+    # The one left out is still waiting.
+    When I am on the "DEST" "block_coursesync > Marks" page
+    Then I should see "Sam Student" in the "coursesync-marks-written" "table"
+    And I should see "Marks to pull"
+    And the field "Pull Essay one" matches value "0"
+    And the field "Pull Essay two" matches value "1"
+
+    When I set the field "Pull Essay two" to ""
+    And I press "Pull the ticked assignments"
+    Then I should see "No assignments were ticked, so nothing was pulled."
 
   Scenario: The button is only offered where marks pulling is switched on and allowed
     Given Course Sync marks sharing is switched on

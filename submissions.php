@@ -33,6 +33,9 @@ use core\output\html_writer;
 $instanceid = required_param('instanceid', PARAM_INT);
 $courseid = required_param('courseid', PARAM_INT);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
+// The assignments ticked on the preview, as the other site knows them. An empty
+// selection is a decision, not a request for everything.
+$chosen = array_values(array_filter(optional_param_array('chosen', [], PARAM_INT)));
 
 $course = get_course($courseid);
 require_login($course);
@@ -79,7 +82,15 @@ if (!connection::is_mapped($record)) {
 
 if ($confirm) {
     require_sesskey();
-    $result = submission_pull::run($instanceid, $course->id);
+
+    if ($chosen === []) {
+        echo $OUTPUT->notification(get_string('pullnothingchosen', 'block_coursesync'), 'info', false);
+        echo $backtocourse;
+        echo $OUTPUT->footer();
+        die;
+    }
+
+    $result = submission_pull::run($instanceid, $course->id, null, $chosen);
 } else {
     // Following a link writes nothing: this asks the other site, shows what
     // a pull would do, and the button below (with a sesskey) does it.
@@ -132,8 +143,45 @@ $head = html_writer::tag('tr', implode('', array_map(
 )));
 $rows = '';
 
+// On the preview, each assignment can be ticked: the form wraps everything
+// below, so the button at the end sends the ticks. Ticked to start with where
+// there is something to write.
+$choosing = $result->preview && $towrite > 0;
+$remoteids = array_flip(array_map(static fn(cm_info $cm): int => (int) $cm->id, submission_pull::local_copies($course->id)));
+
+if ($choosing) {
+    $head = html_writer::tag('tr', html_writer::tag('th', get_string('pullcolchoose', 'block_coursesync'), ['scope' => 'col'])
+        . substr($head, strlen('<tr>')));
+    echo html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl->out(false)]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
+}
+
 foreach ($result->by_activity(grade_pull_result::KIND_SUBMISSION) as $activity) {
     $cells = html_writer::tag('td', format_string($activity['name'], true, ['context' => $coursecontext]));
+
+    if ($choosing) {
+        $remotecmid = $remoteids[$activity['cmid']] ?? 0;
+        $box = '';
+
+        if ($remotecmid) {
+            $ticked = $activity[grade_pull_result::ADD] + $activity[grade_pull_result::UPDATE] > 0;
+            $box = html_writer::label(
+                get_string('pullchoosefor', 'block_coursesync', format_string($activity['name'])),
+                'chosen' . $remotecmid,
+                false,
+                ['class' => 'visually-hidden']
+            ) . html_writer::empty_tag('input', [
+                'type' => 'checkbox',
+                'name' => 'chosen[]',
+                'id' => 'chosen' . $remotecmid,
+                'value' => $remotecmid,
+                'class' => 'form-check-input',
+            ] + ($ticked ? ['checked' => 'checked'] : []));
+        }
+
+        $cells = html_writer::tag('td', $box) . $cells;
+    }
 
     foreach (array_slice($columns, 1) as $outcome) {
         $cells .= html_writer::tag('td', $activity[$outcome]);
@@ -227,14 +275,11 @@ if ($result->preview) {
         echo $OUTPUT->notification(get_string('submissionsnothingtowrite', 'block_coursesync'), 'info', false);
         echo $backtocourse;
     } else {
-        echo html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl->out(false)]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
         echo html_writer::tag(
             'div',
             html_writer::empty_tag('input', [
                 'type' => 'submit',
-                'value' => get_string('submissionssubmit', 'block_coursesync', $towrite),
+                'value' => get_string('submissionssubmit', 'block_coursesync'),
                 'class' => 'btn btn-primary me-2',
             ])
             . html_writer::link($courseurl, get_string('cancel'), ['class' => 'btn btn-secondary']),

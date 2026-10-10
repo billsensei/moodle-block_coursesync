@@ -899,4 +899,80 @@ final class submission_pull_test extends advanced_testcase {
             'hash with junk' => [['contenthash' => str_repeat('z!', 20)]],
         ];
     }
+
+    /**
+     * A second assignment, copied the same way, that Sam has also handed work in to.
+     *
+     * @return array [the one on the source, the copy here]
+     */
+    protected function second_assignment(): array {
+        $there = $this->assignment($this->source, ['name' => 'Essay two']);
+        $here = $this->assignment($this->course, ['name' => 'Essay two'], ['idnumber' => 'coursesync-' . $there->cmid]);
+        $this->submit($this->sam, $there, 'Second essay');
+        $this->hand_in('First essay');
+
+        return [$there, $here];
+    }
+
+    /**
+     * Only the ticked assignments are pulled; the other is left for later, and
+     * the source is not even asked about it.
+     */
+    public function test_only_the_chosen_assignments_are_pulled(): void {
+        global $DB;
+
+        [$there2, $here2] = $this->second_assignment();
+
+        $result = submission_pull::run($this->instanceid, $this->course->id, $this->source(), [$there2->cmid]);
+
+        $this->assertTrue($result->success);
+        $this->assertSame([$here2->cmid], array_values(array_unique(array_column($result->entries, 'cmid'))));
+        $this->assertNull($this->row());
+        $this->assertSame(1, $DB->count_records('assign_submission', ['assignment' => $here2->id]));
+
+        $asked = array_merge(...array_map(fn($call) => $call['cmids'] ?? [], array_filter(
+            $this->calls,
+            fn($call) => ($call['wsfunction'] ?? '') === 'block_coursesync_get_submissions'
+        )));
+        $this->assertSame([$there2->cmid], array_map('intval', $asked));
+
+        // The one left out is still there to pull.
+        $this->assertSame(grade_pull_result::ADD, $this->only_entry(
+            submission_pull::preview($this->instanceid, $this->course->id, $this->source(), [$this->there->cmid])
+        )->outcome);
+    }
+
+    /**
+     * Ticking nothing pulls nothing, and an id that is not one of this
+     * course's copies matches nothing - a selection can only narrow a pull.
+     */
+    public function test_a_selection_can_only_narrow_a_pull(): void {
+        global $DB;
+
+        $this->second_assignment();
+
+        foreach ([[], [999999]] as $only) {
+            $result = submission_pull::run($this->instanceid, $this->course->id, $this->source(), $only);
+
+            $this->assertTrue($result->success);
+            $this->assertSame([], $result->entries);
+        }
+
+        $this->assertSame(0, $DB->count_records('block_coursesync_submission'));
+        $this->assertNull($this->row());
+    }
+
+    /**
+     * Without a selection, everything is pulled as before.
+     */
+    public function test_no_selection_pulls_everything(): void {
+        [, $here2] = $this->second_assignment();
+
+        $result = $this->pull();
+
+        $this->assertEqualsCanonicalizing(
+            [$this->here->cmid, $here2->cmid],
+            array_unique(array_column($result->entries, 'cmid'))
+        );
+    }
 }
