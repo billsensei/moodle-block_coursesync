@@ -20,7 +20,8 @@ namespace block_coursesync\local;
  * Keeps this plugin's own records in step with what happens to the people and
  * courses they describe.
  *
- * A pull remembers what it wrote - which grades, which quiz attempts - so that
+ * A pull remembers what it wrote - which grades, quiz attempts and assignment
+ * submissions - so that
  * a later pull neither duplicates them nor overwrites a change made here. When
  * a course is reset, or a user is deleted, core removes the grades and
  * attempts but knows nothing of those memories. Left alone they are wrong in
@@ -61,6 +62,11 @@ class observer {
             $DB->delete_records('block_coursesync_attempt', ['courseid' => $courseid]);
         }
 
+        // Assignment submissions are removed by the assignment's own reset.
+        if (!empty($options['reset_assign_submissions'])) {
+            $DB->delete_records('block_coursesync_submission', ['courseid' => $courseid]);
+        }
+
         // Removing the items removes their grades with them, so either option
         // leaves nothing for a remembered grade to refer to.
         if (!empty($options['reset_gradebook_items']) || !empty($options['reset_gradebook_grades'])) {
@@ -81,5 +87,6 @@ class observer {
 
         $DB->delete_records('block_coursesync_grade', ['userid' => $userid]);
         $DB->delete_records('block_coursesync_attempt', ['userid' => $userid]);
+        $DB->delete_records('block_coursesync_submission', ['userid' => $userid]);
     }
 }

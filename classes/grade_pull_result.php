@@ -58,6 +58,9 @@ class grade_pull_result {
     /** @var string An entry about a quiz attempt. */
     public const KIND_ATTEMPT = 'attempt';
 
+    /** @var string An entry about an assignment submission. */
+    public const KIND_SUBMISSION = 'submission';
+
     /** @var bool Whether the pull got as far as looking at grades. */
     public bool $success = true;
 

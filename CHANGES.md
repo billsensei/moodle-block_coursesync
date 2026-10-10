@@ -7,24 +7,40 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
-## Unreleased (build 2026100401, release string still v1.20.0-beta)
-
-### Fixed
-
-- **A fresh install no longer prints an XMLDB warning.** `remoteurl` was declared
-  NOT NULL with an empty-string default, which XMLDB rejects. A fresh install
-  raised a debugging notice, and PHPUnit's initialisation treats that as fatal,
-  so the CI install step would have failed. The database column is unchanged, so
-  there is no upgrade step.
-- **Quiz attempts removed by a course reset come back on the next pull.** The
-  plugin remembered which attempts it had imported, and after a reset it read
-  "no attempt here" as "somebody deleted it" and never brought them back. An
-  attempt a teacher deletes by hand, without a reset, still stays deleted.
-- **Deprecated Bootstrap 4 class** `sr-only` replaced by `visually-hidden` on the
-  Sync and Grades pages (table captions), as Moodle 5.1 expects.
-- The language file is sorted by key again.
+## Unreleased (build 2026100501, v1.21.0-beta)
 
 ### Added
+
+- **Assignment submissions can be pulled.** Off by default on both sites, with
+  its own switches (`allowsubmissionexport`, `allowsubmissionpull`) and its own
+  permissions (`block/coursesync:exportsubmissions`, held by no role;
+  `block/coursesync:pullsubmissions`, editing teachers and managers) - sharing
+  grades does not share the work. A teacher previews, then pulls: for each
+  student of a copied or linked assignment, the **latest attempt they handed
+  in**, as online text and uploaded files (and files embedded in the text).
+  - Work is written only where the student has nothing here, or where an
+    earlier pull wrote it and nobody has touched it since. Anything else is
+    flagged and left exactly as it is; work a teacher removed is not brought
+    back; a change made here is not flagged again while the source is unchanged.
+  - Drafts, team assignments and other submission plugins are not carried; the
+    page says why. A pull stops at 512 MB of files and carries on next time.
+  - The person pulling needs `mod/assign:grade` and
+    `mod/assign:editothersubmission` in the course as well. **Core gives the
+    second to no role**, so an administrator has to grant it before editing
+    teachers see the button.
+  - Written straight into the assignment's tables and file storage (as
+    mod_assign's own restore does), so deadlines and locks do not apply to
+    work handed in elsewhere, and nobody is notified. Handing in counts for
+    activity completion.
+  - Marks are a separate pull: the grader screen shows work as ungraded while
+    the gradebook may show a grade.
+- New external functions `block_coursesync_get_submissions` and
+  `block_coursesync_get_submission_file`. The file function is separate from
+  `get_activity_file` because its promise is about a student, not an activity.
+- New table `block_coursesync_submission` (the upgrade step creates it); course
+  reset of assignment submissions and deleting a user forget its rows.
+- Privacy provider, history ("Submissions" kind, counts per assignment only),
+  Behat feature `assignment_submission_pull.feature`, and 73 new PHPUnit tests.
 
 - **The plugin forgets what it remembered when the data is gone.**
   - A course reset that removes quiz attempts forgets the course's imported-attempt
@@ -45,10 +61,28 @@ version file goes from v1.13.0 straight to v1.15.0.
 
 ### Changed
 
+- Internal: the chunked download loop in `local\file_sync` is a public
+  `download()` shared by activity files and submission files, and
+  `remote_client` parses a file chunk in one place. No change in behaviour.
 - Internal only, no change in behaviour: the seven longest methods in the plugin
   (sync run, grade pull, quiz-attempt pull, remote calls, quiz export and import)
   are split into smaller named steps. Behaviour is pinned by the existing tests,
   which were not changed.
+
+### Fixed
+
+- **A fresh install no longer prints an XMLDB warning.** `remoteurl` was declared
+  NOT NULL with an empty-string default, which XMLDB rejects. A fresh install
+  raised a debugging notice, and PHPUnit's initialisation treats that as fatal,
+  so the CI install step would have failed. The database column is unchanged, so
+  there is no upgrade step.
+- **Quiz attempts removed by a course reset come back on the next pull.** The
+  plugin remembered which attempts it had imported, and after a reset it read
+  "no attempt here" as "somebody deleted it" and never brought them back. An
+  attempt a teacher deletes by hand, without a reset, still stays deleted.
+- **Deprecated Bootstrap 4 class** `sr-only` replaced by `visually-hidden` on the
+  Sync and Grades pages (table captions), as Moodle 5.1 expects.
+- The language file is sorted by key again.
 
 ### Privacy
 

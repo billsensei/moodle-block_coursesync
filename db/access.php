@@ -96,4 +96,31 @@ $capabilities = [
             'manager' => CAP_ALLOW,
         ],
     ],
+
+    // Who may read students' assignment submissions - their text and the files
+    // they handed in - through the Course Sync web service. Held by the source
+    // site's sync account, never by default, and separate from exportgrades:
+    // sharing a mark and sharing the work it was given for are separate
+    // decisions. Read-only here.
+    'block/coursesync:exportsubmissions' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [],
+    ],
+
+    // Who may pull students' assignment submissions from the other site into
+    // this course. The submissions are written as if the students had handed
+    // them in, so submission_pull also requires mod/assign:grade here. Nothing
+    // happens either way until an administrator turns submission pulling on
+    // for the site (block_coursesync | allowsubmissionpull).
+    'block/coursesync:pullsubmissions' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
 ];

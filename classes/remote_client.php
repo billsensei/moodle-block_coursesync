@@ -297,6 +297,102 @@ class remote_client {
     }
 
     /**
+     * Fetch what students have handed in to some of the mapped course's
+     * assignments.
+     *
+     * @param string $baseurl normalised base URL of the remote site
+     * @param string $token the remote site's web service token
+     * @param int $courseid the resolved remote course id
+     * @param int[] $cmids course module ids of assignments on the source site
+     * @param \core\http_client|null $client injected only by tests
+     * @param string[] $usernames the only students wanted (never empty: an
+     *      empty list means every student to the source)
+     * @return submissions_result
+     */
+    public static function get_submissions(
+        string $baseurl,
+        string $token,
+        int $courseid,
+        array $cmids,
+        ?http_client $client = null,
+        array $usernames = []
+    ): submissions_result {
+        // Refused for its own permission, not the grades one; and a source
+        // that answers as Course Sync but lacks the function is from before it.
+        $translate = [
+            'errornopermission' => 'errornosubmissionpermission',
+            'errorpluginmissing' => 'errorsubmissionsourceoutdated',
+        ];
+        $answers = [];
+
+        // In batches the source accepts; the answers are put back together.
+        foreach (array_chunk(array_values(array_map('intval', $cmids)), external\get_submissions::MAX_CMIDS) as $batch) {
+            $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_submissions', [
+                'courseid' => $courseid,
+                'cmids' => $batch,
+            ], $usernames, $client);
+
+            if ($outcome['errorkey'] !== null) {
+                return submissions_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
+            }
+
+            $answer = submissions_result::from_response($outcome['data']);
+
+            if (!$answer->success) {
+                return $answer;
+            }
+
+            $answers[] = $answer;
+        }
+
+        return submissions_result::merge($answers);
+    }
+
+    /**
+     * Fetch one chunk of one file from a student's submitted work.
+     *
+     * @param string $baseurl normalised base URL of the remote site
+     * @param string $token the remote site's web service token
+     * @param int $cmid course module id of the assignment on the source site
+     * @param string $username the student
+     * @param string $area submission_files or submissions_onlinetext
+     * @param string $filepath
+     * @param string $filename
+     * @param int $offset byte to start at
+     * @param int $length how many bytes to ask for
+     * @param \core\http_client|null $client injected only by tests
+     * @return file_chunk
+     */
+    public static function get_submission_file(
+        string $baseurl,
+        string $token,
+        int $cmid,
+        string $username,
+        string $area,
+        string $filepath,
+        string $filename,
+        int $offset,
+        int $length,
+        ?http_client $client = null
+    ): file_chunk {
+        $outcome = self::call($baseurl, $token, 'block_coursesync_get_submission_file', [
+            'cmid' => $cmid,
+            'username' => $username,
+            'area' => $area,
+            'filepath' => $filepath,
+            'filename' => $filename,
+            'offset' => $offset,
+            'length' => $length,
+        ], $client);
+
+        if ($outcome['errorkey'] !== null) {
+            return file_chunk::failure($outcome['errorkey']);
+        }
+
+        return self::chunk_from($outcome['data']);
+    }
+
+    /**
      * Fetch one chunk of one of an activity's files.
      *
      * @param string $baseurl normalised base URL of the remote site
@@ -345,8 +441,17 @@ class remote_client {
             return file_chunk::failure($outcome['errorkey']);
         }
 
-        $data = $outcome['data'];
+        return self::chunk_from($outcome['data']);
+    }
 
+    /**
+     * Turn a file function's decoded response into a chunk, checking it
+     * survived the trip.
+     *
+     * @param mixed $data
+     * @return file_chunk
+     */
+    protected static function chunk_from($data): file_chunk {
         if (!is_array($data) || !isset($data['content'], $data['returned'], $data['eof'])) {
             return file_chunk::failure('errorbadresponse');
         }
@@ -611,6 +716,7 @@ class remote_client {
             'errorfilenotfound' => 'errorfilenotfound',
             'errorfilenotallowed' => 'errorfilenotallowed',
             'errorgradeexportdisabled' => 'errorgradeexportoff',
+            'errorsubmissionexportdisabled' => 'errorsubmissionexportoff',
             'invalidparameter' => 'errorbadrequest',
             'invalidrecordunknown' => 'errorcoursenotfound',
         ];

@@ -20,7 +20,7 @@ service, and that single fact drives the whole design:
   ───────────                              ────────────────
   db/services.php                          block instance
     defines the "Course Sync" service        holds URL + token + course mapping
-    and seven read-only functions            in block_coursesync_connection
+    and nine read-only functions             in block_coursesync_connection
 
   classes/external/*                       classes/syncer.php
     ping                                     asks what changed
@@ -665,6 +665,77 @@ instead of applied. `test_an_unenrolled_students_attempts_are_not_imported_twice
 and `test_a_pulled_grade_survives_unenrolling_and_reenrolling` fail if a
 `user_enrolment_deleted` observer is added that deletes them (checked).
 
+## Assignment submissions
+
+Added in v1.21.0 (LEARNFROMME phases 60-64). Designed in
+[DESIGN_ASSIGN_SUBMISSIONS.md](DESIGN_ASSIGN_SUBMISSIONS.md); this is what was
+built. The same shape as grade sync and quiz attempts, and the same gates (see
+[SECURITY.md](SECURITY.md#students-assignment-submissions)).
+
+**Shared:** `local\submissions` holds what both ends must agree on: which
+submission counts (`latest_submitted()`: the latest attempt with status
+`submitted`, `groupid = 0`; a newer draft or reopened row does not hide it),
+the two file areas (`submission_files` / `assignsubmission_file`,
+`submissions_onlinetext` / `assignsubmission_onlinetext`), which plugins are
+switched on, and `fingerprint()` - a SHA-1 of text, format and each file's
+area/path/name/hash, so either end can tell content changed without fetching it.
+
+**Source:** `external\get_submissions` describes (text, files with SHA-1, a
+fingerprint, the enabled plugins) and says why when it will not: `team`,
+`notassign`, `noplugins`. `external\get_submission_file` serves one chunk, and
+is **not** an extension of `get_activity_file`: that function's gate is "the
+file is in an area a handler declared", a promise about an activity; this
+one's is "the file is in the *named student's* latest submitted attempt", in an
+assignment that is not a team one and has that plugin on, for a student the
+gradebook lists. Both start with `submissions::require_export()`: the switch,
+then `:sync`, then `:exportsubmissions`.
+
+**Destination:** `submission_pull::preview()` / `run()` return a
+`grade_pull_result` with `KIND_SUBMISSION` entries, so the result and the
+history reuse the grade machinery (`history::KIND_SUBMISSIONS` labels the run).
+`submissions.php` is a thin page over it. Per student the decision is
+`classify()`:
+
+| Situation here | Outcome |
+| --- | --- |
+| nothing, no ledger row | ADD |
+| nothing, ledger row | SKIPPED `subreasondeleted` (a person removed it) |
+| work not written by a pull, identical | SAME |
+| work not written by a pull, different or a draft | CONFLICT |
+| ledger row, source fingerprint unchanged | SAME (even if edited here: nothing to bring) |
+| ledger row, source changed, local fingerprint = the one recorded, status `submitted` | UPDATE |
+| ledger row, source changed, anything touched here | CONFLICT |
+
+Everything is fetched into temporary files **before** anything changes
+(`local\submission_writer::fetch_files()`, which uses the shared
+`file_sync::download()`: chunks to disk, SHA-1 checked). Then
+`submission_writer::write()` saves the `assign_submission` row, the plugin rows,
+the files and the ledger row (`block_coursesync_submission`) in one
+transaction. Files are not transactional, so a submission that was new here has
+its files deleted if the transaction fails; `test_a_failed_update_leaves_the_earlier_work`
+and `test_a_corrupt_transfer_writes_nothing` pin the rest. A student who only
+opened the assignment has a `new` row holding no work: it is reused, so there
+is never a second `latest` row.
+
+Not done on purpose: the student-facing `save_submission()` (it enforces
+deadlines, cut-offs and locks and sends notifications), events (none are fired;
+completion is updated directly with `completion_info::update_state()`), and
+`assign_grades` (marks are the grade pull's business).
+
+Limits: the **site's and the course's** `maxbytes` per file - not
+`get_max_upload_file_size()`, which also folds in PHP's upload limits, about a
+browser's request - and `RUN_BYTES` (512 MB) of files per pull; the rest wait
+for the next. A pull needs `mod/assign:grade` and
+`mod/assign:editothersubmission` as well as the block permission, and core gives
+that last one to **no role**.
+
+Tests: `tests/local/submission_fixtures.php` makes real submissions through
+`save_submission()` (the generator's default `submissiondrafts` is 1, so
+fixtures set it to 0). `submission_pull_test` drives the real source functions
+on the same site; its fake source runs them **as admin** whoever is pulling,
+and can be made to lie (`$this->tamper`) for corrupt hashes, oversized files
+and failing transfers.
+
 ## Security
 
 The full audit is in [SECURITY.md](SECURITY.md). The parts that constrain how you
@@ -783,7 +854,10 @@ never against the repository.
   are in `mod_quiz`/`feedback` under the band's id, mapped to the new band.
 - Forum discussions, wiki pages, glossary entries, feedback responses, database
   entries, workshop submissions, choice answers and lesson attempts are not
-  synced. Those activities carry what a teacher set up, not what anyone did.
+  synced. Assignment submissions are not copied with the assignment either, but
+  can be pulled separately (see "Assignment submissions"): the latest submitted
+  attempt only, never drafts or team assignments, and not the grader's marks
+  or feedback comments. Those activities carry what a teacher set up, not what anyone did.
 - A database's custom CSS and JavaScript are refused on purpose; see
   `SECURITY.md`.
 - A lesson's password is not carried, and `usepassword` is turned off with it.

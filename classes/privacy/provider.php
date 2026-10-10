@@ -43,9 +43,14 @@ use core_privacy\local\request\writer;
  * student's attempts a pull brought across, and the marks it gave them. The
  * attempts themselves are the quiz's, and its provider covers them.
  *
+ * Assignment submissions (phases 60-64) add block_coursesync_submission: which
+ * of a student's submissions a pull brought across, and fingerprints of what
+ * was written. The submissions and their files are the assignment's, and its
+ * provider covers them.
+ *
  * A grade pull's run history holds counts per activity only - no students -
- * so a student's data here is only ever in block_coursesync_grade and
- * block_coursesync_attempt.
+ * so a student's data here is only ever in block_coursesync_grade,
+ * block_coursesync_attempt and block_coursesync_submission.
  *
  * The connection record - the remote address and its encrypted token - is course
  * configuration rather than anything about a person, and is not reported here.
@@ -58,6 +63,14 @@ class provider implements
     \core_privacy\local\metadata\provider,
     \core_privacy\local\request\core_userlist_provider,
     \core_privacy\local\request\plugin\provider {
+    /** @var string[] Every table that holds something about a person, deleted for them together. */
+    protected const TABLES = [
+        'block_coursesync_run',
+        'block_coursesync_grade',
+        'block_coursesync_attempt',
+        'block_coursesync_submission',
+    ];
+
     /**
      * Describe what this plugin stores about people.
      *
@@ -97,6 +110,18 @@ class provider implements
             'timeimported' => 'privacy:metadata:attempt:timeimported',
         ], 'privacy:metadata:attempt');
 
+        $collection->add_database_table('block_coursesync_submission', [
+            'userid' => 'privacy:metadata:submission:userid',
+            'assignid' => 'privacy:metadata:submission:assignid',
+            'submissionid' => 'privacy:metadata:submission:submissionid',
+            'remotecmid' => 'privacy:metadata:submission:remotecmid',
+            'remoteattempt' => 'privacy:metadata:submission:remoteattempt',
+            'fingerprint' => 'privacy:metadata:submission:fingerprint',
+            'localfingerprint' => 'privacy:metadata:submission:localfingerprint',
+            'remotetime' => 'privacy:metadata:submission:remotetime',
+            'timeimported' => 'privacy:metadata:submission:timeimported',
+        ], 'privacy:metadata:submission');
+
         // Pulled grades are written into the gradebook, which reports them.
         $collection->add_subsystem_link('core_grades', [], 'privacy:metadata:core_grades');
 
@@ -111,6 +136,7 @@ class provider implements
             'grade' => 'privacy:metadata:othersite:grade',
             'feedback' => 'privacy:metadata:othersite:feedback',
             'attempts' => 'privacy:metadata:othersite:attempts',
+            'submissions' => 'privacy:metadata:othersite:submissions',
         ], 'privacy:metadata:othersite');
 
         // And the other way round: when this site is the destination, the
@@ -146,7 +172,7 @@ class provider implements
             'userid' => $userid,
         ]);
 
-        foreach (['block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
+        foreach (['block_coursesync_grade', 'block_coursesync_attempt', 'block_coursesync_submission'] as $table) {
             $sql = "SELECT ctx.id
                       FROM {{$table}} t
                       JOIN {block_instances} bi ON bi.id = t.blockinstanceid
@@ -184,7 +210,7 @@ class provider implements
             ['blockinstanceid' => $context->instanceid]
         );
 
-        foreach (['block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
+        foreach (['block_coursesync_grade', 'block_coursesync_attempt', 'block_coursesync_submission'] as $table) {
             $userlist->add_from_sql(
                 'userid',
                 "SELECT t.userid FROM {{$table}} t WHERE t.blockinstanceid = :blockinstanceid",
@@ -211,6 +237,7 @@ class provider implements
 
             self::export_pulled_grades($context, (int) $user->id);
             self::export_pulled_attempts($context, (int) $user->id);
+            self::export_pulled_submissions($context, (int) $user->id);
 
             $runs = $DB->get_records('block_coursesync_run', [
                 'blockinstanceid' => $context->instanceid,
@@ -330,6 +357,52 @@ class provider implements
     }
 
     /**
+     * Export which of a student's assignment submissions a pull brought
+     * across, from one block. The submissions themselves, and their files,
+     * are the assignment's to export.
+     *
+     * @param \context_block $context
+     * @param int $userid
+     * @return void
+     */
+    protected static function export_pulled_submissions(\context_block $context, int $userid): void {
+        global $DB;
+
+        $rows = $DB->get_records_sql(
+            "SELECT s.*, a.name AS assignname
+               FROM {block_coursesync_submission} s
+          LEFT JOIN {assign} a ON a.id = s.assignid
+              WHERE s.blockinstanceid = :blockinstanceid AND s.userid = :userid
+           ORDER BY s.timeimported ASC, s.id ASC",
+            ['blockinstanceid' => $context->instanceid, 'userid' => $userid]
+        );
+
+        if (!$rows) {
+            return;
+        }
+
+        $submissions = [];
+
+        foreach ($rows as $row) {
+            $submissions[] = [
+                'assignment' => $row->assignname !== null ? format_string($row->assignname, true, ['context' => $context]) : '',
+                'submissionid' => (int) $row->submissionid,
+                'timeimported' => transform::datetime($row->timeimported),
+                'timechangedonothersite' => $row->remotetime ? transform::datetime($row->remotetime) : '',
+                'remoteactivity' => (int) $row->remotecmid,
+                'remoteattempt' => (int) $row->remoteattempt,
+                'fingerprint' => $row->fingerprint,
+                'localfingerprint' => $row->localfingerprint,
+            ];
+        }
+
+        writer::with_context($context)->export_data(
+            [get_string('privacy:path:submissions', 'block_coursesync')],
+            (object) ['submissions' => $submissions]
+        );
+    }
+
+    /**
      * Delete everything this plugin holds in a context.
      *
      * @param \context $context
@@ -345,6 +418,7 @@ class provider implements
         $DB->delete_records('block_coursesync_run', ['blockinstanceid' => $context->instanceid]);
         $DB->delete_records('block_coursesync_grade', ['blockinstanceid' => $context->instanceid]);
         $DB->delete_records('block_coursesync_attempt', ['blockinstanceid' => $context->instanceid]);
+        $DB->delete_records('block_coursesync_submission', ['blockinstanceid' => $context->instanceid]);
     }
 
     /**
@@ -365,7 +439,7 @@ class provider implements
 
             // Only this plugin's own record of the pull. The grade itself is
             // in the gradebook, and core_grades deletes that.
-            foreach (['block_coursesync_run', 'block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
+            foreach (self::TABLES as $table) {
                 $DB->delete_records($table, [
                     'blockinstanceid' => $context->instanceid,
                     'userid' => $userid,
@@ -398,7 +472,7 @@ class provider implements
         [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
         $params['blockinstanceid'] = $context->instanceid;
 
-        foreach (['block_coursesync_run', 'block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
+        foreach (self::TABLES as $table) {
             $DB->delete_records_select($table, "blockinstanceid = :blockinstanceid AND userid {$insql}", $params);
         }
     }

@@ -85,7 +85,8 @@ final class observer_test extends \advanced_testcase {
     }
 
     /**
-     * Record that a pull wrote this user's grade and attempt in a course.
+     * Record that a pull wrote this user's grade, quiz attempt and assignment
+     * submission in a course.
      *
      * @param \stdClass $course
      * @param \stdClass $user
@@ -117,6 +118,19 @@ final class observer_test extends \advanced_testcase {
             'remotecmid' => 778,
             'remoteattemptid' => 9,
             'marks' => '[]',
+            'timeimported' => 1750000100,
+        ]);
+        $DB->insert_record('block_coursesync_submission', (object) [
+            'blockinstanceid' => 1,
+            'courseid' => $course->id,
+            'userid' => $user->id,
+            'assignid' => $serial,
+            'submissionid' => $serial,
+            'remotecmid' => 779,
+            'remoteattempt' => 0,
+            'fingerprint' => sha1('there'),
+            'localfingerprint' => sha1('here'),
+            'remotetime' => 1750000000,
             'timeimported' => 1750000100,
         ]);
     }
@@ -165,6 +179,29 @@ final class observer_test extends \advanced_testcase {
     }
 
     /**
+     * Resetting assignment submissions forgets the submissions that were
+     * pulled, so the next pull brings them back; the grades, the attempts and
+     * other courses are left alone.
+     */
+    public function test_resetting_assign_submissions_forgets_pulled_submissions(): void {
+        $this->reset($this->course, ['reset_assign_submissions']);
+
+        $this->assertSame(0, $this->rows('block_coursesync_submission', $this->course->id));
+        $this->assertSame(2, $this->rows('block_coursesync_submission', $this->other->id));
+        $this->assertSame(2, $this->rows('block_coursesync_grade', $this->course->id));
+        $this->assertSame(2, $this->rows('block_coursesync_attempt', $this->course->id));
+    }
+
+    /**
+     * Removing quiz attempts says nothing about assignment submissions.
+     */
+    public function test_resetting_quiz_attempts_keeps_pulled_submissions(): void {
+        $this->reset($this->course, ['reset_quiz_attempts']);
+
+        $this->assertSame(2, $this->rows('block_coursesync_submission', $this->course->id));
+    }
+
+    /**
      * Removing the gradebook's grades forgets the grades that were pulled.
      */
     public function test_resetting_gradebook_grades_forgets_pulled_grades(): void {
@@ -195,6 +232,7 @@ final class observer_test extends \advanced_testcase {
 
         $this->assertSame(4, $this->rows('block_coursesync_grade'));
         $this->assertSame(4, $this->rows('block_coursesync_attempt'));
+        $this->assertSame(4, $this->rows('block_coursesync_submission'));
     }
 
     /**
@@ -206,7 +244,7 @@ final class observer_test extends \advanced_testcase {
 
         delete_user($this->student);
 
-        foreach (['block_coursesync_grade', 'block_coursesync_attempt'] as $table) {
+        foreach (['block_coursesync_grade', 'block_coursesync_attempt', 'block_coursesync_submission'] as $table) {
             $this->assertSame(0, $DB->count_records($table, ['userid' => $this->student->id]), $table);
             $this->assertSame(2, $DB->count_records($table, ['userid' => $this->classmate->id]), $table);
         }

@@ -48,4 +48,24 @@ if ($ADMIN->fulltree) {
         get_string('allowgradepull_desc', 'block_coursesync'),
         0
     ));
+
+    $settings->add(new admin_setting_heading(
+        'block_coursesync/submissionsheading',
+        get_string('settingssubmissions', 'block_coursesync'),
+        get_string('settingssubmissions_desc', 'block_coursesync')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_coursesync/allowsubmissionexport',
+        get_string('allowsubmissionexport', 'block_coursesync'),
+        get_string('allowsubmissionexport_desc', 'block_coursesync'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_coursesync/allowsubmissionpull',
+        get_string('allowsubmissionpull', 'block_coursesync'),
+        get_string('allowsubmissionpull_desc', 'block_coursesync'),
+        0
+    ));
 }

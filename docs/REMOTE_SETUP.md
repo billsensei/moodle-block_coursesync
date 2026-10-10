@@ -183,6 +183,23 @@ Never the answers themselves, submissions, or anything else.
 The destination site needs its own switch, **Let teachers pull grades into this
 site**, ticked there. See [INSTALL.md](INSTALL.md#grade-sync).
 
+## 9. Optional: share students' assignment submissions
+
+Separate from grades, and off by default. Only turn it on if teachers on the
+destination should be able to bring across what students handed in.
+
+1. *Site administration > Plugins > Blocks > Course Sync*: tick **Let other
+   sites read assignment submissions from this site**.
+2. Give the sync account `block/coursesync:exportsubmissions` ("Let another site
+   read students' assignment submissions through Course Sync") in the same
+   category or course as its other permissions. No role has it by default, and
+   `exportgrades` does not stand in for it.
+
+What the destination can then read: for each assignment it asks about, the
+online text and files of the **latest attempt each student it names has handed
+in**. Drafts and team assignments are never shared. Usernames must be the same
+people on both sites.
+
 ## If the test fails
 
 | What the block says | Usually means |

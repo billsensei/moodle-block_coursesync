@@ -84,6 +84,8 @@ class behat_block_coursesync extends behat_base {
                 return new moodle_url('/blocks/coursesync/history.php', $params);
             case 'grades':
                 return new moodle_url('/blocks/coursesync/grades.php', $params);
+            case 'submissions':
+                return new moodle_url('/blocks/coursesync/submissions.php', $params);
             default:
                 throw new Exception("Unrecognised page type '{$type}'.");
         }
@@ -358,6 +360,56 @@ class behat_block_coursesync extends behat_base {
         set_config('allowgradeexport', 1, 'block_coursesync');
         $roleid = $DB->get_field('role', 'id', ['shortname' => 'coursesyncservice'], MUST_EXIST);
         assign_capability('block/coursesync:exportgrades', CAP_ALLOW, $roleid, context_system::instance()->id, true);
+        reload_all_capabilities();
+    }
+
+    /**
+     * A student hands work in to the synced copy of an assignment, as they
+     * would have here.
+     *
+     * Core's "mod_assign > submissions" generator finds an assignment by name
+     * alone, which is ambiguous once it has been copied into a course on the
+     * same site. This finds the copy.
+     *
+     * @Given /^"(?P<user>[^"]*)" has handed in "(?P<text>[^"]*)" to the synced "(?P<name>[^"]*)" in course "(?P<course>[^"]*)"$/
+     * @param string $user
+     * @param string $text
+     * @param string $name
+     * @param string $course
+     */
+    public function user_has_handed_in_to_the_synced_assignment(string $user, string $text, string $name, string $course) {
+        global $DB;
+
+        $cm = $this->synced_cm($name, $course);
+        testing_util::get_data_generator()->get_plugin_generator('mod_assign')->create_submission([
+            'cmid' => $cm->id,
+            'userid' => $DB->get_field('user', 'id', ['username' => $user], MUST_EXIST),
+            'onlinetext' => $text,
+        ]);
+    }
+
+    /**
+     * Switch on one direction of assignment submission sync for this site.
+     *
+     * Sharing also gives the account "this site is set up as a Course Sync
+     * source" created the permission to read submissions, so it needs that
+     * step first.
+     *
+     * @Given /^Course Sync submission (?P<direction>sharing|pulling) is switched on$/
+     * @param string $direction
+     */
+    public function course_sync_submission_direction_is_switched_on(string $direction) {
+        global $DB;
+
+        if ($direction === 'pulling') {
+            set_config('allowsubmissionpull', 1, 'block_coursesync');
+
+            return;
+        }
+
+        set_config('allowsubmissionexport', 1, 'block_coursesync');
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'coursesyncservice'], MUST_EXIST);
+        assign_capability('block/coursesync:exportsubmissions', CAP_ALLOW, $roleid, context_system::instance()->id, true);
         reload_all_capabilities();
     }
 

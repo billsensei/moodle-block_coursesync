@@ -60,7 +60,7 @@ Phase 7 replaced one such guard in `setup.php` with `require_sesskey()`.
 
 ### Web service functions
 
-All seven check `block/coursesync:sync` in the relevant context and call
+All nine check `block/coursesync:sync` in the relevant context and call
 `validate_context()`. Sesskey does not apply: these are token-authenticated.
 
 | Function | Capability checked in |
@@ -72,6 +72,8 @@ All seven check `block/coursesync:sync` in the relevant context and call
 | `block_coursesync_get_activity_file` | the course's context |
 | `block_coursesync_get_grades` | the course's context, plus `block/coursesync:exportgrades` there |
 | `block_coursesync_get_quiz_attempts` | the course's context, plus `block/coursesync:exportgrades` there |
+| `block_coursesync_get_submissions` | the course's context, plus `block/coursesync:exportsubmissions` there |
+| `block_coursesync_get_submission_file` | the course's context (found from the activity), plus `block/coursesync:exportsubmissions` there |
 
 The capability is checked **before** `validate_context()` so a missing sync
 permission is reported as that, rather than as the "course not accessible" that
@@ -278,6 +280,58 @@ hostile source, in addition to the grade rules above:
   test stored it and is escaped again with `s()` before it goes into the
   comment; the comment is then shown through `format_text()` like any other.
 
+## Students' assignment submissions
+
+v1.21.0. What a student *handed in* - online text and uploaded files - is more
+than a mark, so it has **its own four decisions**, apart from grades: switching
+on grade sharing shares no work (`test_the_grades_switch_is_not_enough`).
+
+1. **Source switch** `allowsubmissionexport`, default off. Checked first, before
+   anything is looked up, so a site that does not share answers every caller the
+   same and reveals nothing about its courses.
+2. **Source permission** `block/coursesync:exportsubmissions` (`RISK_PERSONAL`,
+   no archetypes, so held by no role) as well as `:sync`; `exportgrades` does
+   not stand in for it.
+3. **Destination switch** `allowsubmissionpull`, default off.
+4. **Destination permission**: `block/coursesync:pullsubmissions` **and**
+   `mod/assign:grade` **and** `mod/assign:editothersubmission` in the course,
+   checked in `submission_pull::check_allowed()` for a preview as well as a
+   pull. Core gives the last one to **no role**, so an administrator has to
+   grant it on purpose: a pull writes work on students' behalf.
+
+**What travels:** for each requested assignment, each student's *latest
+submitted* attempt: the online text and format, and each file's name, path,
+size and SHA-1, then the file bytes in chunks. Only students the gradebook lists
+**and the destination names**. Never drafts, never team assignments (the answer
+says why and describes nothing), never a submission plugin that is switched off
+for the assignment, never marks, feedback or other students' work.
+
+**`get_submission_file` is not `get_activity_file`.** The activity function
+only asks "is this area one the handler declared?". A submission file belongs to
+one person, so this one asks, in order: switch, `:sync`, `:exportsubmissions`;
+is the activity an assignment in that course; is the area one of the two
+submission areas; is it not a team assignment and is that plugin on; is the
+named user a gradebook student; is the file in *that student's* latest
+submitted attempt. A file name that belongs to someone else's submission gets
+"not found" (`test_a_file_must_be_in_the_named_students_submission`).
+
+**What the destination trusts:** nothing the source says about a file.
+`submissions_result` refuses the whole answer if a file names an area other
+than the two, a path that cleaning would change or that is not a plain
+slash-bounded folder path, a name that cleaning would change (so no `/`, `..`
+or NUL), or a hash that is not 40 hex characters. Every file is checked against
+its SHA-1 before it is stored, and a mismatch writes nothing for that student.
+Where a file goes is decided here, from the area, not by what the source
+listed. Online text is stored as the source holds it, as mod_assign stores what
+a student types, and is cleaned where it is shown (`format_text()`), as
+mod_assign does; so anything showing it must not skip that.
+
+**Never overwritten.** Work is written only where the student has nothing, or
+where an earlier pull wrote it and nobody has touched it since (compared by
+fingerprint). Anything else is flagged and left as it is; work a person
+removed is not brought back. Limits: the site's and the course's `maxbytes` per
+file, 512 MB of files per pull, 100 assignments per request.
+
 ### What is kept, and where
 
 - The grades themselves: the core gradebook (overrides), reported and deleted
@@ -300,6 +354,12 @@ hostile source, in addition to the grade rules above:
   gradebook's reach.
 - The source's privacy provider declares the external location: usernames,
   grades and feedback are sent to another site when sharing is on.
+- Brought-across submissions: ordinary submissions in the assignment, reported
+  and deleted by `mod_assign`. `block_coursesync_submission` records which ones
+  and two fingerprints of their content (never the content), in the privacy
+  provider, block context. A course reset of assignment submissions, and
+  deleting a user, forget those rows (`local\observer`). The history of a
+  submission pull holds counts per assignment only, never students.
 
 ## Outgoing requests
 

@@ -21,6 +21,8 @@ use block_coursesync\external\get_activity;
 use block_coursesync\external\get_activity_file;
 use block_coursesync\external\get_grades;
 use block_coursesync\external\get_quiz_attempts;
+use block_coursesync\external\get_submission_file;
+use block_coursesync\external\get_submissions;
 use block_coursesync\external\get_modified_activities;
 use block_coursesync\local\handler\handler_registry;
 use core\http_client;
@@ -85,6 +87,26 @@ trait source_on_this_site {
 
         if ($function === 'block_coursesync_get_grades') {
             return get_grades::execute((int) $params['courseid'], array_map('intval', $params['cmids'] ?? []));
+        }
+
+        if ($function === 'block_coursesync_get_submissions') {
+            return get_submissions::execute(
+                (int) $params['courseid'],
+                array_map('intval', $params['cmids'] ?? []),
+                (string) ($params['usernames'] ?? '')
+            );
+        }
+
+        if ($function === 'block_coursesync_get_submission_file') {
+            return get_submission_file::execute(
+                (int) $params['cmid'],
+                (string) $params['username'],
+                (string) $params['area'],
+                (string) $params['filepath'],
+                (string) $params['filename'],
+                (int) $params['offset'],
+                (int) $params['length']
+            );
         }
 
         if ($function === 'block_coursesync_get_activity') {

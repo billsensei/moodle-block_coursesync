@@ -156,6 +156,22 @@ out the grade itself. They count towards the quiz's attempt limit. Nobody is
 emailed about them. See [TEACHER_GUIDE.md](TEACHER_GUIDE.md#quiz-attempts). Grades pulled stay in the gradebook
 if grade sync is later switched off or the plugin removed.
 
+## Assignment submissions
+
+Optional, and **off** until you turn it on - apart from grade sync, because the
+work a student handed in is more than their mark. Each direction has its own
+switch, in the same settings page:
+
+| Site | Setting | Plus |
+| --- | --- | --- |
+| Source | **Let other sites read assignment submissions from this site** | Give the sync account `block/coursesync:exportsubmissions` where it has its other permissions - see [REMOTE_SETUP.md step 9](REMOTE_SETUP.md#9-optional-share-students-assignment-submissions). No role has it by default. |
+| Destination | **Let teachers pull assignment submissions into this site** | Teachers need `block/coursesync:pullsubmissions` (editing teachers and managers by default), `mod/assign:grade` **and `mod/assign:editothersubmission`** in the course. **No role has the last one by default**: grant it to the role that should pull, or only an administrator will see the button. |
+
+What it brings: the latest handed-in attempt of each student, as online text
+and uploaded files. Never drafts or team assignments, and never over work that
+is already there. The same warning as for grades applies: check that usernames
+mean the same people on both sites first.
+
 ## Private networks and testing
 
 Course Sync refuses to connect to loopback, link-local or private addresses, so
@@ -183,6 +199,7 @@ access to the server. **Do not set it on a production site.**
 | `block_coursesync_run` | One row per sync run or grade pull: when, who, what was copied or flagged. A grade pull keeps counts per activity only, never which students |
 | `block_coursesync_grade` | One row per grade a grade pull wrote: the student, the grade item, and the grade as written, so a later pull can tell its own grades from a teacher's |
 | `block_coursesync_attempt` | One row per quiz attempt a pull brought across: the student, the attempt here and on the source, and the marks given, so a later pull neither brings it twice nor overwrites a teacher's marks |
+| `block_coursesync_submission` | One row per assignment submission a pull brought across: the student, the submission here and the assignment on the source, and fingerprints of the content (never the content), so a later pull neither brings it twice nor overwrites work changed here |
 
 The token is encrypted with Moodle's own secret storage (`\core\encryption`,
 libsodium). The key lives outside the database, in the site's secret data

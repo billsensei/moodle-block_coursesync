@@ -14,7 +14,10 @@ a grade a teacher gave. Since v1.19.0 it also brings students' finished quiz
 attempts - times and per-question marks - into the quiz's own reports. Since
 v1.20.0 a course that already has the activities (restored, imported or built
 by hand) is recognised on its first sync, by type and name, and linked rather
-than copied again.
+than copied again. Since v1.21.0 **submission sync** (also off by default, with
+its own switches and permissions) brings students' assignment submissions - the
+latest handed-in attempt, as online text and uploaded files - into copied
+assignments, never replacing work that is already there.
 
 ## How it fits together
 
@@ -27,7 +30,7 @@ sites and behaves differently at each end:
 | **Source** | Exposes the Course Sync external service. Needs web services enabled and a token issued to a sync account. |
 | **Destination** | Holds the block, stores the source's address, token and course mapping, and makes the calls. |
 
-The service contains seven functions, all read-only:
+The service contains nine functions, all read-only:
 
 | Function | Returns |
 | --- | --- |
@@ -37,6 +40,8 @@ The service contains seven functions, all read-only:
 | `block_coursesync_get_activity` | Everything needed to rebuild one activity: the common envelope, type-specific settings, and a list of its files |
 | `block_coursesync_get_activity_file` | One chunk of one file belonging to an activity, base64 encoded |
 | `block_coursesync_get_quiz_attempts` | Students' finished quiz attempts - times and per-question marks, not answers - with each quiz's outline. Same gates as `get_grades` |
+| `block_coursesync_get_submissions` | Describes students' latest handed-in assignment work (online text, and each file's name, size and SHA-1), by username. Off unless the site allows it and the account holds `block/coursesync:exportsubmissions` |
+| `block_coursesync_get_submission_file` | One chunk of one file from a student's handed-in work. Refuses unless the file is in that student's own latest submitted attempt. Same gates as `get_submissions` |
 | `block_coursesync_get_grades` | Students' gradebook grades and feedback for chosen activities, by username. Off unless the site allows it and the account holds `block/coursesync:exportgrades` |
 
 The same code runs at both ends; which role a site plays depends only on how it

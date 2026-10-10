@@ -40,7 +40,7 @@
         <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The block instance the run belongs to."/>
         <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The destination course."/>
         <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The user who started the run."/>
-        <FIELD NAME="kind" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="activities" SEQUENCE="false" COMMENT="What the run pulled: activities, or grades."/>
+        <FIELD NAME="kind" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="activities" SEQUENCE="false" COMMENT="What the run pulled: activities, grades, or submissions."/>
         <FIELD NAME="timestarted" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timefinished" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="ok" SEQUENCE="false" COMMENT="ok when everything asked for was pulled, review when something was flagged, failed when the run could not finish."/>
@@ -108,6 +108,32 @@
         <INDEX NAME="quizid-remoteattemptid" UNIQUE="true" FIELDS="quizid, remoteattemptid"/>
         <INDEX NAME="attemptid" UNIQUE="false" FIELDS="attemptid"/>
         <INDEX NAME="blockinstanceid" UNIQUE="false" FIELDS="blockinstanceid"/>
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="block_coursesync_submission" COMMENT="One row per assignment submission a pull brought across: which submission on the source it was, the submission it became here, and fingerprints of what the source held and of what was written here, so a later pull neither duplicates it nor overwrites work somebody here has since changed.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The block instance whose pull brought it across."/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The destination course."/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The student whose submission it is."/>
+        <FIELD NAME="assignid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The assignment here."/>
+        <FIELD NAME="submissionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The submission here."/>
+        <FIELD NAME="remotecmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Course module id of the assignment on the source site."/>
+        <FIELD NAME="remoteattempt" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Which attempt on the source this was."/>
+        <FIELD NAME="fingerprint" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="SHA-1 standing for the content the source held when it was brought."/>
+        <FIELD NAME="localfingerprint" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="The same measure of what was written here, to tell a later change made here."/>
+        <FIELD NAME="remotetime" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="When the submission last changed on the source site."/>
+        <FIELD NAME="timeimported" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="assignid-userid" UNIQUE="true" FIELDS="assignid, userid"/>
+        <INDEX NAME="submissionid" UNIQUE="false" FIELDS="submissionid"/>
+        <INDEX NAME="blockinstanceid" UNIQUE="false" FIELDS="blockinstanceid"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
         <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
       </INDEXES>
     </TABLE>

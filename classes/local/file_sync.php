@@ -17,6 +17,7 @@
 namespace block_coursesync\local;
 
 use block_coursesync\activity_payload;
+use block_coursesync\file_chunk;
 use block_coursesync\local\handler\activity_handler;
 use block_coursesync\remote_client;
 use core\http_client;
@@ -150,18 +151,46 @@ class file_sync {
         ?http_client $client = null,
         string $component = ''
     ): string {
-        // Pieces go straight to disk rather than into one string, so a large
-        // file never has to fit in memory - up to MAX_CHUNKS pieces is 1 GB.
+        return self::download(
+            static fn(int $offset): file_chunk => remote_client::get_activity_file(
+                $baseurl,
+                $token,
+                $remotecmid,
+                (string) $file['filearea'],
+                (int) $file['itemid'],
+                (string) $file['filepath'],
+                (string) $file['filename'],
+                $offset,
+                self::CHUNK,
+                $client,
+                $component
+            ),
+            (string) ($file['contenthash'] ?? '')
+        );
+    }
+
+    /**
+     * Read one file a chunk at a time and check it against its SHA-1.
+     *
+     * Pieces go straight to disk rather than into one string, so a large
+     * file never has to fit in memory - up to MAX_CHUNKS pieces is 1 GB.
+     * Shared by every kind of file this plugin fetches: only how a piece is
+     * asked for differs.
+     *
+     * @param callable $getchunk fn(int $offset): file_chunk
+     * @param string $expected the SHA-1 the source reported, empty to skip the check
+     * @return string the path of a temporary file holding it, for the caller to remove
+     * @throws \moodle_exception if the transfer fails or the content does not match
+     */
+    public static function download(callable $getchunk, string $expected): string {
         $path = make_request_directory() . '/transfer';
         $out = fopen($path, 'wb');
 
         try {
-            self::fetch_into($out, $baseurl, $token, $remotecmid, $file, $client, $component);
+            self::fetch_into($out, $getchunk);
         } finally {
             fclose($out);
         }
-
-        $expected = (string) ($file['contenthash'] ?? '');
 
         if ($expected !== '' && sha1_file($path) !== $expected) {
             // Moodle stores a file's SHA1 as its content hash, so this compares
@@ -178,23 +207,10 @@ class file_sync {
      * Write a file from the source site to an open stream, a piece at a time.
      *
      * @param resource $out
-     * @param string $baseurl
-     * @param string $token
-     * @param int $remotecmid
-     * @param array $file
-     * @param http_client|null $client
-     * @param string $component
+     * @param callable $getchunk fn(int $offset): file_chunk
      * @return void
      */
-    protected static function fetch_into(
-        $out,
-        string $baseurl,
-        string $token,
-        int $remotecmid,
-        array $file,
-        ?http_client $client,
-        string $component
-    ): void {
+    protected static function fetch_into($out, callable $getchunk): void {
         $offset = 0;
         $chunks = 0;
 
@@ -203,19 +219,7 @@ class file_sync {
                 throw new \moodle_exception('errorfiletoobig', 'block_coursesync');
             }
 
-            $chunk = remote_client::get_activity_file(
-                $baseurl,
-                $token,
-                $remotecmid,
-                (string) $file['filearea'],
-                (int) $file['itemid'],
-                (string) $file['filepath'],
-                (string) $file['filename'],
-                $offset,
-                self::CHUNK,
-                $client,
-                $component
-            );
+            $chunk = $getchunk($offset);
 
             if (!$chunk->success) {
                 throw new \moodle_exception($chunk->errorkey, 'block_coursesync');

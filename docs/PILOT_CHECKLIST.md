@@ -49,6 +49,18 @@ things worth checking before teachers touch it.
 - [ ] Pilot teachers are editing teachers (or hold `block/coursesync:pullgrades`
       and `moodle/grade:edit`)
 
+**If the pilot includes assignment submissions** (optional, separate from grades)
+
+- [ ] Source: **Let other sites read assignment submissions from this site**
+      ticked, and `block/coursesync:exportsubmissions` given to the sync account
+- [ ] Destination: **Let teachers pull assignment submissions into this site**
+      ticked
+- [ ] Pilot teachers hold `block/coursesync:pullsubmissions`, `mod/assign:grade`
+      **and `mod/assign:editothersubmission`** - core gives the last to no role,
+      so grant it deliberately
+- [ ] The pilot assignments are not team assignments, and have file and/or
+      online text submissions switched on **here** as well as there
+
 ## The encryption key
 
 The token is encrypted with a key created on first use, owned by whichever

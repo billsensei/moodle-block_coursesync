@@ -42,6 +42,9 @@ class history {
     /** @var string A run that pulled students' grades. */
     public const KIND_GRADES = 'grades';
 
+    /** @var string A pull of assignment submissions. */
+    public const KIND_SUBMISSIONS = 'submissions';
+
     /**
      * Write a finished run to the history.
      *
@@ -112,6 +115,7 @@ class history {
      * @param int $userid who started the pull
      * @param int $timestarted
      * @param grade_pull_result $result
+     * @param string $runkind KIND_GRADES, or KIND_SUBMISSIONS for a pull of assignment submissions
      * @return int the new history row id
      */
     public static function record_grade_pull(
@@ -119,7 +123,8 @@ class history {
         int $courseid,
         int $userid,
         int $timestarted,
-        grade_pull_result $result
+        grade_pull_result $result,
+        string $runkind = self::KIND_GRADES
     ): int {
         global $DB;
 
@@ -137,7 +142,7 @@ class history {
         // released and its attempts brought across in one pull.
         $activities = [];
 
-        foreach ([grade_pull_result::KIND_GRADE, grade_pull_result::KIND_ATTEMPT] as $kind) {
+        foreach ([grade_pull_result::KIND_GRADE, grade_pull_result::KIND_ATTEMPT, grade_pull_result::KIND_SUBMISSION] as $kind) {
             foreach ($result->by_activity($kind) as $activity) {
                 $activities[] = ['kind' => $kind] + $activity;
             }
@@ -147,7 +152,7 @@ class history {
             'blockinstanceid' => $blockinstanceid,
             'courseid' => $courseid,
             'userid' => $userid,
-            'kind' => self::KIND_GRADES,
+            'kind' => $runkind,
             'timestarted' => $timestarted,
             'timefinished' => time(),
             'status' => $status,

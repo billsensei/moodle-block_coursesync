@@ -128,6 +128,12 @@ if ($runs === []) {
                     'gradescolskipped', 'gradescolreleased'],
                 ['add', 'update', 'same', 'conflict', 'skipped', 'released'],
             ],
+            'submission' => [
+                'submissionssection',
+                ['submissionscolassignment', 'gradescoladd', 'gradescolupdate', 'submissionscolsame', 'gradescolconflict',
+                    'gradescolskipped'],
+                ['add', 'update', 'same', 'conflict', 'skipped'],
+            ],
             'attempt' => [
                 'attemptssection',
                 ['attemptscolquiz', 'gradescoladd', 'gradescolupdate', 'attemptscolsame', 'gradescolconflict',
@@ -185,16 +191,22 @@ if ($runs === []) {
         $summary = html_writer::tag('span', get_string('historystatus' . $run->status, 'block_coursesync'), [
             'class' => 'badge ' . $badgeclass . ' me-2',
         ]);
-        $isgrades = $run->kind === history::KIND_GRADES;
+        $issubmissions = $run->kind === history::KIND_SUBMISSIONS;
+        $isgrades = $run->kind === history::KIND_GRADES || $issubmissions;
 
         if ($isgrades) {
-            $summary .= html_writer::tag('span', get_string('historykindgrades', 'block_coursesync'), [
+            $kindlabel = get_string($issubmissions ? 'historykindsubmissions' : 'historykindgrades', 'block_coursesync');
+            $summary .= html_writer::tag('span', $kindlabel, [
                 'class' => 'badge bg-info text-dark me-2',
             ]);
         }
 
         $summary .= html_writer::tag('strong', userdate($run->timestarted));
-        $summary .= ' — ' . get_string($isgrades ? 'historygradecounts' : 'historycounts', 'block_coursesync', (object) [
+        $summary .= ' — ' . get_string(match (true) {
+            $issubmissions => 'historysubmissioncounts',
+            $isgrades => 'historygradecounts',
+            default => 'historycounts',
+        }, 'block_coursesync', (object) [
             'pulled' => $run->pulledcount,
             'conflicts' => $run->conflictcount,
             'skipped' => $run->skippedcount,

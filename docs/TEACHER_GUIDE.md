@@ -12,7 +12,9 @@ course. If it finds something in the way, it stops and tells you rather than
 guessing.
 
 It can also bring across **students' grades** for the activities it copied, if
-your site allows it — see [Pulling grades](#pulling-grades).
+your site allows it — see [Pulling grades](#pulling-grades) — and the work they
+handed in to copied assignments — see
+[Pulling assignment submissions](#pulling-assignment-submissions).
 
 ## Before you start
 
@@ -192,7 +194,7 @@ Course Sync copies every standard kind of activity - twenty-three:
 | **Book** | Every chapter, in order, with its text and pictures | — |
 | **Forum** | The forum and its settings | Existing discussions and posts |
 | **Wiki** | The wiki and its settings | The pages people wrote in it |
-| **Assignment** | The task, dates, grading and marking settings, and which submission and feedback types are switched on | Student submissions, grades, feedback and extensions |
+| **Assignment** | The task, dates, grading and marking settings, and which submission and feedback types are switched on | Student submissions (they can be [pulled separately](#pulling-assignment-submissions)), grades, feedback and extensions |
 | **Quiz** | All the settings: timing, attempts, review rules, grading, the overall feedback for each grade range — and its questions, of every standard Moodle question type | Questions of a type added to Moodle by a plugin, student attempts, and usage statistics |
 | **Choice** | The question and every option, including any limits | The answers people gave |
 | **Glossary** | All the settings | The entries people wrote |
@@ -374,6 +376,61 @@ for attempts made here — so for a quiz there is no overridden grade.
   come, and nobody has changed it, that override is removed so the quiz's own
   grade shows — the page lists these as **Now worked out from the quiz's
   attempts**. A grade you set yourself stays.
+
+## Pulling assignment submissions
+
+If your students handed work in to an assignment on the other site - the same
+students, with the same usernames on both - Course Sync can bring that work into
+the copy of the assignment in your course. It is separate from pulling grades,
+and it only works for assignments Course Sync copied (or recognised as already
+here).
+
+You will only see a **Pull submissions** button in the block if:
+
+- an administrator has switched submission pulling on for this site, **and** one
+  on the other site has switched submission sharing on there, and
+- you hold the Course Sync permission to pull submissions **and** are allowed to
+  grade assignments and to edit other students' submissions in this course.
+  Moodle gives that last permission to no role by default, so an administrator
+  may need to grant it to teachers first.
+
+### What comes across
+
+For each student, the **latest attempt they handed in**: their online text, the
+files they uploaded, and any files in the text. Not drafts, not team
+assignments, and not marks or comments - pull grades for those. The student's
+original times are kept, nobody is emailed, and handing work in counts for
+activity completion as it would have if they had done it here.
+
+### What happens
+
+**Pull submissions** first shows you what it *would* do. Nothing is written until
+you press **Pull the submissions**. The page lists:
+
+- **Kept as it was** - the student already has different work here, or an earlier
+  pull brought work across and someone has changed it since. It is **never
+  replaced**; look at it and decide.
+- **Skipped** - and why: the assignment here does not take that kind of
+  submission (switch files or online text on in its settings), a file is larger
+  than your course allows, the assignment is a team assignment, or a file did not
+  arrive intact. Work a teacher removed here after it was pulled is not brought
+  back.
+- **Submissions to pull** - students with nothing here yet.
+
+A pull brings up to 512 MB of files at a time; if there is more, the rest wait
+for the next pull.
+
+### Pulling again
+
+Work Course Sync brought across, and that nobody here has changed, follows the
+other site: if the student changes it there, the next pull updates it here. As
+soon as anyone here touches it, it is yours and later pulls leave it alone.
+
+### In the assignment
+
+The work shows as *Submitted for grading*. The assignment's grader screen does
+not know about any mark pulled with **Pull grades**, since those are gradebook
+overrides, so it may show the work as ungraded while the gradebook has a grade.
 
 ## Sync history
 
