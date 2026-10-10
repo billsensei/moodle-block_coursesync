@@ -657,6 +657,27 @@ final class submission_pull_test extends advanced_testcase {
     }
 
     /**
+     * The source's reason for skipping an assignment is turned into a language
+     * string, so one this version does not know must not be: it is "unknown".
+     */
+    public function test_an_unknown_reason_from_the_source_is_not_trusted(): void {
+        $this->hand_in('work');
+
+        $cases = ['madeup' => 'subreasonunknown', 'Evil_Key' => 'subreasonunknown', 'team' => 'subreasonteam'];
+
+        foreach ($cases as $sent => $expected) {
+            $this->tamper['block_coursesync_get_submissions'] = static function (array $body) use ($sent): array {
+                $body['items'][0]['reason'] = $sent;
+
+                return $body;
+            };
+            $entry = $this->only_entry($this->pull());
+            $this->assertSame($expected, $entry->reason);
+            $this->assertTrue(get_string_manager()->string_exists($entry->reason, 'block_coursesync'));
+        }
+    }
+
+    /**
      * A student who only opened the assignment here has a row with no work
      * in it: the work goes into that row, and there is still just the one.
      */

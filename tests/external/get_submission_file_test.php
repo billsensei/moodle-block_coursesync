@@ -249,6 +249,32 @@ final class get_submission_file_test extends advanced_testcase {
     }
 
     /**
+     * A file left in the online text's area after the text was emptied is not
+     * part of the submission, and is not served.
+     */
+    public function test_a_file_of_emptied_online_text_is_not_served(): void {
+        global $DB;
+
+        $submission = $DB->get_record('assign_submission', ['assignment' => $this->assign->id, 'userid' => $this->sam->id]);
+        get_file_storage()->create_file_from_string([
+            'contextid' => \context_module::instance($this->assign->cmid)->id,
+            'component' => 'assignsubmission_onlinetext',
+            'filearea' => submissions::AREA_TEXTFILES,
+            'itemid' => $submission->id,
+            'filepath' => '/',
+            'filename' => 'pic.png',
+        ], 'png-bytes');
+
+        // With text, it is part of the work.
+        $served = $this->read(['area' => submissions::AREA_TEXTFILES, 'filename' => 'pic.png']);
+        $this->assertSame('png-bytes', base64_decode($served['content']));
+
+        // Without, it is not.
+        $DB->set_field('assignsubmission_onlinetext', 'onlinetext', '', ['submission' => $submission->id]);
+        $this->assert_refused('errorfilenotfound', ['area' => submissions::AREA_TEXTFILES, 'filename' => 'pic.png']);
+    }
+
+    /**
      * A submission plugin that is switched off is not read.
      */
     public function test_a_switched_off_plugin_is_not_read(): void {

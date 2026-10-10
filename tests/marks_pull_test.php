@@ -869,6 +869,27 @@ final class marks_pull_test extends advanced_testcase {
     }
 
     /**
+     * The source's reason for skipping an assignment is turned into a language
+     * string, so one this version does not know must not be: it is "unknown".
+     */
+    public function test_an_unknown_reason_from_the_source_is_not_trusted(): void {
+        $this->mark_there(80, 'Good');
+
+        $cases = ['madeup' => 'markreasonunknown', 'Evil_Key' => 'markreasonunknown', 'scale' => 'markreasonscale'];
+
+        foreach ($cases as $sent => $expected) {
+            $this->tamper['block_coursesync_get_marks'] = static function (array $body) use ($sent): array {
+                $body['items'][0]['reason'] = $sent;
+
+                return $body;
+            };
+            $entry = $this->only_entry($this->pull());
+            $this->assertSame($expected, $entry->reason);
+            $this->assertTrue(get_string_manager()->string_exists($entry->reason, 'block_coursesync'));
+        }
+    }
+
+    /**
      * The grade item of the assignment here.
      *
      * @return \grade_item

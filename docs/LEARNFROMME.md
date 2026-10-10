@@ -4381,3 +4381,38 @@ loop disabled in each pull).
 
 **Not done:** L1-L7 from the review (allow-list of source `reason` values, download size by bytes
 received, marks-to-attempt note, privacy wording for marks, tests incl. `question_cleaner`).
+
+## Phase 78 - The low items from the review (L1-L7) (v1.23.6-beta, build 2026101008), 2026-10-10
+
+Each checked against the code first. Fixed: L1, L2, L4, L6, L7. Documented only: L3, L5.
+
+- **L1 (fixed).** A remote `reason` went through `PARAM_ALPHA` and into `'subreason' . $reason` as a
+  language string key, so any word showed `[[subreasonxyz]]` and a debugging notice.
+  `known_reason()` in both result classes keeps only the values the source can send (`REASONS`)
+  and maps anything else to `unknown`, with `subreasonunknown` / `markreasonunknown`.
+- **L2 (fixed).** `file_sync::download()` takes a `$maxbytes` and stops with `errorfiletoobig` once
+  more has arrived than the source said (the writers pass the file's `filesize`). The budget and
+  the course's limits only ever saw the claimed size. A failed transfer now deletes its partial
+  file at once. `filesize` is a required field of both responses, so a genuine source always sends it.
+- **L3 (documented).** Marks go to the student's latest attempt here whatever attempt the source
+  gave. Skipping on a mismatch would block every mark on an assignment reopened on the source,
+  because a submission pull always writes attempt 0 here. Written into DESIGN_ASSIGN_MARKS.md
+  (which also still listed per-assignment selection as not done; corrected).
+- **L4 (fixed).** `get_submission_file` served any file in the online-text area of the latest
+  submitted attempt, though `get_submissions` describes those files only while the text is not
+  empty. It now serves only files the submission is described as holding (`submissions::content()`).
+- **L5 (no change).** `LOCK_LIFETIME` is 3600 s; a pull moves at most 512 MiB (`RUN_BYTES`), about nine
+  minutes at 1 MB/s, and PHP's execution limit ends a web request before that matters. Not a risk
+  worth code.
+- **L6 (fixed).** The privacy descriptions said grades, attempts and submissions; marks are now named
+  in `privacy:metadata:sourcesite`, `:username` and `:othersite`. Strings only.
+- **L7 (fixed).** Tests added: hostile and unknown reasons (both pulls), an over-long transfer, the
+  emptied-online-text file, and a unit test for `question_cleaner` (it had none). Hostile
+  `grademax`, reopened attempts and failed updates were added in Phases 74-76.
+
+**Mutation checks (all caught):** each result class's allow-list, the size limit, the described-file
+check, and the cleaner's walk (two tests).
+
+**Not covered.** The reviewer's remark that `question_cleaner` treats formatted strings whose format
+key is not `<key>format` as plain data: none of the question types we copy use another scheme, but
+a new type should be checked against it.

@@ -179,15 +179,20 @@ class file_sync {
      *
      * @param callable $getchunk fn(int $offset): file_chunk
      * @param string $expected the SHA-1 the source reported, empty to skip the check
+     * @param int|null $maxbytes stop with an error if more than this arrives, null for no limit
      * @return string the path of a temporary file holding it, for the caller to remove
-     * @throws \moodle_exception if the transfer fails or the content does not match
+     * @throws \moodle_exception if the transfer fails, is longer than said, or the content does not match
      */
-    public static function download(callable $getchunk, string $expected): string {
+    public static function download(callable $getchunk, string $expected, ?int $maxbytes = null): string {
         $path = make_request_directory() . '/transfer';
         $out = fopen($path, 'wb');
 
         try {
-            self::fetch_into($out, $getchunk);
+            self::fetch_into($out, $getchunk, $maxbytes);
+        } catch (\Throwable $e) {
+            @unlink($path);
+
+            throw $e;
         } finally {
             fclose($out);
         }
@@ -208,9 +213,10 @@ class file_sync {
      *
      * @param resource $out
      * @param callable $getchunk fn(int $offset): file_chunk
+     * @param int|null $maxbytes stop with an error if more than this arrives, null for no limit
      * @return void
      */
-    protected static function fetch_into($out, callable $getchunk): void {
+    protected static function fetch_into($out, callable $getchunk, ?int $maxbytes = null): void {
         $offset = 0;
         $chunks = 0;
 
@@ -223,6 +229,12 @@ class file_sync {
 
             if (!$chunk->success) {
                 throw new \moodle_exception($chunk->errorkey, 'block_coursesync');
+            }
+
+            // No more than the source said the file was: a source that keeps
+            // sending is not trusted to stop before the disk is full.
+            if ($maxbytes !== null && $offset + strlen($chunk->content) > $maxbytes) {
+                throw new \moodle_exception('errorfiletoobig', 'block_coursesync');
             }
 
             if (fwrite($out, $chunk->content) !== strlen($chunk->content)) {

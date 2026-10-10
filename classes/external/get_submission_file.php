@@ -149,6 +149,20 @@ class get_submission_file extends external_api {
         }
 
         $context = \context_module::instance($cm->id);
+
+        // Only a file the submission is described as holding: what
+        // get_submissions lists, no more. A file left in the online text's
+        // area after its text was emptied is not part of the work.
+        [, , $listed] = submissions::content($context, $submission, [$plugin]);
+        $described = array_filter(
+            $listed,
+            static fn(array $file) => $file['area'] === $area && $file['filepath'] === $filepath && $file['filename'] === $filename
+        );
+
+        if (!$described) {
+            throw new \moodle_exception('errorfilenotfound', 'block_coursesync');
+        }
+
         $file = get_file_storage()->get_file(
             $context->id,
             submissions::AREAS[$area],

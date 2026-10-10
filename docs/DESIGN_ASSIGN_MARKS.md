@@ -33,7 +33,10 @@ row fixes that.
    `block/coursesync:pullmarks` (editing teacher, manager) plus `mod/assign:grade`.
 4. **Which attempt.** The mark for the student's latest *submitted* attempt (the
    one a submission pull carries), or their latest attempt if they have handed
-   nothing in. It is written to the student's latest attempt here.
+   nothing in. It is written to the student's latest attempt here, whatever attempt
+   number the source gave it (stored as `remoteattempt`, not compared): a submission
+   pull always writes attempt 0 here, so refusing a mark whose attempt number
+   differs would stop every mark on an assignment that was reopened on the source.
 5. **Written through mod_assign.** `update_grade()` so the gradebook is pushed and
    the grader screen agrees. The submission pull deliberately bypassed the
    student-facing save path (deadlines, notifications); a grade has no such
@@ -68,5 +71,5 @@ comment file only for a mark `get_marks` would describe.
 ## Not done
 
 Other feedback plugins and feedback files; rubric / marking guide detail;
-earlier attempts; team assignments; marker allocation; extensions; per-assignment
-selection (a pull covers every copied assignment).
+earlier attempts; team assignments; marker allocation; extensions. (Per-assignment
+selection was added in v1.23.0.)

@@ -18,6 +18,7 @@ namespace block_coursesync\local;
 
 use advanced_testcase;
 use block_coursesync\activity_payload;
+use block_coursesync\file_chunk;
 use block_coursesync\local\handler\resource_handler;
 use core\http_client;
 use GuzzleHttp\Handler\MockHandler;
@@ -318,5 +319,33 @@ final class file_sync_test extends advanced_testcase {
         );
 
         $this->assertSame($content, $file->get_content());
+    }
+
+    /**
+     * A transfer is stopped once it is longer than the source said the file
+     * was, however long the source keeps sending.
+     */
+    public function test_a_transfer_longer_than_said_is_stopped(): void {
+        $asked = 0;
+        $endless = function (int $offset) use (&$asked): file_chunk {
+            $asked++;
+
+            return file_chunk::success('1234567890', 10, false, 20, '');
+        };
+
+        try {
+            file_sync::download($endless, '', 25);
+            $this->fail('The transfer should have been stopped.');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('errorfiletoobig', $e->errorcode);
+        }
+
+        // The third piece would have taken it to 30 bytes.
+        $this->assertSame(3, $asked);
+
+        // Exactly as long as said is fine, and so is no limit.
+        $honest = static fn(int $offset): file_chunk => file_chunk::success('1234567890', 10, $offset >= 10, 20, '');
+        $this->assertSame(20, filesize(file_sync::download($honest, '', 20)));
+        $this->assertSame(20, filesize(file_sync::download($honest, '')));
     }
 }

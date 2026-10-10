@@ -31,6 +31,9 @@ use block_coursesync\local\marks;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class marks_result {
+    /** @var string[] The reasons a source may give for not describing an assignment. */
+    public const REASONS = ['team', 'scale', 'nograde', 'notassign'];
+
     /** @var bool Whether the remote site answered. */
     public readonly bool $success;
 
@@ -121,7 +124,7 @@ class marks_result {
 
             $items[] = (object) [
                 'cmid' => (int) $row['cmid'],
-                'reason' => clean_param((string) ($row['reason'] ?? ''), PARAM_ALPHA),
+                'reason' => self::known_reason((string) ($row['reason'] ?? '')),
                 'grademax' => $grademax,
                 'marks' => $markrows,
             ];
@@ -144,6 +147,21 @@ class marks_result {
         }
 
         return self::success($items);
+    }
+
+    /**
+     * A reason the source gave, kept only if this version knows it.
+     *
+     * The reason is turned into a language string identifier, so one that is
+     * not on the list (a newer source's, or a made-up one) becomes "unknown".
+     *
+     * @param string $reason
+     * @return string empty for none, a REASONS value, or "unknown"
+     */
+    protected static function known_reason(string $reason): string {
+        $reason = clean_param($reason, PARAM_ALPHA);
+
+        return $reason === '' || in_array($reason, self::REASONS, true) ? $reason : 'unknown';
     }
 
     /**

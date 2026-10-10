@@ -71,7 +71,8 @@ class submission_writer {
                         file_sync::CHUNK,
                         $client
                     ),
-                    $file['contenthash']
+                    $file['contenthash'],
+                    (int) $file['filesize']
                 );
             }
         } catch (\moodle_exception $e) {
