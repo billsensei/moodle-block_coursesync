@@ -7,6 +7,23 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
+## Unreleased (build 2026101004, v1.23.2-beta)
+
+### Fixed
+
+- **A source with no usable maximum could stop a marks pull with a fatal error.**
+  A mark was scaled by dividing by the source assignment's maximum; a maximum of
+  zero (or one that arrived as infinity, such as `1e999`) gave a division by zero
+  that nothing caught, so the page died and no history row was written. A
+  maximum that is not a finite number, or is negative, now makes the whole answer
+  bad (`errorbadresponse`); a zero maximum skips that assignment with its own
+  reason (`markreasonbadmax`). A mark that is not a finite number is refused the
+  same way.
+- **A mark outside what the assignment can hold is no longer written.** After
+  scaling, a mark below zero or above the assignment's maximum here was written
+  as it came (a negative grade is what assign reads as "not graded"). It is now
+  skipped with `markreasonoutofrange`.
+
 ## Unreleased (build 2026101003, v1.23.1-beta)
 
 ### Security

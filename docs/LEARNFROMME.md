@@ -4257,3 +4257,35 @@ found the bind mounts live this time (no force-recreate needed), `upgrade.php` w
   marks `run()` with a selection (only the preview was run, to avoid altering the
   student2 conflict). The v1.23.1 zip was checked against `git archive HEAD`: identical,
   so no rebuild. Origin/main was already level with HEAD.
+
+## Phase 74 - Bad marks from the other site (v1.23.2-beta, build 2026101004), 2026-10-10
+
+**Trigger:** the `moodle-reviewer` pass before release (H1, M1). Both checked against the
+code before fixing; H1 was reproduced by a test failing with `DivisionByZeroError`.
+
+**H1.** `marks::convert()` divides by the source's maximum; `marks_result` let that be 0
+(`max(0.0, ...)`), and `1e999` is numeric, so it became INF. `DivisionByZeroError` is not a
+`moodle_exception`, so nothing caught it: the page died, no history row. **Fix:** a
+`grademax` that is not finite or is negative makes the whole answer `errorbadresponse`; a
+mark that is not finite is refused the same way; a zero maximum with no reason skips the
+assignment (`markreasonbadmax`, checked in `assignment_problem()`).
+
+**M1.** After scaling, nothing checked the mark against this assignment's maximum. **Fix:**
+below zero or above `grade` here (plus half the rounding step) is skipped,
+`markreasonoutofrange`; comment-only marks are unaffected.
+
+**Traps**
+- A zero maximum is legitimate in a *parsed* answer (a source with no grade says why
+  instead), so the parser rejects only non-finite or negative; the pull refuses to scale
+  by zero. Rejecting zero in the parser would have failed whole answers over one assignment.
+- JSON cannot carry INF, so the test sends the string `'1e999'`, which `is_numeric()` accepts.
+- Lang strings were added, so the build was bumped (no schema change).
+
+**Evidence.** PHPUnit **578** tests, 2798 assertions, 1 skipped (was 575); marks_pull_test
+28/28. Mutation checks, all caught: guard removed (Error: the division by zero), range check
+removed, finite checks removed (two tests). phplint, phpcs `--max-warnings 0`, phpdoc
+(0 `Line` rows), validate, savepoints clean. Not tried on the Docker sites or by Behat.
+
+**Not done (from the same review):** M2 files deleted before the database write on an update,
+M3 remote online text and comments not cleaned, M4 two `latest` attempts after a reopen, M5
+per-module capability check and idnumber targeting, L1-L7.

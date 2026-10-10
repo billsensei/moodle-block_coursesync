@@ -676,6 +676,85 @@ final class marks_pull_test extends advanced_testcase {
     }
 
     /**
+     * A source that gives no usable maximum cannot have its marks scaled, and
+     * must not take the pull down with a division by zero.
+     */
+    public function test_a_source_without_a_usable_maximum(): void {
+        $this->mark_there(80, 'Good');
+
+        foreach ([0, 0.0] as $max) {
+            $this->tamper['block_coursesync_get_marks'] = function (array $body) use ($max): array {
+                $body['items'][0]['grademax'] = $max;
+
+                return $body;
+            };
+            $result = $this->pull();
+            $this->assertTrue($result->success);
+            $this->assertSame('markreasonbadmax', $this->only_entry($result)->reason);
+            $this->assertNull($this->grade_here());
+        }
+
+        // Not a number a mark could be scaled by: the whole answer is refused.
+        foreach (['1e999', -5] as $max) {
+            $this->tamper['block_coursesync_get_marks'] = function (array $body) use ($max): array {
+                $body['items'][0]['grademax'] = $max;
+
+                return $body;
+            };
+            $this->assertSame('errorbadresponse', $this->pull()->errorkey);
+            $this->assertNull($this->grade_here());
+        }
+    }
+
+    /**
+     * A mark that is not a finite number is not a mark.
+     */
+    public function test_an_infinite_mark_is_refused(): void {
+        $this->mark_there(80, 'Good');
+        $this->tamper['block_coursesync_get_marks'] = function (array $body): array {
+            $body['items'][0]['marks'][0]['grade'] = '1e999';
+
+            return $body;
+        };
+
+        $this->assertSame('errorbadresponse', $this->pull()->errorkey);
+        $this->assertNull($this->grade_here());
+    }
+
+    /**
+     * A mark outside what this assignment can hold is not written, however it
+     * got there: a wrong maximum, a mark above it, a negative one.
+     */
+    public function test_a_mark_outside_the_range_is_not_written(): void {
+        $this->mark_there(80, 'Good');
+
+        // The source says it is out of 10, but sent 80: scaled it is 800 of 100.
+        foreach ([['grademax', 10.0, 80], ['grade', 100.0, 5000], ['grade', 100.0, -7]] as [$field, $max, $value]) {
+            $this->tamper['block_coursesync_get_marks'] = function (array $body) use ($field, $max, $value): array {
+                $body['items'][0]['grademax'] = $max;
+
+                if ($field === 'grade') {
+                    $body['items'][0]['marks'][0]['grade'] = $value;
+                }
+
+                return $body;
+            };
+            $entry = $this->only_entry($this->pull());
+            $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
+            $this->assertSame('markreasonoutofrange', $entry->reason);
+            $this->assertNull($this->grade_here());
+        }
+
+        // The top of the range is fine.
+        $this->tamper['block_coursesync_get_marks'] = function (array $body): array {
+            $body['items'][0]['marks'][0]['grade'] = 100;
+
+            return $body;
+        };
+        $this->assertSame(grade_pull_result::ADD, $this->only_entry($this->pull())->outcome);
+    }
+
+    /**
      * The grade item of the assignment here.
      *
      * @return \grade_item

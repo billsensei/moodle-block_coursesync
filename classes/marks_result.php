@@ -110,10 +110,19 @@ class marks_result {
                 $markrows[] = $clean;
             }
 
+            // A maximum that is not a finite number, or is below nothing, is not
+            // one a mark could be scaled by. (Zero is fine: a source that has
+            // no grade says why instead, and the pull refuses to scale by it.)
+            $grademax = (float) ($row['grademax'] ?? 0);
+
+            if (!is_finite($grademax) || $grademax < 0) {
+                return self::failure('errorbadresponse');
+            }
+
             $items[] = (object) [
                 'cmid' => (int) $row['cmid'],
                 'reason' => clean_param((string) ($row['reason'] ?? ''), PARAM_ALPHA),
-                'grademax' => max(0.0, (float) ($row['grademax'] ?? 0)),
+                'grademax' => $grademax,
                 'marks' => $markrows,
             ];
         }
@@ -169,8 +178,9 @@ class marks_result {
 
         $grade = $mark['grade'] ?? null;
 
-        // A number, or nothing. Anything else is not a mark.
-        if ($grade !== null && !is_numeric($grade)) {
+        // A finite number, or nothing. Anything else is not a mark ("1e999"
+        // is numeric, and arrives as infinity).
+        if ($grade !== null && (!is_numeric($grade) || !is_finite((float) $grade))) {
             return null;
         }
 

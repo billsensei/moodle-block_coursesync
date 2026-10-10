@@ -286,6 +286,12 @@ class marks_pull {
             return 'markreason' . $item->reason;
         }
 
+        // Marks are scaled by the source's maximum, so a source that gives
+        // none cannot be trusted with any.
+        if ($item->grademax <= 0) {
+            return 'markreasonbadmax';
+        }
+
         $assign = $DB->get_record('assign', ['id' => $cm->instance], 'id, grade, teamsubmission', MUST_EXIST);
 
         return match (marks::assignment_problem($assign)) {
@@ -333,6 +339,18 @@ class marks_pull {
         $entry->grade = $incoming;
         $entry->localgrade = $local && marks::is_marked($local) ? (float) $local->grade : null;
         $result->add($entry);
+
+        // Whatever the source claims, a mark outside what this assignment can
+        // hold is not written: the gradebook would carry a grade above its
+        // maximum, or a negative one that assign reads as "not graded".
+        if (
+            $incoming !== null
+            && ($incoming < 0 || $incoming > (float) $assign->grade + 0.5 * 10 ** -marks::PRECISION)
+        ) {
+            $entry->reason = 'markreasonoutofrange';
+
+            return;
+        }
 
         if ($mark->comment !== null && !marks::comments_enabled($assignid)) {
             $entry->reason = 'markreasonnocomments';
