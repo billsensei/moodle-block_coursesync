@@ -506,6 +506,12 @@ Handlers use the cleaned accessors for anything that reaches a sensitive place:
   chosen by the other one. A URL that does not survive is refused rather than
   stored.
 - `setting_html()` for `mod_page`'s body and `mod_assign`'s extra instructions.
+- `question_cleaner::clean()` for questions. A question travels as an XML
+  fragment that only `qformat_xml` can take apart, so it cannot be cleaned when
+  the payload is built. It is cleaned straight after parsing and before
+  `save_question()`: every text with a format (question text, general and
+  option feedback, answers, hints, sub-questions) goes through the same
+  `clean_html()` as `intro`, and the name through `PARAM_TEXT`.
 - `forum_handler::clean_type()` keeps the forum type to one this site implements,
   and `wiki_handler`, `quiz_handler` and `assign_handler` do the same for wiki
   mode and format, quiz navigation, overdue handling and question behaviour, and

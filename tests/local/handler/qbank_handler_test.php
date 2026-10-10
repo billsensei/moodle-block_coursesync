@@ -222,6 +222,72 @@ final class qbank_handler_test extends advanced_testcase {
     }
 
     /**
+     * Script planted in any formatted field of a question - its text, its
+     * feedback, an answer, a hint - never reaches this site's question tables,
+     * while the harmless markup around it does.
+     */
+    public function test_script_in_a_question_is_cleaned_on_the_way_in(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+        $qbank = $this->getDataGenerator()->create_module('qbank', ['course' => $source->id]);
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $category = $qgen->create_question_category(['contextid' => \context_module::instance($qbank->cmid)->id]);
+        $question = $qgen->create_question('multichoice', null, ['category' => $category->id, 'name' => 'Planted']);
+
+        $evil = '<p>Keep me</p><script>alert(1)</script><img src="x" onerror="alert(2)">';
+        $DB->set_field('question', 'questiontext', $evil, ['id' => $question->id]);
+        $DB->set_field('question', 'generalfeedback', $evil, ['id' => $question->id]);
+        $DB->set_field('qtype_multichoice_options', 'correctfeedback', $evil, ['questionid' => $question->id]);
+
+        foreach ($DB->get_records('question_answers', ['question' => $question->id]) as $answer) {
+            $DB->set_field('question_answers', 'answer', $evil, ['id' => $answer->id]);
+            $DB->set_field('question_answers', 'feedback', $evil, ['id' => $answer->id]);
+        }
+
+        $DB->insert_record('question_hints', (object) [
+            'questionid' => $question->id,
+            'hint' => $evil,
+            'hintformat' => FORMAT_HTML,
+        ]);
+
+        [$cm] = $this->round_trip($qbank->cmid, $target);
+
+        $copy = $this->find_copy($DB, $DB->get_field('question_categories', 'id', [
+            'contextid' => \context_module::instance($cm->id)->id,
+            'name' => $category->name,
+        ], MUST_EXIST), 'Planted');
+
+        $stored = [
+            $copy->questiontext,
+            $copy->generalfeedback,
+            $DB->get_field('qtype_multichoice_options', 'correctfeedback', ['questionid' => $copy->id]),
+        ];
+
+        foreach ($DB->get_records('question_answers', ['question' => $copy->id]) as $answer) {
+            $stored[] = $answer->answer;
+            $stored[] = $answer->feedback;
+        }
+
+        foreach ($DB->get_records('question_hints', ['questionid' => $copy->id]) as $hint) {
+            $stored[] = $hint->hint;
+        }
+
+        $this->assertGreaterThan(6, count($stored));
+
+        foreach ($stored as $text) {
+            $this->assertStringNotContainsString('<script', (string) $text);
+            $this->assertStringNotContainsString('onerror', (string) $text);
+        }
+
+        $this->assertStringContainsString('Keep me', $copy->questiontext);
+    }
+
+    /**
      * A course whose destination already carries the qbank's identity is
      * left alone - the same conflict gate that protects every other type,
      * so this handler needs no category or question level dedup of its own.

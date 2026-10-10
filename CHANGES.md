@@ -7,6 +7,18 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
+## Unreleased (build 2026101003, v1.23.1-beta)
+
+### Security
+
+- **Question text from the other site is now cleaned.** A question bank or quiz
+  sync stored the text of each question exactly as the source's XML fragment
+  held it, so script placed in question text, feedback, an answer or a hint on
+  the source was stored on this site, against the rule that everything from
+  the other site is cleaned. `question_cleaner` now cleans every formatted
+  field (and the name) after the XML is parsed and before it is saved. Questions
+  already copied are not changed.
+
 ## Unreleased (build 2026101002, v1.23.0-beta)
 
 ### Added

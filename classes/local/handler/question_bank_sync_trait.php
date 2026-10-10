@@ -306,6 +306,10 @@ trait question_bank_sync_trait {
                 continue;
             }
 
+            // The fragment is the other site's text, so it is cleaned the way
+            // every other field from there is, before anything is saved.
+            \block_coursesync\local\question_cleaner::clean($question);
+
             $this->save_question($targetcontext, $categoryid, $remoteid, $question);
         }
     }
