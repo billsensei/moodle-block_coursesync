@@ -7,6 +7,18 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
+## Unreleased (build 2026101006, v1.23.4-beta)
+
+### Fixed
+
+- **A pulled submission that a teacher has since reopened is no longer replaced.**
+  Reopening an assignment for another attempt makes the earlier submission "not the
+  latest". If the source then changed, the next pull treated the earlier copy as
+  untouched, replaced it, and marked it the latest again, leaving it and the new
+  attempt both marked latest, so assign could pick the wrong one (and a mark could
+  land on it). A copy that is no longer the latest attempt is now reported as
+  changed here (`subreasonchanged`) and left alone.
+
 ## Unreleased (build 2026101005, v1.23.3-beta)
 
 ### Security

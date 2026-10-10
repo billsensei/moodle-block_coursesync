@@ -519,7 +519,14 @@ class submission_pull {
 
         // The source has changed. If what is here is exactly what the earlier
         // pull wrote, it can be replaced; if anyone has touched it, it stays.
-        if ($here !== $ledger->localfingerprint || $local->status !== submissions::STATUS_SUBMITTED) {
+        // A copy that is no longer the latest attempt has been touched: a
+        // teacher reopened the assignment for another go, and replacing it
+        // would leave this and the new attempt both marked as the latest.
+        if (
+            $here !== $ledger->localfingerprint
+            || $local->status !== submissions::STATUS_SUBMITTED
+            || (int) $local->latest !== 1
+        ) {
             return [grade_pull_result::CONFLICT, 'subreasonchanged'];
         }
 

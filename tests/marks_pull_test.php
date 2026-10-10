@@ -778,6 +778,60 @@ final class marks_pull_test extends advanced_testcase {
     }
 
     /**
+     * An update that fails while the new files are being put in place leaves
+     * the earlier feedback file readable.
+     */
+    public function test_a_failed_update_keeps_the_earlier_feedback_file(): void {
+        global $DB;
+
+        // The write's own transaction has to be the outermost one, or its rollback
+        // only marks the test's and nothing is undone.
+        $this->preventResetByRollback();
+
+        $this->mark_there(80, 'Good', ['notes.txt' => 'the earlier file']);
+        $this->assertSame(grade_pull_result::ADD, $this->only_entry($this->pull())->outcome);
+        $ledger = $DB->get_record('block_coursesync_mark', ['userid' => $this->sam->id], '*', MUST_EXIST);
+        $cm = get_fast_modinfo($this->course)->get_cm($this->here->cmid);
+        $context = \context_module::instance($cm->id);
+
+        $good = make_request_directory() . '/good';
+        file_put_contents($good, 'a different file');
+        $file = static fn(string $name): array => [
+            'area' => 'feedback', 'filepath' => '/', 'filename' => $name, 'timemodified' => 0, 'filesize' => 16,
+        ];
+        $mark = (object) [
+            'username' => 'sam', 'attemptnumber' => 0, 'timemodified' => 2, 'grade' => 90.0,
+            'comment' => 'Better', 'commentformat' => FORMAT_HTML,
+            'files' => [$file('b.txt'), $file('c.txt')], 'fingerprint' => sha1('second'),
+        ];
+        $run = (object) ['course' => $this->course, 'blockinstanceid' => $this->instanceid];
+
+        try {
+            mark_writer::write(
+                $run,
+                $cm,
+                $mark,
+                90.0,
+                $this->sam,
+                (int) $this->there->cmid,
+                $ledger,
+                [$good, make_request_directory() . '/missing']
+            );
+            $this->fail('The write should have failed.');
+        } catch (\Throwable $e) {
+            $this->assertNotInstanceOf(\PHPUnit\Framework\AssertionFailedError::class, $e);
+        }
+
+        $this->assertSame('Good', $this->comment_here());
+        $grade = $this->grade_here();
+        $files = get_file_storage()->get_area_files($context->id, marks::COMPONENT, marks::AREA, $grade->id, 'id', false);
+        $this->assertCount(1, $files);
+        $kept = reset($files);
+        $this->assertSame('notes.txt', $kept->get_filename());
+        $this->assertSame('the earlier file', $kept->get_content());
+    }
+
+    /**
      * The grade item of the assignment here.
      *
      * @return \grade_item

@@ -525,6 +525,96 @@ final class submission_pull_test extends advanced_testcase {
     }
 
     /**
+     * An update that fails while the new files are being put in place leaves the
+     * earlier files readable: the rows roll back, and file content must not
+     * have been thrown away underneath them.
+     */
+    public function test_a_failed_update_keeps_the_earlier_files(): void {
+        global $DB;
+
+        // The write's own transaction has to be the outermost one, or its rollback
+        // only marks the test's and nothing is undone.
+        $this->preventResetByRollback();
+
+        $this->hand_in('first', ['a.txt' => 'the earlier file']);
+        $this->pull();
+        $ledger = $DB->get_record('block_coursesync_submission', ['userid' => $this->sam->id], '*', MUST_EXIST);
+        $local = $DB->get_record('assign_submission', ['id' => $ledger->submissionid], '*', MUST_EXIST);
+        $cm = get_fast_modinfo($this->course)->get_cm($this->here->cmid);
+        $context = \context_module::instance($cm->id);
+
+        $good = make_request_directory() . '/good';
+        file_put_contents($good, 'a different file');
+        $file = static fn(string $name): array => [
+            'area' => 'submission_files', 'filepath' => '/', 'filename' => $name, 'timemodified' => 0, 'filesize' => 16,
+        ];
+        $submission = (object) [
+            'username' => 'sam', 'attemptnumber' => 0, 'timecreated' => 1, 'timemodified' => 2,
+            'onlinetext' => 'second', 'onlineformat' => FORMAT_HTML,
+            'files' => [$file('b.txt'), $file('c.txt')], 'fingerprint' => sha1('second'),
+        ];
+
+        try {
+            // The second file cannot be put in place.
+            submission_writer::write(
+                $this->course,
+                $cm,
+                $submission,
+                $this->sam,
+                $this->instanceid,
+                (int) $this->there->cmid,
+                $ledger,
+                $local,
+                [$good, make_request_directory() . '/missing']
+            );
+            $this->fail('The write should have failed.');
+        } catch (\Throwable $e) {
+            $this->assertNotInstanceOf(\PHPUnit\Framework\AssertionFailedError::class, $e);
+        }
+
+        $this->assertSame('first', $this->text_here());
+        $files = get_file_storage()
+            ->get_area_files($context->id, 'assignsubmission_file', 'submission_files', $local->id, 'id', false);
+        $this->assertCount(1, $files);
+        $kept = reset($files);
+        $this->assertSame('a.txt', $kept->get_filename());
+        $this->assertSame('the earlier file', $kept->get_content());
+        $this->assertSame(
+            $ledger->fingerprint,
+            $DB->get_field('block_coursesync_submission', 'fingerprint', ['id' => $ledger->id])
+        );
+    }
+
+    /**
+     * A copy that has been reopened for another attempt is not the latest
+     * submission any more: the source changing must not make it one again.
+     */
+    public function test_a_reopened_copy_is_not_made_the_latest_again(): void {
+        global $DB;
+
+        $this->hand_in('first');
+        $this->pull();
+        $first = $this->row();
+
+        // A teacher here reopens it: attempt 0 stops being the latest.
+        $DB->set_field('assign_submission', 'latest', 0, ['id' => $first->id]);
+        $second = $DB->insert_record('assign_submission', (object) [
+            'assignment' => $this->here->id, 'userid' => $this->sam->id, 'timecreated' => time(), 'timemodified' => time(),
+            'timestarted' => 0, 'status' => 'reopened', 'groupid' => 0, 'attemptnumber' => 1, 'latest' => 1,
+        ]);
+
+        $this->hand_in('changed on the source');
+        $entry = $this->only_entry($this->pull());
+
+        $this->assertSame(grade_pull_result::CONFLICT, $entry->outcome);
+        $this->assertSame('first', $DB->get_field('assignsubmission_onlinetext', 'onlinetext', ['submission' => $first->id]));
+        $this->assertSame(
+            [$second],
+            array_map('intval', array_keys($DB->get_records('assign_submission', ['assignment' => $this->here->id, 'latest' => 1])))
+        );
+    }
+
+    /**
      * A student who only opened the assignment here has a row with no work
      * in it: the work goes into that row, and there is still just the one.
      */

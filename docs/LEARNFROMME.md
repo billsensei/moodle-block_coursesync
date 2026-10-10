@@ -4320,3 +4320,34 @@ there. Work already pulled is not rewritten.
 
 **Evidence.** submission_pull_test 43/43, marks_pull_test 29/29; three mutations, all caught
 (each parser's cleaning removed; `classify()` back on the source's fingerprint).
+
+## Phase 76 - Reopened attempts, and a review finding that did not hold (v1.23.4-beta, build 2026101006), 2026-10-10
+
+**M4 (fixed).** `submission_pull::local_submission()` picks the highest submitted/draft
+attempt; after a teacher reopens the assignment, attempt 0 has `latest = 0` and attempt 1 is
+`reopened` with `latest = 1`. If the source then changed, `classify()` saw the ledger match and
+an untouched fingerprint, returned UPDATE, and `save_row()` set `latest = 1` on attempt 0:
+two latest rows. **Fix:** `classify()` reports CONFLICT (`subreasonchanged`) when the local row
+is not `latest`, so only a row that is already the latest ever reaches an update. I first also
+stopped `save_row()` setting `latest` on updates, then reverted that: after the classify change
+no row that is not already latest can reach it, so it could not be tested and changed nothing.
+
+**M2 (not a defect, tests kept as guards).** The finding said a failed update deletes the old
+files and the rollback cannot bring them back. Reproduced: a write with one good and one missing
+file path, on an update. The old file is still readable afterwards, in both the submission and
+the marks writer. `stored_file::delete()` moves unreferenced content to the trash and the file
+store recovers it on read (core's own comment: "we can still recover the file from trash"), and
+the `files` rows roll back with the transaction. No code change. The two tests stay: with the
+rollback replaced by a rethrow, both fail, so they guard the rollback.
+
+**Test traps**
+- Moodle's PHPUnit wraps each test in an outer transaction, so a writer's own transaction is
+  nested and its rollback is only a mark: nothing is undone and a test of a failed write sees
+  half-written state. Call `$this->preventResetByRollback()` first. My first run of the M2 test
+  "failed" for exactly this reason, which looked like the reviewer being right.
+- `text_here()` / `row()` read the latest row, so after a reopen they read the empty new attempt.
+
+**Evidence.** submission_pull_test 45/45, marks_pull_test 30/30; mutations caught: the latest
+check removed (M4), the rollback replaced by a rethrow (M2, both writers).
+
+**Not done (same review):** M5 per-module capability check and idnumber targeting, L1-L7.
