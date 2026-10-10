@@ -173,12 +173,19 @@ class submissions_result {
             $format = FORMAT_HTML;
         }
 
+        // Cleaned here, like every other text from the other site, so nothing
+        // downstream has to remember to. What is compared with work already
+        // here is worked out from this cleaned text (see submission_pull).
+        $text = ($submission['onlinetext'] ?? null) === null
+            ? null
+            : activity_payload::clean_html((string) $submission['onlinetext'], $format);
+
         return (object) [
             'username' => clean_param((string) $submission['username'], PARAM_USERNAME),
             'attemptnumber' => max(0, (int) ($submission['attemptnumber'] ?? 0)),
             'timecreated' => max(0, (int) ($submission['timecreated'] ?? 0)),
             'timemodified' => max(0, (int) ($submission['timemodified'] ?? 0)),
-            'onlinetext' => ($submission['onlinetext'] ?? null) === null ? null : (string) $submission['onlinetext'],
+            'onlinetext' => $text,
             'onlineformat' => $format,
             'files' => $files,
             'fingerprint' => clean_param((string) $submission['fingerprint'], PARAM_ALPHANUM),

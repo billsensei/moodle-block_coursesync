@@ -755,6 +755,29 @@ final class marks_pull_test extends advanced_testcase {
     }
 
     /**
+     * A feedback comment from the other site is cleaned before it is stored,
+     * and pulling it again is still "the same".
+     */
+    public function test_a_comment_from_the_other_site_is_cleaned(): void {
+        $this->mark_there(80, 'Good work');
+        $this->tamper['block_coursesync_get_marks'] = static function (array $body): array {
+            $body['items'][0]['marks'][0]['comment'] =
+                '<p>Good work</p><script>alert(1)</script><a href="x" onclick="y()">link</a>';
+            $body['items'][0]['marks'][0]['commentformat'] = FORMAT_HTML;
+
+            return $body;
+        };
+
+        $this->assertSame(grade_pull_result::ADD, $this->only_entry($this->pull())->outcome);
+        $stored = $this->comment_here();
+        $this->assertStringContainsString('Good work', $stored);
+        $this->assertStringNotContainsString('<script', $stored);
+        $this->assertStringNotContainsString('onclick', $stored);
+
+        $this->assertSame(grade_pull_result::SAME, $this->only_entry($this->pull())->outcome);
+    }
+
+    /**
      * The grade item of the assignment here.
      *
      * @return \grade_item

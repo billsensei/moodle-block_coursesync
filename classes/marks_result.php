@@ -189,7 +189,9 @@ class marks_result {
             'attemptnumber' => max(0, (int) ($mark['attemptnumber'] ?? 0)),
             'timemodified' => max(0, (int) ($mark['timemodified'] ?? 0)),
             'grade' => $grade === null ? null : (float) $grade,
-            'comment' => ($mark['comment'] ?? null) === null ? null : (string) $mark['comment'],
+            'comment' => ($mark['comment'] ?? null) === null
+                ? null
+                : activity_payload::clean_html((string) $mark['comment'], $format),
             'commentformat' => $format,
             'files' => $files,
             'fingerprint' => clean_param((string) $mark['fingerprint'], PARAM_ALPHANUM),

@@ -479,6 +479,52 @@ final class submission_pull_test extends advanced_testcase {
     }
 
     /**
+     * Text from the other site is cleaned before it is stored, and a second
+     * pull of it is still "the same" - the cleaning must not make every later
+     * pull look like a change.
+     */
+    public function test_online_text_from_the_other_site_is_cleaned(): void {
+        global $DB;
+
+        $this->hand_in('My essay');
+        $this->tamper['block_coursesync_get_submissions'] = static function (array $body): array {
+            $body['items'][0]['submissions'][0]['onlinetext'] =
+                '<p>My essay</p><script>alert(1)</script><img src=x onerror=alert(2)>';
+
+            return $body;
+        };
+
+        $this->assertSame(grade_pull_result::ADD, $this->only_entry($this->pull())->outcome);
+        $stored = $this->text_here();
+        $this->assertStringContainsString('My essay', $stored);
+        $this->assertStringNotContainsString('<script', $stored);
+        $this->assertStringNotContainsString('onerror', $stored);
+
+        $before = $DB->get_record('block_coursesync_submission', ['userid' => $this->sam->id]);
+        $this->assertSame(grade_pull_result::SAME, $this->only_entry($this->pull())->outcome);
+        $this->assertEquals($before, $DB->get_record('block_coursesync_submission', ['userid' => $this->sam->id]));
+    }
+
+    /**
+     * Work here that is the same once the other site's text is cleaned is the
+     * same work, not a conflict.
+     */
+    public function test_identical_work_here_is_the_same_after_cleaning(): void {
+        $this->hand_in('<p>Same words</p>');
+        $this->hand_in_here('<p>Same words</p>');
+        $this->tamper['block_coursesync_get_submissions'] = static function (array $body): array {
+            // The source fingerprints what it holds, script included, so its
+            // fingerprint is not that of the cleaned text.
+            $body['items'][0]['submissions'][0]['onlinetext'] = '<p>Same words</p><script>alert(1)</script>';
+            $body['items'][0]['submissions'][0]['fingerprint'] = sha1('with the script');
+
+            return $body;
+        };
+
+        $this->assertSame(grade_pull_result::SAME, $this->only_entry($this->pull())->outcome);
+    }
+
+    /**
      * A student who only opened the assignment here has a row with no work
      * in it: the work goes into that row, and there is still just the one.
      */

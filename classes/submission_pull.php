@@ -502,7 +502,11 @@ class submission_pull {
         if (!$ledger || (int) $ledger->submissionid !== (int) $local->id) {
             // Work here that Course Sync did not write: if it happens to be
             // the very same work there is nothing to do, otherwise it is left.
-            return $here === $submission->fingerprint
+            // Compared as it would be stored here: the source's own
+            // fingerprint is of the text before it was cleaned.
+            $same = submissions::fingerprint($submission->onlinetext, $submission->onlineformat, $submission->files);
+
+            return $here === $same
                 ? [grade_pull_result::SAME, null]
                 : [grade_pull_result::CONFLICT, 'subreasonexists'];
         }

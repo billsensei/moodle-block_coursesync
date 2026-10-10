@@ -7,6 +7,20 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
+## Unreleased (build 2026101005, v1.23.3-beta)
+
+### Security
+
+- **Online text and feedback comments from the other site are now cleaned.** An
+  assignment submission's online text and a mark's written comment were stored
+  exactly as the source sent them, against the rule that everything from the
+  other site is cleaned. Both are now cleaned with the rest of the answer, in
+  their own format, before anything is written. mod_assign already cleans these
+  when it shows them; this protects what reads the stored text directly
+  (exports, plagiarism tools, downloads). Work already pulled is not changed.
+  Deciding whether work already here is "the same" as the source's now compares
+  the cleaned text, so cleaning does not turn identical work into a conflict.
+
 ## Unreleased (build 2026101004, v1.23.2-beta)
 
 ### Fixed

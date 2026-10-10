@@ -4289,3 +4289,34 @@ removed, finite checks removed (two tests). phplint, phpcs `--max-warnings 0`, p
 **Not done (from the same review):** M2 files deleted before the database write on an update,
 M3 remote online text and comments not cleaned, M4 two `latest` attempts after a reopen, M5
 per-module capability check and idnumber targeting, L1-L7.
+
+## Phase 75 - Clean online text and feedback comments from the other site (v1.23.3-beta, build 2026101005), 2026-10-10
+
+**Trigger:** reviewer finding M3, checked in the code: `submissions_result` and
+`marks_result` cast `onlinetext` / `comment` to a string and nothing cleaned them before
+`submission_writer` / `mark_writer` stored them. mod_assign cleans on output, so this is
+defence in depth (exports, plagiarism plugins, raw reads), but it broke the rule in SECURITY.md.
+
+**Fix:** both parsers call `activity_payload::clean_html()` with the text's own format.
+
+**The trap the reviewer flagged, and how it plays out.** Three fingerprints exist: the
+source's (of its raw text), the ledger's copy of that (source vs source, to see the source
+changed), and the local one (of what is stored here). Only one comparison mixed them:
+`submission_pull::classify()` asked "is the work already here the same as the source's?" by
+comparing the local fingerprint with the *source's* - which is of the uncleaned text, so any
+text that cleaning changes would have turned identical work into a conflict. It now works the
+fingerprint out from the cleaned text it holds, as `marks_pull` already did. The ledger
+comparison needs no change.
+
+**Test traps.** The first "same after cleaning" test passed with the fix reverted: it left the
+source's fingerprint alone, so both comparisons agreed. A source that sends script has a
+fingerprint of the script-including text; the test now sets one (`sha1('with the script')`).
+Only a test with that mismatch can tell the two comparisons apart.
+
+**Not covered.** FORMAT_MARKDOWN text is cleaned like the rest (`clean_text` skips the purifier
+when there is no `<`, `>` or `&`), so a `[x](javascript:...)` link would be stored; assign
+renders markdown through `format_text`, which cleans the converted HTML, so it is not live
+there. Work already pulled is not rewritten.
+
+**Evidence.** submission_pull_test 43/43, marks_pull_test 29/29; three mutations, all caught
+(each parser's cleaning removed; `classify()` back on the source's fingerprint).
