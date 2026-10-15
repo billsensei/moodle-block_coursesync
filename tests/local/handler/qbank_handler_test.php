@@ -222,6 +222,69 @@ final class qbank_handler_test extends advanced_testcase {
     }
 
     /**
+     * A category's name and description are cleaned too, whatever their format:
+     * core shows them uncleaned, and a Markdown link to javascript: is left
+     * alone by clean_text(), so Markdown arrives as cleaned HTML.
+     */
+    public function test_script_in_a_category_is_cleaned_on_the_way_in(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+        $qbank = $this->getDataGenerator()->create_module('qbank', ['course' => $source->id]);
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $contextid = \context_module::instance($qbank->cmid)->id;
+        $html = $qgen->create_question_category(['contextid' => $contextid, 'name' => 'Html<script>alert(1)</script>']);
+        $markdown = $qgen->create_question_category(['contextid' => $contextid, 'name' => 'Markdown']);
+        $odd = $qgen->create_question_category(['contextid' => $contextid, 'name' => 'Odd']);
+        $DB->update_record('question_categories', (object) [
+            'id' => $html->id,
+            'info' => '<p>Keep me</p><script>alert(1)</script><img src="x" onerror="alert(2)">',
+            'infoformat' => FORMAT_HTML,
+        ]);
+        $DB->update_record('question_categories', (object) [
+            'id' => $markdown->id,
+            'info' => '[click](javascript:alert(1))',
+            'infoformat' => FORMAT_MARKDOWN,
+        ]);
+        $DB->update_record('question_categories', (object) [
+            'id' => $odd->id,
+            'info' => 'Fine',
+            'infoformat' => 99,
+        ]);
+
+        $this->round_trip($qbank->cmid, $target);
+
+        $copies = [];
+
+        foreach ([$html, $markdown, $odd] as $category) {
+            $copies[$category->id] = $DB->get_record(
+                'question_categories',
+                ['idnumber' => 'coursesync-' . $category->id],
+                '*',
+                MUST_EXIST
+            );
+        }
+
+        $this->assertStringNotContainsString('<script', $copies[$html->id]->name);
+        $this->assertStringNotContainsString('<script', $copies[$html->id]->info);
+        $this->assertStringNotContainsString('onerror', $copies[$html->id]->info);
+        $this->assertStringContainsString('Keep me', $copies[$html->id]->info);
+
+        $this->assertStringNotContainsString('javascript:', $copies[$markdown->id]->info);
+        $this->assertStringContainsString('click', $copies[$markdown->id]->info);
+        $this->assertEquals(FORMAT_HTML, $copies[$markdown->id]->infoformat);
+
+        $this->assertContains(
+            (int) $copies[$odd->id]->infoformat,
+            [(int) FORMAT_MOODLE, (int) FORMAT_HTML, (int) FORMAT_PLAIN, (int) FORMAT_MARKDOWN]
+        );
+    }
+
+    /**
      * Script planted in any formatted field of a question - its text, its
      * feedback, an answer, a hint - never reaches this site's question tables,
      * while the harmless markup around it does.

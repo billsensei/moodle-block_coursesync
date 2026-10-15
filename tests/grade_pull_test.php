@@ -21,6 +21,7 @@ use core\http_client;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Psr\Http\Message\RequestInterface;
 
 defined('MOODLE_INTERNAL') || die();
@@ -411,6 +412,55 @@ final class grade_pull_test extends advanced_testcase {
         $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
         $this->assertSame('gradeskipscale', $entry->reason);
         $this->assertFalse(\grade_item::fetch(['courseid' => $this->course->id, 'idnumber' => 'coursesync-manual-55']));
+    }
+
+    /**
+     * A range that cannot be held here is skipped, and nothing is created or thrown.
+     *
+     * @param float|string $min
+     * @param float|string $max
+     */
+    #[DataProvider('hostile_ranges')]
+    public function test_a_manual_item_with_an_unusable_range_is_skipped($min, $max): void {
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 1)], ['grademin' => $min, 'grademax' => $max])];
+
+        $entry = $this->only_entry(grade_pull::run($this->instanceid, $this->course->id, $this->source()));
+
+        $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
+        $this->assertSame('gradeskiprange', $entry->reason);
+        $this->assertFalse(\grade_item::fetch(['courseid' => $this->course->id, 'idnumber' => 'coursesync-manual-55']));
+    }
+
+    /**
+     * Ranges no gradebook column holds.
+     *
+     * @return array
+     */
+    public static function hostile_ranges(): array {
+        return [
+            'too big' => [0, 1000000000],
+            'too small' => [-1000000000, 0],
+            // JSON has no infinity, but a string of digits that overflows reads as one.
+            'infinite' => [0, '1e999'],
+            'top below bottom' => [10, 5],
+            'empty' => [5, 5],
+        ];
+    }
+
+    /**
+     * A name longer than the gradebook holds is cut, not thrown on.
+     */
+    public function test_a_long_manual_item_name_is_cut(): void {
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 8)], [
+            'grademax' => 10,
+            'itemname' => str_repeat('é', 400),
+        ])];
+
+        $entry = $this->only_entry(grade_pull::run($this->instanceid, $this->course->id, $this->source()));
+
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $item = \grade_item::fetch(['courseid' => $this->course->id, 'idnumber' => 'coursesync-manual-55']);
+        $this->assertSame(255, \core_text::strlen($item->itemname));
     }
 
     /**

@@ -192,7 +192,7 @@ class activity_payload {
      * @param int $format
      * @return int
      */
-    protected static function clean_format(int $format): int {
+    public static function clean_format(int $format): int {
         $known = [(int) FORMAT_MOODLE, (int) FORMAT_HTML, (int) FORMAT_PLAIN, (int) FORMAT_MARKDOWN];
 
         return in_array($format, $known, true) ? $format : (int) FORMAT_HTML;

@@ -209,10 +209,22 @@ trait question_bank_sync_trait {
                 continue;
             }
 
+            // Question category text is shown by core without cleaning, and
+            // clean_text() leaves a Markdown link such as [x](javascript:...)
+            // alone (it has no tags to purify), so Markdown is turned into
+            // HTML here and cleaned as HTML.
+            $format = activity_payload::clean_format(activity_payload::child_int($child, 'infoformat', FORMAT_HTML));
+            $info = activity_payload::child_field($child, 'info');
+
+            if ($format === (int) FORMAT_MARKDOWN) {
+                $info = markdown_to_html($info);
+                $format = (int) FORMAT_HTML;
+            }
+
             $record = (object) [
-                'name' => activity_payload::child_field($child, 'name'),
-                'info' => activity_payload::child_field($child, 'info'),
-                'infoformat' => activity_payload::child_int($child, 'infoformat', FORMAT_HTML),
+                'name' => \core_text::substr(clean_param(activity_payload::child_field($child, 'name'), PARAM_TEXT), 0, 255),
+                'info' => activity_payload::clean_html($info, $format),
+                'infoformat' => $format,
                 'contextid' => $targetcontext->id,
                 'parent' => $localtop->id,
                 'sortorder' => 999,

@@ -55,6 +55,12 @@ class grade_pull {
     /** @var string Starts the idnumber of a manual grade item created here from one on the source. */
     public const MANUAL_IDNUMBER_PREFIX = 'coursesync-manual-';
 
+    /** @var float The largest grade bound the gradebook's numeric(10,5) columns hold. */
+    public const MAX_BOUND = 99999.99999;
+
+    /** @var int Longest grade item name the gradebook holds. */
+    public const MAX_ITEMNAME = 255;
+
     /**
      * What a pull would do, without writing anything.
      *
@@ -307,6 +313,13 @@ class grade_pull {
                 continue;
             }
 
+            // The range goes into a new grade item's columns and into every
+            // conversion, so a source cannot send one that does not fit.
+            if (!self::range_fits($remoteitem)) {
+                $result->add(self::entry(null, 0, null, grade_pull_result::SKIPPED, 'gradeskiprange', $remoteitem));
+                continue;
+            }
+
             $gradeitem = self::local_manual_item($courseid, $remoteitem);
 
             if ($gradeitem === null) {
@@ -329,6 +342,30 @@ class grade_pull {
                 $outofreach
             );
         }
+    }
+
+    /**
+     * Can the source's grade range be held here?
+     *
+     * The gradebook keeps grades in numeric(10,5) columns. A range that is
+     * not finite, does not fit, or has its top below its bottom would make
+     * the insert throw halfway through a pull. Only points items have one.
+     *
+     * @param \stdClass $remoteitem from grades_result
+     * @return bool
+     */
+    protected static function range_fits(\stdClass $remoteitem): bool {
+        if ($remoteitem->gradetype !== GRADE_TYPE_VALUE) {
+            return true;
+        }
+
+        foreach ([$remoteitem->grademin, $remoteitem->grademax] as $bound) {
+            if (!is_finite($bound) || abs($bound) > self::MAX_BOUND) {
+                return false;
+            }
+        }
+
+        return $remoteitem->grademax > $remoteitem->grademin;
     }
 
     /**
@@ -362,11 +399,12 @@ class grade_pull {
         }
 
         $isvalue = $remoteitem->gradetype === GRADE_TYPE_VALUE;
+        $name = $remoteitem->itemname !== '' ? $remoteitem->itemname : $idnumber;
 
         return new \grade_item([
             'courseid' => $courseid,
             'itemtype' => 'manual',
-            'itemname' => $remoteitem->itemname !== '' ? $remoteitem->itemname : $idnumber,
+            'itemname' => \core_text::substr($name, 0, self::MAX_ITEMNAME),
             'idnumber' => $idnumber,
             'gradetype' => $remoteitem->gradetype,
             'grademin' => $isvalue ? $remoteitem->grademin : 0,

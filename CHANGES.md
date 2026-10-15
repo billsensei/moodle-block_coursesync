@@ -3,34 +3,28 @@
 What is new or changed in the current version of Course Sync (`block_coursesync`)
 only. The full running history is in [changelog.md](changelog.md).
 
-## Unreleased (build 2026101501, v1.24.0-beta)
+## Unreleased (build 2026101502, v1.24.1-beta)
 
-### Added
+### Security
 
-- **Grade sync now pulls manual grade items.** Items added by hand in the source
-  course's gradebook (no activity behind them) were never pulled, because grade sync
-  only looked at activities Course Sync had copied. They now come across with their
-  grades and feedback. A manual item that is not here yet is created in the course's
-  gradebook the first time a grade is written to it, named as on the other site and
-  with the same range or scale; the preview creates nothing. It is found again by
-  its idnumber (`coursesync-manual-<id on the other site>`), so renaming it here does
-  not break the pairing. The same rules as any pulled grade apply: a different grade
-  given here is kept and flagged, and a locked grade or item is skipped.
-- Pulling grades now asks the other site even when nothing in the course was copied,
-  since manual items need no copy.
+- **A manual grade item with a grade range this site cannot hold is skipped.** The
+  other site's range and name for a manual item went straight into a new gradebook
+  item. A range that is not a finite number, is larger than the gradebook's columns
+  hold, or has its top at or below its bottom made the insert fail partway through a
+  pull, leaving an error page and the grades before it already written. Such an item
+  is now skipped with the usual "grade range cannot be converted" reason, and a name
+  longer than 255 characters is cut.
 
-### Notes
-
-- A manual item on a scale this site does not have is skipped with the usual
-  "different scale" reason; no scale is made up.
-- A manual item already in the gradebook here is not paired by name with one on the
-  other site; only items this plugin created are.
-- The other site must run this version to send manual items. An older one ignores
-  the request and sends activity grades only.
+- **A question category's name and description are cleaned when they arrive.** They
+  were saved as the other site sent them, and core shows a category's description
+  without cleaning it, so script from a modified source could run in a teacher's
+  browser. The name is cleaned as text and cut to 255 characters. The description is
+  cleaned for its format, and a Markdown one is converted to HTML first, because
+  Moodle's own cleaning leaves a Markdown link such as `[x](javascript:...)` alone.
+  An unknown format becomes HTML.
 
 ### Tests
 
-- Source side: manual items sent only when asked for. Pull side: create and grade,
-  preview creates nothing, found again and updated, a changed grade kept as a
-  conflict, two items counted separately, unknown scale skipped, and a real source
-  course end to end.
+- A category planted with script (HTML and Markdown) and an unknown format.
+- Skipped for each kind of unusable range (too large, too small, overflowing,
+  top below bottom, empty) and a long name cut; each fails without the fix.

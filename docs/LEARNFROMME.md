@@ -4446,3 +4446,31 @@ created nothing; the run created all three with matching ranges/scale, grades an
 was all "same"; a source change was an "update"; a grade changed on A was a "conflict" and kept;
 an item renamed on A was still found. Test items and grades are left on both sites. Grade pulls
 by a CLI script, not the browser page.
+
+## Phase 80 - Hostile ranges on manual items (v1.24.1-beta, build 2026101502), 2026-10-15
+
+The release preflight and security audit of v1.24.0 found one real gap: a manual item's range and name
+from the source went straight into a new grade item, unchecked.
+
+- **Fix.** `grade_pull::range_fits()` skips a points item whose bounds are not finite, exceed
+  `MAX_BOUND` (99999.99999, the numeric(10,5) limit) or whose top is not above its bottom, with the
+  existing `gradeskiprange`. It runs before the item is looked up, so it also protects conversion for
+  items already here. The name is cut to 255 characters with `core_text::substr`.
+- **Proof.** With the check and the cut disabled, 4 of the 15 manual tests fail (three with the database
+  exception the finding predicted), so the finding was real, not theoretical.
+- **Test traps.** JSON cannot carry INF or NAN, so the mock source failed with `errornotmoodle` before
+  reaching the code; a real source sends `1e999` as digits, which PHP reads as INF, so that is what the
+  test sends. `@dataProvider` is deprecated in PHPUnit 11: use the `DataProvider` attribute.
+- **Not done.** Same check for the scale item's items; the grade ranges of ordinary activity items are
+  still compared rather than bounded (they are never written into a new item).
+
+**Added to v1.24.1 (same day): category name and description.** An automated review flagged
+`sync_question_bank_categories()` saving a category's `name`, `info` and `infoformat` raw. Every other
+child field is cleaned where it is used; these two were missed, and `question_cleaner` only covers questions.
+Checked first, not assumed: `clean_text('[x](javascript:alert(1))', FORMAT_MARKDOWN)` returns it unchanged and
+it renders as a live `javascript:` link, so cleaning by format alone is not enough. Fix: name through
+`PARAM_TEXT` cut to 255; Markdown converted with `markdown_to_html()` and stored as HTML; then `clean_html()`;
+format through `clean_format()` (made public). A test with all three cases fails without the fix.
+**Not done:** the same Markdown gap exists in `activity_payload::clean_html()` for every other Markdown
+field (activity intros, page content, and the like), which this does not touch. The test traps: `FORMAT_*`
+are strings, so `assertContains` needs casts.
