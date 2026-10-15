@@ -4634,3 +4634,11 @@ exported, so declaring it failed that test until the export carried it too. (2) 
 `block_coursesync_run` rows, and the old observer test asserted "the history of runs stays" with a run started by the
 deleted student themselves. That was a choice, now reversed: a run records who started it, so it goes with the user. The test
 now has a second user's run and checks it survives. Without the observer line the test fails (checked).
+
+**Phase 86 follow-up - the first 5.0 to 5.3 CI run.** 5.0 and 5.1 passed everything. On 5.2 and 5.3 PHPUnit, phpcs and
+moodlecheck passed, and one Behat scenario (`quiz_sync.feature`, fixed and random slots) failed with "Question type random
+does not have test helper code": 5.2 removed the "random" type from core's questions generator, so the Background row
+`| Quiz pool | random | Random (Quiz pool) | 0 |` crashed. The plugin was fine; only the setup was. New plugin step
+`quiz "X" has a random question from category "Y" on page N` adds the slot through `quiz_settings::get_structure()->add_random_questions(page, 1, filter)`,
+which takes the same arguments on 5.0 to 5.3. The page assertions are unchanged. **Trap:** my earlier "works on 5.0 to 5.3"
+covered PHPUnit and live syncs, not Behat; Behat on 5.2/5.3 only ever ran in CI.

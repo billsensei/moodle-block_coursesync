@@ -545,4 +545,39 @@ class behat_block_coursesync extends behat_base {
 
         $this->execute('behat_general::i_visit', [new moodle_url('/question/edit.php', ['cmid' => $cmid])]);
     }
+
+    /**
+     * Add a random question slot to a quiz.
+     *
+     * Moodle 5.2 removed the "random" question type from the questions
+     * generator, so a random slot is added through the quiz's own structure,
+     * which takes the same arguments on 5.0 to 5.3.
+     *
+     * @Given /^quiz "([^"]*)" has a random question from category "([^"]*)" on page (\d+)$/
+     * @param string $quiz the quiz name
+     * @param string $category the question category to draw from
+     * @param int $page the page to put the slot on
+     * @return void
+     */
+    public function quiz_has_a_random_question_from_category(string $quiz, string $category, int $page): void {
+        global $DB;
+
+        $quizrecord = $DB->get_record('quiz', ['name' => $quiz], '*', MUST_EXIST);
+        $categoryid = $DB->get_field('question_categories', 'id', ['name' => $category], MUST_EXIST);
+
+        $filtercondition = [
+            'filter' => [
+                'category' => [
+                    'jointype' => \qbank_managecategories\category_condition::JOINTYPE_DEFAULT,
+                    'values' => [$categoryid],
+                    'filteroptions' => ['includesubcategories' => false],
+                ],
+            ],
+            'qpage' => 0,
+            'qperpage' => 100,
+        ];
+
+        \mod_quiz\quiz_settings::create($quizrecord->id)->get_structure()
+            ->add_random_questions($page, 1, $filtercondition);
+    }
 }
