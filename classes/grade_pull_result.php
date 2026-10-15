@@ -83,7 +83,8 @@ class grade_pull_result {
     public array $notes = [];
 
     /**
-     * @var \stdClass[] kind (KIND_GRADE or KIND_ATTEMPT), cmid (local), activity,
+     * @var \stdClass[] kind (KIND_GRADE or KIND_ATTEMPT), cmid (local; 0 for a
+     *      manual grade item, which has remoteitemid instead), activity,
      *      itemnumber, gradeitemid, userid (0 if none), username, outcome,
      *      reason (language string identifier or null), grade (pulled, local
      *      terms), localgrade (before the pull); an attempt also has attempt
@@ -143,21 +144,25 @@ class grade_pull_result {
      * What happened in each activity, as counts.
      *
      * @param string|null $kind only entries of this kind
-     * @return array[] local cmid => [cmid, name, and a count for each outcome],
-     *     in the order the activities were first met
+     * @return array[] one per activity (or manual grade item): [cmid (0 for a
+     *     manual item), name, and a count for each outcome], in the order first met
      */
     public function by_activity(?string $kind = null): array {
         $activities = [];
 
         foreach ($this->of_kind($kind) as $entry) {
-            if (!isset($activities[$entry->cmid])) {
-                $activities[$entry->cmid] = array_merge(
+            // A manual grade item has no activity, so no cmid: the source's
+            // grade item id tells one from another.
+            $key = $entry->cmid ?: 'manual' . ($entry->remoteitemid ?? 0);
+
+            if (!isset($activities[$key])) {
+                $activities[$key] = array_merge(
                     ['cmid' => $entry->cmid, 'name' => $entry->activity],
                     array_fill_keys(self::OUTCOMES, 0)
                 );
             }
 
-            $activities[$entry->cmid][$entry->outcome]++;
+            $activities[$key][$entry->outcome]++;
         }
 
         return $activities;

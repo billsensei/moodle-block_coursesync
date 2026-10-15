@@ -3,29 +3,34 @@
 What is new or changed in the current version of Course Sync (`block_coursesync`)
 only. The full running history is in [changelog.md](changelog.md).
 
-## Unreleased (build 2026101008, v1.23.6-beta)
+## Unreleased (build 2026101501, v1.24.0-beta)
 
-### Security
+### Added
 
-- **The other site's reason for skipping an assignment is checked against a list.**
-  The reason became part of a language string name, so a made-up or newer one showed
-  as a broken "[[subreason...]]" with a debugging notice. A reason this version does
-  not know is now shown as "unknown" with a note to update Course Sync on both sites.
-- **A file transfer stops once it is longer than the other site said the file was.**
-  Only the sizes the other site claimed were checked, so a site that kept sending
-  could fill the temporary disk before the checksum was tried. The partial file is
-  removed on any failed transfer.
-- **A site no longer serves a file left behind in emptied online text.** A file in an
-  assignment's online-text area is served only while the submission's text is not
-  empty, which is exactly what the submission is described as holding.
+- **Grade sync now pulls manual grade items.** Items added by hand in the source
+  course's gradebook (no activity behind them) were never pulled, because grade sync
+  only looked at activities Course Sync had copied. They now come across with their
+  grades and feedback. A manual item that is not here yet is created in the course's
+  gradebook the first time a grade is written to it, named as on the other site and
+  with the same range or scale; the preview creates nothing. It is found again by
+  its idnumber (`coursesync-manual-<id on the other site>`), so renaming it here does
+  not break the pairing. The same rules as any pulled grade apply: a different grade
+  given here is kept and flagged, and a locked grade or item is skipped.
+- Pulling grades now asks the other site even when nothing in the course was copied,
+  since manual items need no copy.
 
-### Changed
+### Notes
 
-- The privacy descriptions now say assignment marks are shared and that their
-  usernames are sent, as submissions already were.
+- A manual item on a scale this site does not have is skipped with the usual
+  "different scale" reason; no scale is made up.
+- A manual item already in the gradebook here is not paired by name with one on the
+  other site; only items this plugin created are.
+- The other site must run this version to send manual items. An older one ignores
+  the request and sends activity grades only.
 
 ### Tests
 
-- A unit test for `question_cleaner` (every place text can sit, each format, files
-  and unformatted strings), and tests for each change above.
-
+- Source side: manual items sent only when asked for. Pull side: create and grade,
+  preview creates nothing, found again and updated, a changed grade kept as a
+  conflict, two items counted separately, unknown scale skipped, and a real source
+  course end to end.

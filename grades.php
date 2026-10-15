@@ -202,8 +202,13 @@ $rendertable = static function (array $columns, string $rows, string $headingkey
 // Grade items, fetched once each, to show grades the way the gradebook does.
 $gradeitems = [];
 $showgrade = static function (?float $value, int $gradeitemid) use (&$gradeitems): string {
-    if ($value === null || $gradeitemid === 0) {
+    if ($value === null) {
         return '-';
+    }
+
+    // A manual grade item a preview would create has no id yet.
+    if ($gradeitemid === 0) {
+        return format_float($value, 2);
     }
 
     $gradeitems[$gradeitemid] ??= grade_item::fetch(['id' => $gradeitemid]);

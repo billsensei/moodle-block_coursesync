@@ -35,7 +35,8 @@ class grades_result {
     public readonly ?string $errorkey;
 
     /**
-     * @var \stdClass[] Grade items: cmid, itemnumber, gradetype, grademin,
+     * @var \stdClass[] Grade items: cmid (0 for a manual grade item), itemid,
+     *      itemname (a manual item's), itemnumber, gradetype, grademin,
      *      grademax, scale (string[]), hidden, grades (\stdClass[]: username,
      *      grade, feedback, feedbackformat, hidden, timemodified).
      */
@@ -123,6 +124,8 @@ class grades_result {
 
             $items[] = (object) [
                 'cmid' => clean_param($row['cmid'], PARAM_INT),
+                'itemid' => clean_param($row['itemid'] ?? 0, PARAM_INT),
+                'itemname' => clean_param((string) ($row['itemname'] ?? ''), PARAM_TEXT),
                 'itemnumber' => clean_param($row['itemnumber'] ?? 0, PARAM_INT),
                 'gradetype' => clean_param($row['gradetype'], PARAM_INT),
                 'grademin' => (float) clean_param($row['grademin'] ?? 0, PARAM_FLOAT),

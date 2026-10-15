@@ -192,7 +192,8 @@ class remote_client {
      * @param string $baseurl normalised base URL of the remote site
      * @param string $token the remote site's web service token
      * @param int $courseid the resolved remote course id
-     * @param int[] $cmids course module ids on the source site
+     * @param int[] $cmids course module ids on the source site; 0 also asks for
+     *      the course's manual grade items
      * @param \core\http_client|null $client injected only by tests
      * @param string[] $usernames the only students wanted (never empty: an
      *      empty list means every student to the source)
@@ -209,7 +210,22 @@ class remote_client {
         $items = [];
 
         // In batches the source accepts; the answers are put back together.
-        foreach (array_chunk(array_values(array_map('intval', $cmids)), external\get_grades::MAX_CMIDS) as $batch) {
+        // The manual grade items (external\get_grades::MANUAL among the ids)
+        // are asked for once, in whichever batch has room.
+        $ids = array_values(array_map('intval', $cmids));
+        $wantmanual = in_array(external\get_grades::MANUAL, $ids, true);
+        $ids = array_values(array_filter($ids, static fn(int $id): bool => $id !== external\get_grades::MANUAL));
+        $batches = array_chunk($ids, external\get_grades::MAX_CMIDS);
+
+        if ($wantmanual) {
+            if ($batches && count($batches[0]) < external\get_grades::MAX_CMIDS) {
+                $batches[0][] = external\get_grades::MANUAL;
+            } else {
+                array_unshift($batches, [external\get_grades::MANUAL]);
+            }
+        }
+
+        foreach ($batches as $batch) {
             $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_grades', [
                 'courseid' => $courseid,
                 'cmids' => $batch,

@@ -4416,3 +4416,33 @@ check, and the cleaner's walk (two tests).
 **Not covered.** The reviewer's remark that `question_cleaner` treats formatted strings whose format
 key is not `<key>format` as plain data: none of the question types we copy use another scheme, but
 a new type should be checked against it.
+
+## Phase 79 - Manual grade items in grade sync (v1.24.0-beta, build 2026101501), 2026-10-15
+
+A teacher noticed grade sync pulled nothing for items added by hand in the source gradebook.
+
+- **Cause.** `get_grades` and `grade_pull` were keyed by course module id: the source looked up
+  `itemtype = 'mod'` items for the cmids asked about, and the destination only asked about copies.
+  A manual item (`itemtype = 'manual'`) has no cm, so there was nothing to ask about.
+- **Fix.** cmid 0 among the requested ids (`get_grades::MANUAL`) now means "also the manual items".
+  A sentinel rather than a new parameter so an older source still answers (it drops an id that is
+  not an activity) instead of rejecting an unknown parameter. The response gains `itemid` and
+  `itemname` (both optional, so older destinations are unaffected). `remote_client` sends the 0 once.
+- **Pairing.** Destination items are found by idnumber `coursesync-manual-<source item id>`; if missing
+  an unsaved `grade_item` stands in (so the preview creates nothing) and is inserted just before the
+  first write. Scales are matched by items against site/course scales; no match skips, never creates one.
+- **Traps.** `grade_pull::pull()` returned early with no copies, which would have hidden manual
+  items in a course with none copied; `by_activity()` keyed on cmid, so every manual item (cmid 0)
+  would have merged into one line - entries now carry `remoteitemid`; `existing_grades()` and
+  the results page's `showgrade` both assumed a saved grade item. A batching test caught a first
+  attempt that chunked by `MAX_CMIDS - 1` and changed batch sizes with no manual items.
+- **Not done.** Pairing with a pre-existing manual item by name; deleting a created item when it
+  disappears from the source; trying it on a real 5.1.8 site.
+
+**Evidence.** Full suite 600 tests, OK (1 skipped, as before); phpcs clean.
+**Docker A/B (2026-10-15).** Upgraded both to build 2026101501. Three manual items made on B's REMOTE1
+(two point items on different maximums, one scale item) and pulled into A's CLAUDEFRESH: the preview
+created nothing; the run created all three with matching ranges/scale, grades and feedback; a repeat
+was all "same"; a source change was an "update"; a grade changed on A was a "conflict" and kept;
+an item renamed on A was still found. Test items and grades are left on both sites. Grade pulls
+by a CLI script, not the browser page.

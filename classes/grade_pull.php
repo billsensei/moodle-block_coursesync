@@ -21,8 +21,12 @@ use core\http_client;
 /**
  * Pulls students' gradebook grades from the source course into this one.
  *
- * Only for activities this plugin copied here - the coursesync-<remote cmid>
- * idnumber is what pairs a copy with its original. A student is the account
+ * For activities this plugin copied here - the coursesync-<remote cmid>
+ * idnumber is what pairs a copy with its original - and for the source
+ * course's manual grade items, which belong to no activity: the
+ * coursesync-manual-<remote grade item id> idnumber pairs those, and a manual
+ * grade item that is not here yet is created when its first grade is
+ * written. A student is the account
  * here with the same username, and only if they are an active student in this
  * course: no account is ever created or enrolled.
  *
@@ -47,6 +51,9 @@ use core\http_client;
 class grade_pull {
     /** @var string Recorded as the source of every grade this writes, in the grade history. */
     public const SOURCE = 'block_coursesync';
+
+    /** @var string Starts the idnumber of a manual grade item created here from one on the source. */
+    public const MANUAL_IDNUMBER_PREFIX = 'coursesync-manual-';
 
     /**
      * What a pull would do, without writing anything.
@@ -199,10 +206,6 @@ class grade_pull {
         $result = new grade_pull_result();
         $copies = self::local_copies($courseid);
 
-        if (!$copies) {
-            return $result;
-        }
-
         // Who this pull is for, before the source is asked anything: it is
         // told these students and sends only theirs. With nobody, there is
         // nothing to ask for - and an empty list would mean "everyone".
@@ -225,7 +228,7 @@ class grade_pull {
             $record->remoteurl,
             $token,
             (int) $record->remotecourseid,
-            array_keys($copies),
+            array_merge([external\get_grades::MANUAL], array_keys($copies)),
             $client,
             array_map('strval', array_keys($students))
         );
@@ -237,8 +240,14 @@ class grade_pull {
         $knownhere = self::usernames_known_here(self::usernames_in($found->items), $students);
         $remote = [];
 
+        $manual = [];
+
         foreach ($found->items as $item) {
-            $remote[$item->cmid][$item->itemnumber] = $item;
+            if ($item->cmid === external\get_grades::MANUAL) {
+                $manual[] = $item;
+            } else {
+                $remote[$item->cmid][$item->itemnumber] = $item;
+            }
         }
 
         foreach ($copies as $remotecmid => $cm) {
@@ -264,7 +273,128 @@ class grade_pull {
             self::skip_items_not_on_source($result, $cm, $localitems, $remote[$remotecmid] ?? []);
         }
 
+        self::pull_manual_items($result, $write, $blockinstanceid, $courseid, $manual, $students, $knownhere, $outofreach);
+
         return $result;
+    }
+
+    /**
+     * Every manual grade item the source sent.
+     *
+     * @param grade_pull_result $result
+     * @param bool $write
+     * @param int $blockinstanceid
+     * @param int $courseid
+     * @param \stdClass[] $manual the source's manual grade items, from grades_result
+     * @param \stdClass[] $students gradable users here, by username
+     * @param bool[] $knownhere username => true for accounts that exist here
+     * @param bool[] $outofreach username => true for students out of the pulling person's groups
+     * @return void
+     */
+    protected static function pull_manual_items(
+        grade_pull_result $result,
+        bool $write,
+        int $blockinstanceid,
+        int $courseid,
+        array $manual,
+        array $students,
+        array $knownhere,
+        array $outofreach
+    ): void {
+        foreach ($manual as $remoteitem) {
+            // Nothing to pair it by, which only a source that predates manual items could send.
+            if ($remoteitem->itemid <= 0 || !$remoteitem->grades) {
+                continue;
+            }
+
+            $gradeitem = self::local_manual_item($courseid, $remoteitem);
+
+            if ($gradeitem === null) {
+                $entry = self::entry(null, 0, null, grade_pull_result::SKIPPED, 'gradeskipscale', $remoteitem);
+                $result->add($entry);
+                continue;
+            }
+
+            self::pull_item(
+                $result,
+                $write,
+                $blockinstanceid,
+                $courseid,
+                0,
+                null,
+                $remoteitem,
+                $gradeitem,
+                $students,
+                $knownhere,
+                $outofreach
+            );
+        }
+    }
+
+    /**
+     * The manual grade item here that stands for one on the source.
+     *
+     * Found by its idnumber, so it still pairs after someone here renames it.
+     * One that is not here yet comes back unsaved (no id), shaped like the
+     * source's, and is only saved when a grade is about to be written to it,
+     * so a preview creates nothing.
+     *
+     * @param int $courseid
+     * @param \stdClass $remoteitem from grades_result
+     * @return \grade_item|null null if the source's scale does not exist here
+     */
+    protected static function local_manual_item(int $courseid, \stdClass $remoteitem): ?\grade_item {
+        $idnumber = self::MANUAL_IDNUMBER_PREFIX . $remoteitem->itemid;
+        $found = \grade_item::fetch(['courseid' => $courseid, 'idnumber' => $idnumber, 'itemtype' => 'manual']);
+
+        if ($found) {
+            return $found;
+        }
+
+        $scaleid = null;
+
+        if ($remoteitem->gradetype === GRADE_TYPE_SCALE) {
+            $scaleid = self::find_scale($courseid, $remoteitem->scale);
+
+            if ($scaleid === null) {
+                return null;
+            }
+        }
+
+        $isvalue = $remoteitem->gradetype === GRADE_TYPE_VALUE;
+
+        return new \grade_item([
+            'courseid' => $courseid,
+            'itemtype' => 'manual',
+            'itemname' => $remoteitem->itemname !== '' ? $remoteitem->itemname : $idnumber,
+            'idnumber' => $idnumber,
+            'gradetype' => $remoteitem->gradetype,
+            'grademin' => $isvalue ? $remoteitem->grademin : 0,
+            'grademax' => $isvalue ? $remoteitem->grademax : 100,
+            'scaleid' => $scaleid,
+            'hidden' => $remoteitem->hidden,
+        ], false);
+    }
+
+    /**
+     * A scale here, standard or in this course, with exactly these items.
+     *
+     * @param int $courseid
+     * @param string[] $items the source scale's items
+     * @return int|null the scale's id
+     */
+    protected static function find_scale(int $courseid, array $items): ?int {
+        global $DB;
+
+        $scales = $DB->get_records_select('scale', 'courseid = 0 OR courseid = :courseid', ['courseid' => $courseid], 'id');
+
+        foreach ($scales as $scale) {
+            if (grades_result::scale_items((string) $scale->scale) === $items) {
+                return (int) $scale->id;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -391,10 +521,11 @@ class grade_pull {
      * @param bool $write
      * @param int $blockinstanceid
      * @param int $courseid
-     * @param int $remotecmid
-     * @param \cm_info $cm the copy here
+     * @param int $remotecmid 0 for a manual grade item
+     * @param \cm_info|null $cm the copy here; null for a manual grade item
      * @param \stdClass $remoteitem from grades_result
-     * @param \grade_item|null $gradeitem the matching grade item here
+     * @param \grade_item|null $gradeitem the matching grade item here; a manual
+     *      one not created yet has no id
      * @param \stdClass[] $students gradable users here, by username
      * @param bool[] $knownhere username => true for accounts that exist here
      * @param bool[] $outofreach username => true for students here outside
@@ -409,7 +540,7 @@ class grade_pull {
         int $blockinstanceid,
         int $courseid,
         int $remotecmid,
-        \cm_info $cm,
+        ?\cm_info $cm,
         \stdClass $remoteitem,
         ?\grade_item $gradeitem,
         array $students,
@@ -424,7 +555,7 @@ class grade_pull {
         $problem = self::item_problem($remoteitem, $gradeitem);
 
         if ($problem !== null) {
-            $result->add(self::entry($cm, $remoteitem->itemnumber, $gradeitem, grade_pull_result::SKIPPED, $problem));
+            $result->add(self::entry($cm, $remoteitem->itemnumber, $gradeitem, grade_pull_result::SKIPPED, $problem, $remoteitem));
 
             return;
         }
@@ -432,7 +563,7 @@ class grade_pull {
         [$localgrades, $ours] = self::existing_grades($gradeitem, $remoteitem, $students);
 
         foreach ($remoteitem->grades as $remotegrade) {
-            $entry = self::entry($cm, $remoteitem->itemnumber, $gradeitem, grade_pull_result::SKIPPED, null);
+            $entry = self::entry($cm, $remoteitem->itemnumber, $gradeitem, grade_pull_result::SKIPPED, null, $remoteitem);
             $entry->username = $remotegrade->username;
             $user = $students[$remotegrade->username] ?? null;
 
@@ -466,7 +597,7 @@ class grade_pull {
             // A marks pull has given this student the assignment's real grade,
             // and the gradebook shows it. Writing an override over it, or
             // flagging a difference, would only undo that.
-            if ($cm->modname === 'assign' && self::marks_pulled($cm, (int) $user->id)) {
+            if ($cm && $cm->modname === 'assign' && self::marks_pulled($cm, (int) $user->id)) {
                 $entry->reason = 'gradeskipmarks';
                 $result->add($entry);
                 continue;
@@ -482,6 +613,11 @@ class grade_pull {
             $writes = in_array($entry->outcome, [grade_pull_result::ADD, grade_pull_result::UPDATE], true);
 
             if ($write && $writes) {
+                if (!$gradeitem->id) {
+                    $gradeitem->insert(self::SOURCE);
+                    $entry->gradeitemid = (int) $gradeitem->id;
+                }
+
                 $hidden = $remotegrade->hidden ?: $remoteitem->hidden;
 
                 if (!self::write($blockinstanceid, $courseid, $remotecmid, $gradeitem, $user, $incoming, $remotegrade, $hidden)) {
@@ -526,6 +662,11 @@ class grade_pull {
             if (isset($students[$remotegrade->username])) {
                 $userids[] = (int) $students[$remotegrade->username]->id;
             }
+        }
+
+        // A manual grade item not created here yet has no grades and no history.
+        if (!$gradeitem->id) {
+            return [[], []];
         }
 
         $localgrades = $userids ? \grade_grade::fetch_users_grades($gradeitem, $userids, false) : [];
@@ -900,24 +1041,27 @@ class grade_pull {
     /**
      * A fresh entry for the result.
      *
-     * @param \cm_info $cm
+     * @param \cm_info|null $cm null for a manual grade item
      * @param int $itemnumber
      * @param \grade_item|null $gradeitem
      * @param string $outcome
      * @param string|null $reason
+     * @param \stdClass|null $remoteitem the source's grade item, which names a manual one
      * @return \stdClass
      */
     protected static function entry(
-        \cm_info $cm,
+        ?\cm_info $cm,
         int $itemnumber,
         ?\grade_item $gradeitem,
         string $outcome,
-        ?string $reason
+        ?string $reason,
+        ?\stdClass $remoteitem = null
     ): \stdClass {
         return (object) [
             'kind' => grade_pull_result::KIND_GRADE,
-            'cmid' => (int) $cm->id,
-            'activity' => $cm->name,
+            'cmid' => $cm ? (int) $cm->id : 0,
+            'remoteitemid' => $cm || !$remoteitem ? 0 : (int) $remoteitem->itemid,
+            'activity' => $cm ? $cm->name : (string) $remoteitem->itemname,
             'itemnumber' => $itemnumber,
             'gradeitemid' => $gradeitem ? (int) $gradeitem->id : 0,
             'userid' => 0,

@@ -325,6 +325,12 @@ involved). Under **Gradebook grades** the page lists:
 Feedback comes across with each grade. A grade the other site keeps hidden from
 the student is hidden here too.
 
+**Manual grade items** — columns you added by hand in the other site's gradebook —
+come across too, even though no activity was copied for them. The first time one
+has a grade to write, Course Sync adds a matching item to your gradebook with the
+same name and range. If you rename it, it is still recognised. A manual item on a
+scale your site does not have is skipped.
+
 ### Pulling again
 
 You can pull as often as you like. A grade Course Sync brought across, and that

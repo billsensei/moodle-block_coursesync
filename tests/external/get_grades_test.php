@@ -130,6 +130,44 @@ final class get_grades_test extends advanced_testcase {
     }
 
     /**
+     * Naming 0 among the activities asks for the course's manual grade items
+     * too; without it they are not sent.
+     */
+    public function test_manual_items_when_asked_for(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $student = $generator->create_and_enrol($course, 'student', ['username' => 'sam']);
+        $assign = $generator->create_module('assign', ['course' => $course->id, 'grade' => 50]);
+        $manual = new \grade_item([
+            'courseid' => $course->id,
+            'itemtype' => 'manual',
+            'itemname' => 'Participation',
+            'gradetype' => GRADE_TYPE_VALUE,
+            'grademin' => 0,
+            'grademax' => 10,
+        ], false);
+        $manual->insert();
+        $manual->update_final_grade($student->id, 7, 'test', 'Good');
+
+        $without = $this->call($course->id, [$assign->cmid]);
+        $this->assertSame([(int) $assign->cmid], array_column($without['items'], 'cmid'));
+
+        $with = $this->call($course->id, [get_grades::MANUAL]);
+        $this->assertCount(1, $with['items']);
+        $item = $with['items'][0];
+        $this->assertSame(0, $item['cmid']);
+        $this->assertSame((int) $manual->id, $item['itemid']);
+        $this->assertSame('Participation', $item['itemname']);
+        $this->assertEquals(10, $item['grademax']);
+        $this->assertSame('sam', $item['grades'][0]['username']);
+        $this->assertEquals(7, $item['grades'][0]['grade']);
+        $this->assertSame('Good', $item['grades'][0]['feedback']);
+    }
+
+    /**
      * Only people the gradebook itself lists are reported: not a teacher who
      * somehow has a grade, not a student whose enrolment is suspended, and not
      * a student with nothing recorded.

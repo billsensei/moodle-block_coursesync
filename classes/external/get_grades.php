@@ -47,6 +47,16 @@ class get_grades extends external_api {
     public const MAX_CMIDS = 500;
 
     /**
+     * @var int Named among the cmids, it asks for the course's manual grade items too.
+     *
+     * Manual grade items belong to no activity, so no course module id can
+     * stand for them. 0 is never a real one, and a source from before manual
+     * items simply leaves it out as an activity that is not there, so an
+     * older source still answers - without them.
+     */
+    public const MANUAL = 0;
+
+    /**
      * Describes the parameters.
      *
      * @return external_function_parameters
@@ -55,7 +65,7 @@ class get_grades extends external_api {
         return new external_function_parameters([
             'courseid' => new external_value(PARAM_INT, 'Course id on this site.', VALUE_REQUIRED),
             'cmids' => new external_multiple_structure(
-                new external_value(PARAM_INT, 'Course module id on this site.'),
+                new external_value(PARAM_INT, 'Course module id on this site; 0 also asks for the manual grade items.'),
                 'Activities whose grades are wanted.',
                 VALUE_REQUIRED
             ),
@@ -119,6 +129,7 @@ class get_grades extends external_api {
 
         $modinfo = get_fast_modinfo($course->id);
         $cms = [];
+        $wantmanual = in_array(self::MANUAL, $cmids, true);
 
         // An activity that is not in this course, or no longer exists, is left
         // out rather than refused: the destination asks with every copy it
@@ -131,7 +142,7 @@ class get_grades extends external_api {
             }
         }
 
-        if (!$cms) {
+        if (!$cms && !$wantmanual) {
             return ['items' => []];
         }
 
@@ -164,18 +175,29 @@ class get_grades extends external_api {
             }
         }
 
+        if ($wantmanual) {
+            $manualitems = \grade_item::fetch_all(['courseid' => $course->id, 'itemtype' => 'manual']) ?: [];
+            usort($manualitems, static fn($a, $b) => $a->id <=> $b->id);
+
+            foreach ($manualitems as $gradeitem) {
+                if ((int) $gradeitem->gradetype !== GRADE_TYPE_NONE) {
+                    $items[] = self::export_item(null, $gradeitem, $students);
+                }
+            }
+        }
+
         return ['items' => $items];
     }
 
     /**
      * One grade item and every student's grade in it.
      *
-     * @param \cm_info $cm
+     * @param \cm_info|null $cm null for a manual grade item, which has no activity
      * @param \grade_item $gradeitem
      * @param \stdClass[] $students gradable users keyed by id
      * @return array
      */
-    protected static function export_item(\cm_info $cm, \grade_item $gradeitem, array $students): array {
+    protected static function export_item(?\cm_info $cm, \grade_item $gradeitem, array $students): array {
         global $DB;
 
         $scale = '';
@@ -217,7 +239,9 @@ class get_grades extends external_api {
         }
 
         return [
-            'cmid' => (int) $cm->id,
+            'cmid' => $cm ? (int) $cm->id : self::MANUAL,
+            'itemid' => (int) $gradeitem->id,
+            'itemname' => $cm ? '' : (string) $gradeitem->itemname,
             'itemnumber' => (int) $gradeitem->itemnumber,
             'gradetype' => (int) $gradeitem->gradetype,
             'grademin' => (float) $gradeitem->grademin,
@@ -237,7 +261,14 @@ class get_grades extends external_api {
         return new external_single_structure([
             'items' => new external_multiple_structure(
                 new external_single_structure([
-                    'cmid' => new external_value(PARAM_INT, 'Course module id on the source site.'),
+                    'cmid' => new external_value(PARAM_INT, 'Course module id on the source site; 0 for a manual grade item.'),
+                    'itemid' => new external_value(PARAM_INT, 'Grade item id on the source site.', VALUE_DEFAULT, 0),
+                    'itemname' => new external_value(
+                        PARAM_TEXT,
+                        'Name of a manual grade item; empty for an activity\'s.',
+                        VALUE_DEFAULT,
+                        ''
+                    ),
                     'itemnumber' => new external_value(
                         PARAM_INT,
                         'Which of the activity\'s grade items this is; 0 for most activities.'

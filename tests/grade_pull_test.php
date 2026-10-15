@@ -287,18 +287,150 @@ final class grade_pull_test extends advanced_testcase {
         $this->assertCount(1, $this->calls);
         $this->assertSame('block_coursesync_get_grades', $this->calls[0]['wsfunction']);
         $this->assertSame('42', $this->calls[0]['courseid']);
-        $this->assertEqualsCanonicalizing(['777', '778'], $this->calls[0]['cmids']);
+        // 0 is the ask for the course's manual grade items.
+        $this->assertEqualsCanonicalizing(['0', '777', '778'], $this->calls[0]['cmids']);
     }
 
     /**
-     * With no copies here, the other site is not asked at all.
+     * With no copies here, the other site is still asked - for manual grade
+     * items, which belong to no activity - and for nothing else.
      */
-    public function test_nothing_copied_asks_nothing(): void {
+    public function test_nothing_copied_asks_only_for_manual_items(): void {
         $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
 
         $this->assertTrue($result->success);
         $this->assertSame([], $result->entries);
-        $this->assertSame([], $this->calls);
+        $this->assertCount(1, $this->calls);
+        $this->assertSame(['0'], $this->calls[0]['cmids']);
+    }
+
+    /**
+     * One manual grade item as get_grades reports it.
+     *
+     * @param int $itemid the source's grade item id
+     * @param array $grades from remote_grade()
+     * @param array $overrides
+     * @return array
+     */
+    protected function manual_item(int $itemid, array $grades, array $overrides = []): array {
+        $manual = ['itemid' => $itemid, 'itemname' => 'Class participation'];
+
+        return $this->remote_item(0, $grades, array_merge($manual, $overrides));
+    }
+
+    /**
+     * A manual grade item that is not here yet is created, with the grade in it.
+     */
+    public function test_a_manual_item_is_created_and_graded(): void {
+        global $DB;
+
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 8, '<p>Lively</p>')], ['grademax' => 10])];
+
+        $entry = $this->only_entry(grade_pull::run($this->instanceid, $this->course->id, $this->source()));
+
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $this->assertSame(0, $entry->cmid);
+        $this->assertSame('Class participation', $entry->activity);
+
+        $item = \grade_item::fetch(['courseid' => $this->course->id, 'itemtype' => 'manual', 'idnumber' => 'coursesync-manual-55']);
+        $this->assertNotFalse($item);
+        $this->assertSame('Class participation', $item->itemname);
+        $this->assertEquals(10, $item->grademax);
+        $this->assertSame((int) $item->id, $entry->gradeitemid);
+
+        $grade = \grade_grade::fetch(['itemid' => $item->id, 'userid' => $this->student->id]);
+        $this->assertEquals(8, $grade->finalgrade);
+        $this->assertSame('<p>Lively</p>', $grade->feedback);
+        $this->assertTrue($DB->record_exists('block_coursesync_grade', [
+            'gradeitemid' => $item->id,
+            'userid' => $this->student->id,
+        ]));
+    }
+
+    /**
+     * A preview of a manual item that is not here yet creates nothing.
+     */
+    public function test_a_manual_item_preview_creates_nothing(): void {
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 8)], ['grademax' => 10])];
+
+        $entry = $this->only_entry(grade_pull::preview($this->instanceid, $this->course->id, $this->source()));
+
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $this->assertEquals(8, $entry->grade);
+        $this->assertFalse(\grade_item::fetch(['courseid' => $this->course->id, 'idnumber' => 'coursesync-manual-55']));
+    }
+
+    /**
+     * A second pull finds the item it made, updates the grade it wrote, and
+     * keeps a grade somebody here changed.
+     */
+    public function test_a_manual_item_is_found_again(): void {
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 8)], ['grademax' => 10])];
+        grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 9)], ['grademax' => 10])];
+        $entry = $this->only_entry(grade_pull::run($this->instanceid, $this->course->id, $this->source()));
+        $this->assertSame(grade_pull_result::UPDATE, $entry->outcome);
+
+        $items = \grade_item::fetch_all(['courseid' => $this->course->id, 'itemtype' => 'manual']);
+        $this->assertCount(1, $items);
+        $item = reset($items);
+        $this->assertEquals(9, \grade_grade::fetch(['itemid' => $item->id, 'userid' => $this->student->id])->finalgrade);
+
+        $item->update_final_grade($this->student->id, 3, 'test');
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 10)], ['grademax' => 10])];
+        $entry = $this->only_entry(grade_pull::run($this->instanceid, $this->course->id, $this->source()));
+        $this->assertSame(grade_pull_result::CONFLICT, $entry->outcome);
+    }
+
+    /**
+     * Two manual items are two lines in the per-item summary.
+     */
+    public function test_manual_items_are_counted_separately(): void {
+        $this->sourceitems = [
+            $this->manual_item(55, [$this->remote_grade('sam', 8)], ['grademax' => 10]),
+            $this->manual_item(56, [$this->remote_grade('sam', 4)], ['grademax' => 10, 'itemname' => 'Homework']),
+        ];
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertCount(2, $result->by_activity(grade_pull_result::KIND_GRADE));
+    }
+
+    /**
+     * A manual item on a scale this site does not have is skipped, not made up.
+     */
+    public function test_a_manual_item_on_an_unknown_scale_is_skipped(): void {
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 1)], [
+            'gradetype' => GRADE_TYPE_SCALE,
+            'scale' => 'Nope,Not here,Never',
+        ])];
+
+        $entry = $this->only_entry(grade_pull::run($this->instanceid, $this->course->id, $this->source()));
+
+        $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
+        $this->assertSame('gradeskipscale', $entry->reason);
+        $this->assertFalse(\grade_item::fetch(['courseid' => $this->course->id, 'idnumber' => 'coursesync-manual-55']));
+    }
+
+    /**
+     * Manual grade items on a real source course come across, end to end.
+     */
+    public function test_manual_items_from_a_real_source_course(): void {
+        $source = $this->getDataGenerator()->create_course();
+        $this->getDataGenerator()->enrol_user($this->student->id, $source->id, 'student');
+        $original = new \grade_item(['courseid' => $source->id, 'itemtype' => 'manual', 'itemname' => 'Midterm bonus',
+            'gradetype' => GRADE_TYPE_VALUE, 'grademin' => 0, 'grademax' => 20], false);
+        $original->insert();
+        $original->update_final_grade($this->student->id, 12, 'test', 'Nice');
+        $this->map_to((int) $source->id);
+
+        $entry = $this->only_entry(grade_pull::run($this->instanceid, $this->course->id, $this->local_source()));
+
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $item = \grade_item::fetch(['courseid' => $this->course->id, 'idnumber' => 'coursesync-manual-' . $original->id]);
+        $this->assertSame('Midterm bonus', $item->itemname);
+        $this->assertEquals(12, \grade_grade::fetch(['itemid' => $item->id, 'userid' => $this->student->id])->finalgrade);
     }
 
     /**
