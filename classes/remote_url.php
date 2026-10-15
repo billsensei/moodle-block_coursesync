@@ -88,6 +88,8 @@ class remote_url {
         '64:ff9b::/96',
         '64:ff9b:1::/48',
         '2002::/16',
+        // SIIT (::ffff:0:a.b.c.d) is the translated twin of the IPv4-mapped form.
+        '::ffff:0:0:0/96',
         '100::/64',
         'fc00::/7',
         'fe80::/10',
@@ -342,6 +344,15 @@ class remote_url {
 
         if (in_array($address, self::BLOCKED_ADDRESSES, true)) {
             return true;
+        }
+
+        // An IPv4-mapped address (::ffff:a.b.c.d) is judged as the IPv4 address
+        // inside it. address_in_subnet() does this for the ranges but misses
+        // the all-zeros address, which BLOCKED_ADDRESSES has to name.
+        $packed = @inet_pton($address);
+
+        if ($packed !== false && strlen($packed) === 16 && str_starts_with($packed, str_repeat("\0", 10) . "\xff\xff")) {
+            return self::is_blocked_address(inet_ntop(substr($packed, 12)));
         }
 
         foreach (self::BLOCKED_RANGES as $range) {

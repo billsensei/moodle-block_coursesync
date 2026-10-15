@@ -4642,3 +4642,13 @@ does not have test helper code": 5.2 removed the "random" type from core's quest
 `quiz "X" has a random question from category "Y" on page N` adds the slot through `quiz_settings::get_structure()->add_random_questions(page, 1, filter)`,
 which takes the same arguments on 5.0 to 5.3. The page assertions are unchanged. **Trap:** my earlier "works on 5.0 to 5.3"
 covered PHPUnit and live syncs, not Behat; Behat on 5.2/5.3 only ever ran in CI.
+
+**Phase 86 follow-up - IPv6 address hardening.** An automated review claimed IPv4-mapped IPv6 addresses (`::ffff:127.0.0.1`)
+slipped past `remote_url::BLOCKED_RANGES`. Checked first, and that part was wrong: Moodle's `address_in_subnet()` already
+unwraps them, so `::ffff:127.0.0.1`, `::ffff:7f00:1` and `::ffff:a9fe:a9fe` were refused. Two real gaps: `::ffff:0.0.0.0`
+(the mapped all-zeros address, which `address_in_subnet` also misses in plain IPv4, hence `BLOCKED_ADDRESSES`) and the SIIT
+form `::ffff:0:a.b.c.d`. Fix: `::ffff:0:0:0/96` joins the ranges and `is_blocked_address()` re-checks the IPv4 address inside
+any mapped address. Eight new refused cases plus one "mapped public address is still accepted"; the four that were gaps fail
+without the fix (checked by stashing it). Full suite on 5.0, 5.1, 5.2, 5.3: 626 tests, 0 warnings, 1 skipped; phpcs and phpdoc clean.
+Local Behat on 5.1 before the change: 48 scenarios, 1122 steps, all passed. Trap: PHPUnit on the local CI install needed a
+`phpunit/cli/init.php` run first, since the version had moved on.

@@ -60,6 +60,14 @@ final class remote_url_ssrf_test extends advanced_testcase {
             'multicast' => ['https://224.0.0.1/', 'errorurlprivate'],
             'broadcast' => ['https://255.255.255.255/', 'errorurlprivate'],
             'reserved' => ['https://240.1.2.3/', 'errorurlprivate'],
+            'mapped loopback' => ['https://[::ffff:127.0.0.1]/', 'errorurlprivate'],
+            'mapped loopback in hex' => ['https://[::ffff:7f00:1]/', 'errorurlprivate'],
+            'mapped metadata endpoint' => ['https://[::ffff:a9fe:a9fe]/', 'errorurlprivate'],
+            'mapped private 10/8' => ['https://[::ffff:10.0.0.1]/', 'errorurlprivate'],
+            'mapped unspecified address' => ['https://[::ffff:0.0.0.0]/', 'errorurlprivate'],
+            'mapped unspecified address in hex' => ['https://[::ffff:0:0]/', 'errorurlprivate'],
+            'siit loopback' => ['https://[::ffff:0:127.0.0.1]/', 'errorurlprivate'],
+            'siit metadata endpoint' => ['https://[::ffff:0:a9fe:a9fe]/', 'errorurlprivate'],
             'multicast v6' => ['https://[ff02::1]/', 'errorurlprivate'],
         ];
     }
@@ -167,6 +175,9 @@ final class remote_url_ssrf_test extends advanced_testcase {
 
         // A documentation address from RFC 5737, which is public but not routed.
         $this->assertNull(remote_url::validate('https://203.0.113.10/moodle'));
+
+        // Wrapping a public address in the mapped form does not make it private.
+        $this->assertNull(remote_url::validate('https://[::ffff:203.0.113.10]/moodle'));
     }
 
     /**
