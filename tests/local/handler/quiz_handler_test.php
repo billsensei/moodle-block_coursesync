@@ -522,7 +522,7 @@ final class quiz_handler_test extends advanced_testcase {
         // Now the properly-completed case: the flagged module actually
         // gone, not just marked - find_existing() must still say so, and a
         // second resync must still reuse rather than duplicate.
-        \course_delete_module($secondcm->id, false);
+        \block_coursesync\local\course_modules::delete((int) $secondcm->id, false);
         $this->assertSame(0, syncer::find_existing($target->id, 1));
 
         [$thirdcm] = $this->round_trip($quiz->cmid, $target, $remoteidnumber);

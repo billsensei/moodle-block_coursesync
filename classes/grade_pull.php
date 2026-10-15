@@ -55,6 +55,9 @@ class grade_pull {
     /** @var string Starts the idnumber of a manual grade item created here from one on the source. */
     public const MANUAL_IDNUMBER_PREFIX = 'coursesync-manual-';
 
+    /** @var int The oldest block_coursesync build on a source that sends manual grade items (v1.24.0-beta). */
+    public const MANUAL_MIN_VERSION = 2026101501;
+
     /** @var float The largest grade bound the gradebook's numeric(10,5) columns hold. */
     public const MAX_BOUND = 99999.99999;
 
@@ -256,6 +259,10 @@ class grade_pull {
             }
         }
 
+        if (!$manual) {
+            self::note_source_too_old_for_manual_items($result, $record, $token, $client);
+        }
+
         foreach ($copies as $remotecmid => $cm) {
             $localitems = self::local_grade_items($courseid, $cm);
 
@@ -282,6 +289,34 @@ class grade_pull {
         self::pull_manual_items($result, $write, $blockinstanceid, $courseid, $manual, $students, $knownhere, $outofreach);
 
         return $result;
+    }
+
+    /**
+     * Say so when no manual items came because the source cannot send them.
+     *
+     * A source from before v1.24.0 ignores the request for manual items and
+     * answers with activity grades only, which looks exactly like a course with
+     * none. Its ping reports the version, so it is asked - but only when no
+     * manual item came, and a ping that fails says nothing: the pull itself
+     * has already worked.
+     *
+     * @param grade_pull_result $result updated in place
+     * @param \stdClass $record the block's connection
+     * @param string $token the source's web service token
+     * @param http_client|null $client
+     * @return void
+     */
+    protected static function note_source_too_old_for_manual_items(
+        grade_pull_result $result,
+        \stdClass $record,
+        string $token,
+        ?http_client $client
+    ): void {
+        $ping = remote_client::ping($record->remoteurl, $token, $client);
+
+        if ($ping->success && $ping->pluginversion < self::MANUAL_MIN_VERSION) {
+            $result->notes[] = 'manualunavailable';
+        }
     }
 
     /**

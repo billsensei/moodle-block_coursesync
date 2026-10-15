@@ -22,7 +22,8 @@ configured.
 
 ## Before you start
 
-- Moodle 5.1 (2025100600) or later on both sites, and PHP 8.2 or later.
+- Moodle 5.0 (2025041400) to 5.3 on both sites (the two sites may run different versions),
+  and PHP 8.2 or later (8.3 or later for Moodle 5.2 and 5.3).
 - **The source site must be reachable over HTTPS with a valid certificate.**
   Course Sync refuses plain `http`, because the access token would travel in
   clear text.

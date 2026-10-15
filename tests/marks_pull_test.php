@@ -535,7 +535,7 @@ final class marks_pull_test extends advanced_testcase {
      */
     public function test_a_deleted_original_is_reported(): void {
         $this->mark_there(80, 'Good');
-        course_delete_module($this->there->cmid);
+        \block_coursesync\local\course_modules::delete((int) $this->there->cmid);
 
         $entry = $this->only_entry($this->pull());
 

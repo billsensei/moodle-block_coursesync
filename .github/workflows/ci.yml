@@ -3,10 +3,14 @@
 # Started from moodle-plugin-ci's own gha.dist.yml; only the matrix, the
 # database images, the Behat web server and the artifact name differ.
 #
-# The plugin supports Moodle 5.1 only (version.php: $plugin->supported = [501, 501]).
-# For MOODLE_501_STABLE the environment.xml minimums are PHP 8.2, PostgreSQL 15
-# and MariaDB 10.11, and core's own push.yml tests PHP 8.2 (lowest) to 8.4
-# (highest). Recheck all of that when adding a branch.
+# The plugin supports Moodle 5.0 to 5.3 (version.php: $plugin->supported = [500, 503]).
+# Each branch has its own PHP, PostgreSQL and MariaDB minimums (environment.xml):
+#   5.0 and 5.1: PHP 8.2, PostgreSQL 15, MariaDB 10.11
+#   5.2:         PHP 8.3, PostgreSQL 16, MariaDB 10.11
+#   5.3:         PHP 8.3, PostgreSQL 17, MariaDB 11.4
+# so the database image is chosen per branch, and PHP runs the lowest and 8.4.
+# (5.0 and 5.1 on 8.2 and 8.4; 5.2 and 5.3 on 8.3 and 8.4.)
+# Recheck all of that when adding a branch.
 name: Moodle Plugin CI
 
 on: [push, pull_request]
@@ -20,7 +24,7 @@ jobs:
 
     services:
       postgres:
-        image: ${{ matrix.database == 'pgsql' && 'postgres:15' || '' }}
+        image: ${{ matrix.database == 'pgsql' && format('postgres:{0}', matrix.pgversion) || '' }}
         env:
           POSTGRES_USER: 'postgres'
           POSTGRES_HOST_AUTH_METHOD: 'trust'
@@ -29,7 +33,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
 
       mariadb:
-        image: ${{ matrix.database == 'mariadb' && 'mariadb:10.11' || '' }}
+        image: ${{ matrix.database == 'mariadb' && format('mariadb:{0}', matrix.mariaversion) || '' }}
         env:
           MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
           MYSQL_CHARACTER_SET_SERVER: "utf8mb4"
@@ -41,9 +45,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.2', '8.4']
-        moodle-branch: ['MOODLE_501_STABLE']
+        moodle-branch: ['MOODLE_500_STABLE', 'MOODLE_501_STABLE', 'MOODLE_502_STABLE', 'MOODLE_503_STABLE']
         database: [pgsql, mariadb]
+        php: ['8.2', '8.3', '8.4']
+        exclude:
+          # 5.2 and 5.3 need PHP 8.3; 5.0 and 5.1 run on the lowest and highest.
+          - {moodle-branch: MOODLE_500_STABLE, php: '8.3'}
+          - {moodle-branch: MOODLE_501_STABLE, php: '8.3'}
+          - {moodle-branch: MOODLE_502_STABLE, php: '8.2'}
+          - {moodle-branch: MOODLE_503_STABLE, php: '8.2'}
+        include:
+          - {moodle-branch: MOODLE_500_STABLE, pgversion: '15', mariaversion: '10.11'}
+          - {moodle-branch: MOODLE_501_STABLE, pgversion: '15', mariaversion: '10.11'}
+          - {moodle-branch: MOODLE_502_STABLE, pgversion: '16', mariaversion: '10.11'}
+          - {moodle-branch: MOODLE_503_STABLE, pgversion: '17', mariaversion: '11.4'}
 
     steps:
       - name: Check out repository code

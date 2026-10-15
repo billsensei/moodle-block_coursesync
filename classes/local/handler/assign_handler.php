@@ -213,7 +213,7 @@ class assign_handler extends activity_handler {
             $this->restore_plugin_config((int) $instanceid, $cmid, $payload);
         } catch (\Throwable $e) {
             require_once($CFG->dirroot . '/course/lib.php');
-            \course_delete_module($cm->id, false);
+            \block_coursesync\local\course_modules::delete((int) $cm->id);
 
             throw new \moodle_exception('errorcreatefailed', 'block_coursesync');
         }
@@ -238,13 +238,17 @@ class assign_handler extends activity_handler {
      * @return string
      */
     protected static function clean_reopen_method(string $method): string {
+        // Moodle 5.2 dropped the "none" method; "manual" is the nearest thing there.
+        $none = defined('ASSIGN_ATTEMPT_REOPEN_METHOD_NONE')
+            ? ASSIGN_ATTEMPT_REOPEN_METHOD_NONE
+            : ASSIGN_ATTEMPT_REOPEN_METHOD_MANUAL;
         $known = [
-            ASSIGN_ATTEMPT_REOPEN_METHOD_NONE,
+            $none,
             ASSIGN_ATTEMPT_REOPEN_METHOD_MANUAL,
             ASSIGN_ATTEMPT_REOPEN_METHOD_UNTILPASS,
         ];
 
-        return in_array($method, $known, true) ? $method : ASSIGN_ATTEMPT_REOPEN_METHOD_NONE;
+        return in_array($method, $known, true) ? $method : $none;
     }
 
     /**

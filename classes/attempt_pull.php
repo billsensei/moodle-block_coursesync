@@ -349,6 +349,20 @@ class attempt_pull {
     }
 
     /**
+     * The question type of one slot from qbank_helper::get_question_structure(),
+     * with "random" for a random slot.
+     *
+     * Moodle 5.2 stopped giving a random slot the type "random" and flags it
+     * with ->random instead, leaving the type null.
+     *
+     * @param \stdClass $slot
+     * @return string
+     */
+    public static function slot_qtype(\stdClass $slot): string {
+        return !empty($slot->random) ? 'random' : (string) $slot->qtype;
+    }
+
+    /**
      * Why a quiz here cannot take the source's attempts, if it cannot.
      *
      * An attempt's marks only mean something here if every slot is the same
@@ -379,7 +393,7 @@ class attempt_pull {
                 !$slot
                 || grade_floats_different((float) $slot->maxmark, $remoteslot->maxmark)
                 || $slot->qtype === 'missingtype'
-                || $slot->qtype !== $remoteslot->qtype
+                || self::slot_qtype($slot) !== $remoteslot->qtype
             ) {
                 return 'attemptskipchanged';
             }

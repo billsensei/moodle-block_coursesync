@@ -26,6 +26,7 @@ use block_coursesync\external\get_marks;
 use block_coursesync\external\get_submission_file;
 use block_coursesync\external\get_submissions;
 use block_coursesync\external\get_modified_activities;
+use block_coursesync\external\ping;
 use block_coursesync\local\handler\handler_registry;
 use core\http_client;
 use GuzzleHttp\Promise\Create;
@@ -132,6 +133,14 @@ trait source_on_this_site {
 
         if ($function === 'block_coursesync_get_activity') {
             return get_activity::execute((int) $params['cmid']);
+        }
+
+        if ($function === 'block_coursesync_ping') {
+            return ping::execute();
+        }
+
+        if ($function !== 'block_coursesync_get_activity_file') {
+            throw new \coding_exception('The fake source does not answer ' . $function);
         }
 
         $this->requested[] = ($params['component'] ?? '') . '/' . $params['filearea'] . '/' . $params['filename'];

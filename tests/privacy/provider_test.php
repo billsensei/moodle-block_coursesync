@@ -489,6 +489,7 @@ final class provider_test extends provider_testcase {
             'block_coursesync_grade' => [
                 'fields' => [
                     'gradeitemid' => 'gradeitem',
+                    'itemnumber' => 'itemnumber',
                     'finalgrade' => 'finalgrade',
                     'timepulled' => 'timepulled',
                     'remotetime' => 'timechangedonothersite',
@@ -586,7 +587,7 @@ final class provider_test extends provider_testcase {
         foreach (provider::get_metadata($collection)->get_collection() as $item) {
             if ($item->get_name() === 'block_coursesync_grade') {
                 $this->assertEqualsCanonicalizing(
-                    ['userid', 'gradeitemid', 'remotecmid', 'finalgrade', 'feedbackhash', 'remotetime', 'timepulled'],
+                    ['userid', 'gradeitemid', 'itemnumber', 'remotecmid', 'finalgrade', 'feedbackhash', 'remotetime', 'timepulled'],
                     array_keys($item->get_privacy_fields())
                 );
 

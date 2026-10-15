@@ -112,6 +112,7 @@ class provider implements
         $collection->add_database_table('block_coursesync_grade', [
             'userid' => 'privacy:metadata:grade:userid',
             'gradeitemid' => 'privacy:metadata:grade:gradeitemid',
+            'itemnumber' => 'privacy:metadata:grade:itemnumber',
             'remotecmid' => 'privacy:metadata:grade:remotecmid',
             'finalgrade' => 'privacy:metadata:grade:finalgrade',
             'feedbackhash' => 'privacy:metadata:grade:feedbackhash',
@@ -337,6 +338,7 @@ class provider implements
         foreach ($rows as $row) {
             $grades[] = [
                 'gradeitem' => $row->itemname !== null ? format_string($row->itemname, true, ['context' => $context]) : '',
+                'itemnumber' => (int) $row->itemnumber,
                 'finalgrade' => $row->finalgrade,
                 'timepulled' => transform::datetime($row->timepulled),
                 'timechangedonothersite' => $row->remotetime ? transform::datetime($row->remotetime) : '',

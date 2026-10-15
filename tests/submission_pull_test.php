@@ -456,7 +456,7 @@ final class submission_pull_test extends advanced_testcase {
             'idnumber' => 'coursesync-' . $this->there->cmid,
         ]);
         // Two copies claim the same identity; only this one is looked at.
-        course_delete_module($this->here->cmid, true);
+        \block_coursesync\local\course_modules::delete((int) $this->here->cmid, true);
         $this->here = $draftsonly;
         $this->hand_in('from the other site');
         $this->hand_in_here('half finished');
@@ -902,7 +902,7 @@ final class submission_pull_test extends advanced_testcase {
      * An assignment the source no longer has is skipped with a reason.
      */
     public function test_an_assignment_gone_from_the_source(): void {
-        course_delete_module($this->there->cmid, true);
+        \block_coursesync\local\course_modules::delete((int) $this->there->cmid, true);
 
         $entry = $this->only_entry($this->pull());
 

@@ -77,7 +77,7 @@ class observer {
     }
 
     /**
-     * A user has been deleted: forget what was pulled for them.
+     * A user has been deleted: forget what was pulled for them, and the runs they started.
      *
      * @param \core\event\user_deleted $event
      * @return void
@@ -87,6 +87,7 @@ class observer {
 
         $userid = (int) $event->objectid;
 
+        $DB->delete_records('block_coursesync_run', ['userid' => $userid]);
         $DB->delete_records('block_coursesync_grade', ['userid' => $userid]);
         $DB->delete_records('block_coursesync_attempt', ['userid' => $userid]);
         $DB->delete_records('block_coursesync_submission', ['userid' => $userid]);

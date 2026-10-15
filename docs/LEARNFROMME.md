@@ -4552,3 +4552,85 @@ source and build had to change together (a sed over every file that held the tex
 a search of only `*.php` would not. The audit's "subreasonnoplugins / subreasonnotassign look unused" was a false
 alarm: `submission_pull.php` builds the key as `'subreason' . $item->reason`, so they are used.
 
+
+## Phase 84 - Checking that manual grade items pull (no code change), 2026-10-15
+
+A tester reported manual items were not pulled by Pull Grades. Checked on Docker A/B, both at build 2026101505
+(v1.24.4-beta), by CLI script calling `grade_pull::preview()` / `run()` as admin (not through the browser page).
+- **Works.** On B's REMOTE1, a new manual item in its own category with one student graded and feedback came
+  across to A's CLAUDEFRESH: preview "add" and created nothing, the run created the item (idnumber
+  `coursesync-manual-21`, range 100) and wrote 77 with the feedback. The three earlier items still read "same"/"conflict".
+- **Silent cases, all by design but easy to read as "not pulled".** (1) A manual item nobody has graded yet sends no
+  grades, and `pull_manual_items()` skips an item with no grades, so it is not listed and not created. (2) A destination
+  course with no gradable students returns early with success and no entries (CLAUDEBTNS on A: no students). (3) A source
+  running before v1.24.0 ignores the manual-items request and answers with activity grades only; nothing says so.
+  (4) A manual item already here is not paired by name; only `coursesync-manual-<id>` items are.
+- **Resolved.** The tester's site was running an older version than v1.24.0; with the current version it works. Nothing in
+  the plugin told them: a source that is too old looks the same as a course with no manual items (a possible improvement:
+  have ping report the plugin version and say so).
+Test items "Verify empty" and "Verify in category" are left on B (and the second on A).
+
+## Phase 85 - Pull Grades says when the source is too old for manual items (v1.24.5-beta, build 2026101506), 2026-10-15
+
+Follows Phase 84: a tester saw no manual items because their source ran a build before v1.24.0, and nothing said so.
+`grade_pull::pull()` now, only when no manual item came back, calls `remote_client::ping()` and adds the note
+`manualunavailable` if the source's `pluginversion` is below `MANUAL_MIN_VERSION` (2026101501). Ping already
+returned `pluginversion`; a source too old to report one reads as 0 and is also noted. A failed ping adds nothing.
+The note is shown by grades.php's existing notes loop (the same one that carries `attemptsunavailable`), which runs
+before the "nothing to pull" message, so it appears when there are no entries too.
+**Trap.** Every fake source in grade_pull_test.php records its calls and several tests count them, so the new ping
+broke `test_a_source_that_does_not_know_the_student_list` (3 calls, not 2). Pings are answered separately and not
+recorded, in `source()` and in that test's own mock; `$pingbody` defaults to a current source so the other tests
+are unchanged. Proof: with the version comparison disabled, the two "noted" tests fail and nothing else.
+**Evidence.** Full suite 618 tests, OK (same 9 warnings and 1 skip as before). phpcs not run: no codechecker in
+the local CI install, so CI is the first run of it. Not tried on Docker A/B (both sources are current, so the note
+would not show); the note only shows against a source older than v1.24.0.
+
+
+## Phase 86 - Moodle 5.0 to 5.3 (v1.24.5-beta, build 2026101506), 2026-10-15
+
+The plugin was declared for 5.1 only. Three new Docker sites were added to the compose project
+(`web-d` 5.0 on 8446 with PHP 8.2, `web-e` 5.2 on 8447 and `web-f` 5.3 on 8448 with PHP 8.3, each with
+its own Postgres and PHPUnit data, checkouts in `moodle5.0`, `moodle5.2`, `moodle5.3`), and
+`requires`/`supported` widened to 2025041400 / [500, 503].
+
+**What the first PHPUnit run found** (618 tests; 5.0 was clean, 5.2 and 5.3 had 4 errors and 19 failures, identical on both):
+
+- `ASSIGN_ATTEMPT_REOPEN_METHOD_NONE` no longer exists in 5.2. Four assign tests died with "Undefined constant".
+  Fixed by taking the constant only when defined, and mapping an unknown method to "manual" otherwise.
+- 5.2 reports a random quiz slot with `qtype` null and `->random` true; 5.0 and 5.1 say `'random'`. Every attempt
+  test failed with `attemptskipchanged` because slot 4 (the random one) never matched. Nothing in the error pointed
+  at it: finding it took logging both slot structures from inside `quiz_problem()`. The export side had the same
+  bug, so a 5.2 source would have sent an empty type to any destination. `attempt_pull::slot_qtype()` now serves both.
+- `course_delete_module()` and `moveto_module()` log a deprecation on 5.2+ (15 PHPUnit notices). They are called from
+  production code, not just tests, so they go through `local\course_modules`, guarded by
+  `method_exists(cmactions::class, 'move_before')`. After that every site reports the same 2 notices.
+
+**Trap:** the green 5.0 run said nothing about 5.2. The `(string) $slot->qtype` cast hid the null.
+
+**Live check.** `make_source.php` builds a COMPATSRC course (page, forum, assign, label, quiz with two questions and a
+random slot) and a sync token; `pull_from.php` pulls it into a new course. All 12 pairs of 5.0 / 5.1 / 5.2 / 5.3 as
+source and destination (same version excluded) created 5 activities, no failures, 3 quiz slots with marks 2, 3, 1.
+Traps on the way: a peer on another port needs `curlsecurityallowedport` and an empty `curlsecurityblockedhosts`;
+the data generator in a CLI script needs `vendor/autoload.php` required explicitly on 5.0; `add_random_questions()`
+takes (page, number, filter), and my first call had the first two swapped and silently added nothing;
+`admin/` is under `public/` on 5.1+ but not on 5.0.
+
+**CI:** matrix is now MOODLE_500 to 503; 5.0/5.1 run PHP 8.2 and 8.4, 5.2/5.3 run 8.3 and 8.4, with Postgres
+15/15/16/17 and MariaDB 10.11/10.11/10.11/11.4 from each branch's environment.xml. Not run yet: it needs a push.
+
+**Phase 86 follow-up - the PHPUnit warnings and notices.** The 9 warnings ("Undefined array key filearea") and 2 notices
+were Phase 85's doing, not 5.2's: the fake source in `tests/local/source_on_this_site.php` answered any function it did
+not know as `get_activity_file`, so the new ping made by Pull Grades was read as a file request with no parameters
+(and the real error, "offset must not be negative", was only logged as debugging). It now answers ping with the real
+`ping::execute()` and throws on any other unknown function, so a new call can no longer be mistaken for a file read.
+The last notice was `test_a_failed_version_check_adds_no_note` causing an expected `debugging()`; it now asserts it.
+Result on 5.0, 5.1, 5.2 and 5.3 with `--fail-on-warning --fail-on-notice`: 618 tests, 0 warnings, 0 notices, 1 skipped.
+Trap: the 5.1 CI had passed with these because the ping did not exist yet when it last ran.
+
+**Phase 86 follow-up - privacy audit.** `/moodle-privacy-audit` found two small gaps. (1) `block_coursesync_grade.itemnumber`
+was neither declared nor exported; the existing test `test_the_export_matches_what_is_declared` insists a declared field is also
+exported, so declaring it failed that test until the export carried it too. (2) `observer::user_deleted` kept
+`block_coursesync_run` rows, and the old observer test asserted "the history of runs stays" with a run started by the
+deleted student themselves. That was a choice, now reversed: a run records who started it, so it goes with the user. The test
+now has a second user's run and checks it survives. Without the observer line the test fails (checked).

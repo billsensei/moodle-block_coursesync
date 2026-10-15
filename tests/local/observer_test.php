@@ -255,10 +255,20 @@ final class observer_test extends \advanced_testcase {
 
     /**
      * Deleting a user forgets what was pulled for them, in every course, and
-     * nobody else's; the history of runs stays.
+     * nobody else's, and the runs they started; another user's runs stay.
      */
     public function test_deleting_a_user_forgets_what_was_pulled_for_them(): void {
         global $DB;
+
+        $DB->insert_record('block_coursesync_run', (object) [
+            'blockinstanceid' => 1,
+            'courseid' => $this->course->id,
+            'userid' => $this->classmate->id,
+            'kind' => 'activities',
+            'timestarted' => 1750000100,
+            'timefinished' => 1750000101,
+            'status' => 'ok',
+        ]);
 
         delete_user($this->student);
 
@@ -269,6 +279,7 @@ final class observer_test extends \advanced_testcase {
             $this->assertSame(2, $DB->count_records($table, ['userid' => $this->classmate->id]), $table);
         }
 
-        $this->assertSame(1, $this->rows('block_coursesync_run'));
+        $this->assertSame(0, $DB->count_records('block_coursesync_run', ['userid' => $this->student->id]));
+        $this->assertSame(1, $DB->count_records('block_coursesync_run', ['userid' => $this->classmate->id]));
     }
 }

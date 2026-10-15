@@ -754,7 +754,7 @@ class syncer {
                 copy_update::set_identity((int) $cm->id, $idnumber);
 
                 // Last, so that nothing after it can fail and leave neither copy.
-                \course_delete_module($existingcmid);
+                local\course_modules::delete((int) $existingcmid);
             }
         } catch (\Throwable $e) {
             debugging('block_coursesync: could not update ' . $payload->modname . ' from remote cmid '
@@ -1065,7 +1065,7 @@ class syncer {
         require_once($CFG->dirroot . '/course/lib.php');
 
         try {
-            \course_delete_module($cm->id, false);
+            local\course_modules::delete((int) $cm->id);
         } catch (\Throwable $e) {
             debugging(
                 'block_coursesync: could not clean up a failed ' . $modname . ': ' . $e->getMessage(),

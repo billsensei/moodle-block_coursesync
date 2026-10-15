@@ -163,7 +163,7 @@ class get_quiz_attempts extends external_api {
                 'slot' => (int) $slot->slot,
                 'page' => (int) $slot->page,
                 'maxmark' => (float) $slot->maxmark,
-                'qtype' => (string) $slot->qtype,
+                'qtype' => \block_coursesync\attempt_pull::slot_qtype($slot),
             ];
         }
 

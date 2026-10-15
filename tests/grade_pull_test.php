@@ -53,6 +53,9 @@ final class grade_pull_test extends advanced_testcase {
     /** @var array The grade items the fake source reports. */
     protected array $sourceitems = [];
 
+    /** @var array What the fake source's ping answers: a source that is new enough. */
+    protected array $pingbody = ['status' => true, 'sitename' => 'Source', 'release' => '5.1', 'pluginversion' => 2026101501];
+
     /** @var array[] The parameters of every call the fake source received. */
     protected array $calls = [];
 
@@ -121,6 +124,12 @@ final class grade_pull_test extends advanced_testcase {
     protected function source(): http_client {
         return new http_client(['mock' => function (RequestInterface $request) {
             parse_str((string) $request->getBody(), $params);
+
+            // A ping is only the version check, so it is not one of the calls under test.
+            if ($params['wsfunction'] === 'block_coursesync_ping') {
+                return Create::promiseFor(new Response(200, [], json_encode($this->pingbody)));
+            }
+
             $this->calls[] = $params;
 
             $body = $params['wsfunction'] === 'block_coursesync_get_quiz_attempts'
@@ -303,6 +312,65 @@ final class grade_pull_test extends advanced_testcase {
         $this->assertSame([], $result->entries);
         $this->assertCount(1, $this->calls);
         $this->assertSame(['0'], $this->calls[0]['cmids']);
+    }
+
+    /**
+     * A source from before manual items answers with no manual item, which
+     * looks like a course with none, so the pull says why.
+     */
+    public function test_a_source_too_old_for_manual_items_is_noted(): void {
+        $this->pingbody['pluginversion'] = 2026101401;
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertTrue($result->success);
+        $this->assertSame(['manualunavailable'], $result->notes);
+    }
+
+    /**
+     * A source old enough not to report a version at all is just as old.
+     */
+    public function test_a_source_that_reports_no_version_is_noted(): void {
+        $this->pingbody = ['status' => true, 'sitename' => 'Source', 'release' => '5.1'];
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertSame(['manualunavailable'], $result->notes);
+    }
+
+    /**
+     * A new enough source with no manual items has nothing to explain.
+     */
+    public function test_a_current_source_with_no_manual_items_is_not_noted(): void {
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertSame([], $result->notes);
+    }
+
+    /**
+     * Manual items that did come prove the source can send them, so no
+     * version check is made.
+     */
+    public function test_a_source_that_sent_manual_items_is_not_noted_even_if_it_says_it_is_old(): void {
+        $this->pingbody['pluginversion'] = 1;
+        $this->sourceitems = [$this->manual_item(55, [$this->remote_grade('sam', 8)], ['grademax' => 10])];
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertSame([], $result->notes);
+    }
+
+    /**
+     * A ping that fails says nothing: the pull itself worked.
+     */
+    public function test_a_failed_version_check_adds_no_note(): void {
+        $this->pingbody = ['exception' => 'moodle_exception', 'errorcode' => 'x'];
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source());
+
+        $this->assertDebuggingCalled();
+        $this->assertTrue($result->success);
+        $this->assertSame([], $result->notes);
     }
 
     /**
@@ -958,6 +1026,11 @@ final class grade_pull_test extends advanced_testcase {
 
         $older = new http_client(['mock' => function (RequestInterface $request) {
             parse_str((string) $request->getBody(), $params);
+
+            if ($params['wsfunction'] === 'block_coursesync_ping') {
+                return Create::promiseFor(new Response(200, [], json_encode($this->pingbody)));
+            }
+
             $this->calls[] = $params;
 
             if (isset($params['usernames'])) {

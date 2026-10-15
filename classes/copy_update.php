@@ -233,7 +233,7 @@ class copy_update {
         // Moving needs the module as modinfo knows it (its type, current
         // section and visibility), not just its row.
         \rebuild_course_cache($old->course, true);
-        \moveto_module(get_fast_modinfo($old->course)->get_cm($new->id), $section, $beforemod);
+        local\course_modules::move(get_fast_modinfo($old->course)->get_cm($new->id), $section, $beforemod ?: null);
 
         $update = (object) ['id' => $new->id];
 
