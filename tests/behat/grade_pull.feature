@@ -56,7 +56,7 @@ Feature: Pulling students' grades from the other site
     And Course Sync grade pulling is switched on
     And "student2" has a grade of "55" in the synced "Essay one" in course "DEST"
     When I am on the "Destination Course" course page logged in as "teacher1"
-    And I follow "Pull grades"
+    And I follow "Pull Grades"
     Then I should see "Grades to pull"
     And I should see "Sam Student" in the "coursesync-grades-written" "table"
     And I should see "80.00" in the "Sam Student" "table_row"
@@ -83,17 +83,17 @@ Feature: Pulling students' grades from the other site
   Scenario: The button is only offered where grade pulling is switched on and allowed
     Given Course Sync grade sharing is switched on
     When I am on the "Destination Course" course page logged in as "teacher1"
-    Then I should not see "Pull grades" in the "Course Sync" "block"
+    Then I should not see "Pull Grades" in the "Course Sync" "block"
     And I log out
 
     Given Course Sync grade pulling is switched on
     When I am on the "Destination Course" course page logged in as "teacher1"
-    Then I should see "Pull grades" in the "Course Sync" "block"
+    Then I should see "Pull Grades" in the "Course Sync" "block"
     And I log out
 
     # A non-editing teacher can edit grades but may not pull them.
     When I am on the "Destination Course" course page logged in as "marker1"
-    Then I should not see "Pull grades"
+    Then I should not see "Pull Grades"
 
   Scenario: The other site not sharing grades is explained
     Given Course Sync grade pulling is switched on

@@ -53,7 +53,7 @@ Feature: Pulling teachers' marks and feedback from the other site
     And "student2" was marked 70 with "Needs sources" in "Essay one" of "SRC"
     And "student2" was marked 55 with "My own view" in "Essay one" of "DEST"
     When I am on the "Destination Course" course page logged in as "teacher1"
-    And I follow "Pull marks and feedback"
+    And I follow "Pull Marks and Feedback"
     Then I should see "Marks to pull"
     And I should see "Sam Student" in the "coursesync-marks-written" "table"
     And I should see "Kept as it was"
@@ -107,17 +107,17 @@ Feature: Pulling teachers' marks and feedback from the other site
   Scenario: The button is only offered where marks pulling is switched on and allowed
     Given Course Sync marks sharing is switched on
     When I am on the "Destination Course" course page logged in as "teacher1"
-    Then I should not see "Pull marks and feedback" in the "Course Sync" "block"
+    Then I should not see "Pull Marks and Feedback" in the "Course Sync" "block"
     And I log out
 
     Given Course Sync marks pulling is switched on
     When I am on the "Destination Course" course page logged in as "teacher1"
-    Then I should see "Pull marks and feedback" in the "Course Sync" "block"
+    Then I should see "Pull Marks and Feedback" in the "Course Sync" "block"
     And I log out
 
     # A non-editing teacher may not pull marks.
     When I am on the "Destination Course" course page logged in as "marker1"
-    Then I should not see "Pull marks and feedback"
+    Then I should not see "Pull Marks and Feedback"
 
   Scenario: Sharing grades and submissions does not share marks
     Given Course Sync grade sharing is switched on

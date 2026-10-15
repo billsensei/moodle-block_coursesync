@@ -252,30 +252,11 @@ class block_coursesync extends block_base {
                 get_string('previewchanges', 'block_coursesync'),
                 ['class' => 'btn btn-secondary btn-sm']
             ));
-
-            $historyurl = new moodle_url('/blocks/coursesync/history.php', $params);
-            $out .= html_writer::tag('p', html_writer::link(
-                $historyurl,
-                get_string('historyview', 'block_coursesync'),
-                ['class' => 'btn btn-secondary btn-sm']
-            ));
         }
 
-        // Offered only where it can work - grade pulling switched on for the
-        // site and this person allowed to do it here. The page checks again.
-        if (\block_coursesync\grade_pull::check_allowed($this->get_course_id()) === null) {
-            $gradesurl = new moodle_url('/blocks/coursesync/grades.php', [
-                'instanceid' => $this->instance->id,
-                'courseid' => $this->get_course_id(),
-            ]);
-            $out .= html_writer::tag('p', html_writer::link(
-                $gradesurl,
-                get_string('gradespull', 'block_coursesync'),
-                ['class' => 'btn btn-secondary btn-sm']
-            ));
-        }
-
-        // The same for submissions, which have their own switch and permission.
+        // Submissions, marks and grades are each offered only where they can
+        // work: their own site switch on and this person allowed to do it here.
+        // Each page checks again.
         if (\block_coursesync\submission_pull::check_allowed($this->get_course_id()) === null) {
             $submissionsurl = new moodle_url('/blocks/coursesync/submissions.php', [
                 'instanceid' => $this->instance->id,
@@ -288,7 +269,6 @@ class block_coursesync extends block_base {
             ));
         }
 
-        // And for marks and written feedback, with theirs.
         if (\block_coursesync\marks_pull::check_allowed($this->get_course_id()) === null) {
             $marksurl = new moodle_url('/blocks/coursesync/marks.php', [
                 'instanceid' => $this->instance->id,
@@ -297,6 +277,27 @@ class block_coursesync extends block_base {
             $out .= html_writer::tag('p', html_writer::link(
                 $marksurl,
                 get_string('markspull', 'block_coursesync'),
+                ['class' => 'btn btn-secondary btn-sm']
+            ));
+        }
+
+        if (\block_coursesync\grade_pull::check_allowed($this->get_course_id()) === null) {
+            $gradesurl = new moodle_url('/blocks/coursesync/grades.php', [
+                'instanceid' => $this->instance->id,
+                'courseid' => $this->get_course_id(),
+            ]);
+            $out .= html_writer::tag('p', html_writer::link(
+                $gradesurl,
+                get_string('gradespull', 'block_coursesync'),
+                ['class' => 'btn btn-secondary btn-sm']
+            ));
+        }
+
+        if ($cansync) {
+            $historyurl = new moodle_url('/blocks/coursesync/history.php', $params);
+            $out .= html_writer::tag('p', html_writer::link(
+                $historyurl,
+                get_string('historyview', 'block_coursesync'),
                 ['class' => 'btn btn-secondary btn-sm']
             ));
         }

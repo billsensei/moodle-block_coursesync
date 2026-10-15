@@ -26,12 +26,12 @@ Feature: Mapping a remote course
   Scenario: The preview says so when no course has been mapped
     Given I am on the "C1" "block_coursesync > Preview" page logged in as "teacher1"
     Then I should see "No course on the other site has been chosen yet"
-    And I should see "Manage the connection"
+    And I should see "Manage the Connections"
 
   Scenario: A student is not offered the preview at all
     Given I am on the "Course 1" course page logged in as "student1"
     Then I should see "Course Sync" in the "Course Sync" "block"
-    And I should not see "See changes" in the "Course Sync" "block"
+    And I should not see "See Changes" in the "Course Sync" "block"
     And I should not see "Set up the connection" in the "Course Sync" "block"
 
   Scenario: A course cannot be mapped before a token exists

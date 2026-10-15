@@ -61,7 +61,7 @@ Feature: Pulling students' assignment submissions from the other site
     And Course Sync submission pulling is switched on
     And "student2" has handed in "Sue's own words" to the synced "Essay one" in course "DEST"
     When I am on the "Destination Course" course page logged in as "teacher1"
-    And I follow "Pull submissions"
+    And I follow "Pull Submissions"
     Then I should see "Submissions to pull"
     And I should see "Sam Student" in the "coursesync-submissions-written" "table"
     And I should see "Kept as it was"
@@ -107,17 +107,17 @@ Feature: Pulling students' assignment submissions from the other site
   Scenario: The button is only offered where submission pulling is switched on and allowed
     Given Course Sync submission sharing is switched on
     When I am on the "Destination Course" course page logged in as "teacher1"
-    Then I should not see "Pull submissions" in the "Course Sync" "block"
+    Then I should not see "Pull Submissions" in the "Course Sync" "block"
     And I log out
 
     Given Course Sync submission pulling is switched on
     When I am on the "Destination Course" course page logged in as "teacher1"
-    Then I should see "Pull submissions" in the "Course Sync" "block"
+    Then I should see "Pull Submissions" in the "Course Sync" "block"
     And I log out
 
     # A non-editing teacher may not pull submissions.
     When I am on the "Destination Course" course page logged in as "marker1"
-    Then I should not see "Pull submissions"
+    Then I should not see "Pull Submissions"
 
   Scenario: Switching on grade sharing alone does not share submissions
     Given Course Sync grade sharing is switched on
