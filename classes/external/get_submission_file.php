@@ -41,7 +41,7 @@ use core_external\external_value;
  * cannot read anything the description function would not have listed.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class get_submission_file extends external_api {

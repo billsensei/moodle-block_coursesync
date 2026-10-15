@@ -20,7 +20,7 @@ namespace block_coursesync;
  * The outcome of fetching one activity's full payload from the remote site.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class activity_result {

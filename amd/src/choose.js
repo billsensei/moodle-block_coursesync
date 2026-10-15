@@ -25,7 +25,7 @@
  * lock) - and it is that refusal the browser would then show.
  *
  * @module     block_coursesync/choose
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

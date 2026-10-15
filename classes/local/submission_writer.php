@@ -32,7 +32,7 @@ use core\http_client;
  * notifications and fire events for something the student did not just do.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class submission_writer {

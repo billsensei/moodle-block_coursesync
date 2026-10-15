@@ -27,7 +27,7 @@ use block_coursesync\local\submissions;
  * must go through format_text(), as mod_assign does.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class submissions_result {

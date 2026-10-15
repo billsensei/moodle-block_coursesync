@@ -22,7 +22,7 @@ namespace block_coursesync;
  * Metadata only; the content is fetched separately (activity_payload).
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class activity {

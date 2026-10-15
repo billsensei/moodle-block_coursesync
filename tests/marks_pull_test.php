@@ -42,7 +42,7 @@ require_once(__DIR__ . '/local/mark_fixtures.php');
  * writing are exercised together.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(marks_pull::class)]

@@ -31,7 +31,7 @@ use block_coursesync\activity_payload;
  * written after create_from_remote_data() has returned.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class resource_handler extends activity_handler {

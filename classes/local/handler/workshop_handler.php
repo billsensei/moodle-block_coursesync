@@ -36,7 +36,7 @@ use block_coursesync\activity_payload;
  * refers to its criterion by id, and that id is this site's, not the source's.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class workshop_handler extends activity_handler {

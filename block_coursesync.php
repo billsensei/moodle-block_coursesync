@@ -24,7 +24,7 @@ use core\output\html_writer;
  * the setup wizard, the preview, the sync page and the history.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class block_coursesync extends block_base {

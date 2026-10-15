@@ -26,7 +26,7 @@ use core\encryption;
  * token is never written to the database, a log, or an exception message.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class connection {

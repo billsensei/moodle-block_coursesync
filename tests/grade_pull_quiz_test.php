@@ -32,7 +32,7 @@ require_once(__DIR__ . '/local/quiz_on_the_source.php');
  * source's attempts come into it.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(grade_pull::class)]

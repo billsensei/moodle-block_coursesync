@@ -37,7 +37,7 @@ require_once(__DIR__ . '/local/attempt_pull_clashing.php');
  * handler, so slots, marks and the random slot are what a sync makes.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(attempt_pull::class)]

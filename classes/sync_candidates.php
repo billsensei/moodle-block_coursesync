@@ -56,7 +56,7 @@ namespace block_coursesync;
  * detection a sync starts with - and reads the local course. It creates nothing.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class sync_candidates {

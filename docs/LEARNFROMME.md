@@ -4541,3 +4541,14 @@ passed. phpcs was not run (no binary in the CI install's vendor/bin).
 them: no `db/uninstall.php` on purpose (pulled data is real course data); web-service API descriptions are
 English literals, as in core.
 
+## Phase 83 - Pull Grades heading and the copyright holder (v1.24.4-beta, build 2026101505), 2026-10-15
+
+`gradestitle` ('Pull Grades') is the page title, breadcrumb and heading of grades.php; it now matches the button.
+"Pull grades and attempts (N)" was left as it was. The 90-odd file headers said `@copyright 2026 Course Sync project`
+(a placeholder, flagged by the release preflight); all now say `2026 Bill White`, including `amd/src/choose.js`
+and its `amd/build` output.
+**Trap.** `amd/build/choose.min.js` and its `.map` carry the header too, and CI rebuilds them and compares, so
+source and build had to change together (a sed over every file that held the text). `git grep` finds the lot, which
+a search of only `*.php` would not. The audit's "subreasonnoplugins / subreasonnotassign look unused" was a false
+alarm: `submission_pull.php` builds the key as `'subreason' . $item->reason`, so they are used.
+

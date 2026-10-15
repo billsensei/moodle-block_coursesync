@@ -33,7 +33,7 @@ use core_external\util as external_util;
  * block_coursesync\local\handler\activity_handler for how a type plugs in.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class get_activity extends external_api {

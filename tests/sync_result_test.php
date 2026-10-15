@@ -23,7 +23,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * Tests for how a run's notes are turned into text for a page.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(sync_result::class)]

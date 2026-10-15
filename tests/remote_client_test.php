@@ -31,7 +31,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
  * verification and Moodle's outgoing request rules honestly.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(remote_client::class)]

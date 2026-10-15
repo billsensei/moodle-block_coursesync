@@ -41,7 +41,7 @@ use core\http_client;
  * grade sync leaves a student alone once a marks pull has written their mark.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class marks_pull {

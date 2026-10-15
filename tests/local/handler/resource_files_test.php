@@ -26,7 +26,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * Tests for carrying a resource's uploaded files between sites.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(resource_handler::class)]

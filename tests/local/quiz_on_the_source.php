@@ -34,7 +34,7 @@ require_once(__DIR__ . '/source_on_this_site.php');
  * shortanswer (2 marks), shortanswer (3), essay (5) and a random true/false (1).
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 trait quiz_on_the_source {

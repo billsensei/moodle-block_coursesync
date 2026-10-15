@@ -35,7 +35,7 @@ use block_coursesync\activity_payload;
  * way in exactly as an activity description is.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class book_handler extends activity_handler {

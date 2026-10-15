@@ -60,7 +60,7 @@ use core_privacy\local\request\writer;
  * configuration rather than anything about a person, and is not reported here.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class provider implements

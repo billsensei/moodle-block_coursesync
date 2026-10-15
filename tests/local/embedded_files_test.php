@@ -41,7 +41,7 @@ require_once(__DIR__ . '/source_on_this_site.php');
  * all exercised together, not one at a time.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(file_sync::class)]

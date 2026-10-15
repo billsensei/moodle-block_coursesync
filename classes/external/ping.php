@@ -29,7 +29,7 @@ use core_external\external_value;
  * compatible versions of the plugin.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class ping extends external_api {

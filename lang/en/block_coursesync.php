@@ -18,7 +18,7 @@
  * Language strings for block_coursesync.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -186,7 +186,7 @@ $string['gradessectiongrades'] = 'Gradebook grades';
 $string['gradessubmit'] = 'Pull the grades ({$a})';
 $string['gradessubmitall'] = 'Pull grades and attempts ({$a})';
 $string['gradessummaryheading'] = 'By activity';
-$string['gradestitle'] = 'Pull grades';
+$string['gradestitle'] = 'Pull Grades';
 $string['historyconflicts'] = 'Flagged for review';
 $string['historycounts'] = '{$a->pulled} pulled, {$a->conflicts} flagged';
 $string['historyempty'] = 'This block has not run a sync yet.';

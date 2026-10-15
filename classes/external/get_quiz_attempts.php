@@ -40,7 +40,7 @@ use mod_quiz\question\bank\qbank_helper;
  * whether its copy of the quiz still lines up before building anything.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class get_quiz_attempts extends external_api {

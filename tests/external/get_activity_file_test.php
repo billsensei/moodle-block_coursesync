@@ -24,7 +24,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * Tests for serving a file a piece at a time.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(get_activity_file::class)]

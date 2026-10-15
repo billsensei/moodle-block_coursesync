@@ -25,7 +25,7 @@ require_once($CFG->libdir . '/formslib.php');
  * Step 2 of the setup wizard: paste the token generated on the remote site.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class token_form extends \moodleform {

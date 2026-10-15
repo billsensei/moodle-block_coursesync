@@ -43,7 +43,7 @@ use block_coursesync\activity_payload;
  * is off, the room is refused rather than created where it cannot run.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class bigbluebuttonbn_handler extends activity_handler {

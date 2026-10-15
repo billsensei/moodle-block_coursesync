@@ -27,7 +27,7 @@ require_once($CFG->libdir . '/formslib.php');
  * Step 1 of the setup wizard: where is the remote site?
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class remote_url_form extends \moodleform {

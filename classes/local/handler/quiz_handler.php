@@ -59,7 +59,7 @@ use mod_quiz\question\display_options;
  * are taken apart into those checkboxes here; see review_checkboxes().
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class quiz_handler extends activity_handler {

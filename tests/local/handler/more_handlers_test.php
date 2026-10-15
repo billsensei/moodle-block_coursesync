@@ -32,7 +32,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * references were translated rather than copied.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(choice_handler::class)]

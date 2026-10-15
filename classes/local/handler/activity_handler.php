@@ -59,7 +59,7 @@ use block_coursesync\activity_payload;
  * a payload may come from a site running an older version of this plugin.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 abstract class activity_handler {

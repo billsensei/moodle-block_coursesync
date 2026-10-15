@@ -18,15 +18,15 @@
  * Version details for block_coursesync.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'block_coursesync';
-$plugin->version = 2026101504;
+$plugin->version = 2026101505;
 $plugin->requires = 2025100600;
 $plugin->supported = [501, 501];
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = 'v1.24.3-beta';
+$plugin->release = 'v1.24.4-beta';

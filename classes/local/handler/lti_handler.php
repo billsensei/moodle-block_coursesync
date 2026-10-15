@@ -41,7 +41,7 @@ use block_coursesync\activity_payload;
  * than a site tool cannot work without them, so it is refused too.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class lti_handler extends activity_handler {

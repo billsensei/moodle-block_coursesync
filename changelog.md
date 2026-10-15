@@ -8,7 +8,16 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
-## Unreleased (build 2026101504, v1.24.3-beta)
+## Unreleased (build 2026101505, v1.24.4-beta)
+
+### Changed
+
+- **The Pull Grades page heading** (and its page title and breadcrumb) now uses title case,
+  to match the button that leads to it.
+- **The copyright holder in every file header** is now Bill White, in place of the
+  placeholder "Course Sync project".
+
+## v1.24.3-beta (build 2026101504)
 
 ### Changed
 

@@ -21,7 +21,7 @@ namespace block_coursesync\local;
  * attempt with that number had appeared after the pull chose it.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class attempt_pull_clashing extends \block_coursesync\attempt_pull {

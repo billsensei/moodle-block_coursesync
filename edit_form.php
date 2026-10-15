@@ -26,7 +26,7 @@ use block_coursesync\remote_url;
  * instructions that a single form field cannot.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class block_coursesync_edit_form extends block_edit_form {

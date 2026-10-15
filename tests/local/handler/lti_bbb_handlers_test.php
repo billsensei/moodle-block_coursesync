@@ -36,7 +36,7 @@ require_once($CFG->dirroot . '/mod/lti/locallib.php');
  * this site's own, and that no secret of the source's travels.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(lti_handler::class)]

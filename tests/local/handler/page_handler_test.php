@@ -24,7 +24,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * Tests for rebuilding a page from a remote payload.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(page_handler::class)]

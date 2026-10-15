@@ -26,7 +26,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * the observer directly: what matters is that core's event reaches it.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(observer::class)]

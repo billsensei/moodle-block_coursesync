@@ -23,7 +23,7 @@ namespace block_coursesync;
  * answers "was this ever tried?" as well as "what did it do?".
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class history {

@@ -30,7 +30,7 @@ use block_coursesync\activity_payload;
  * add_instance() takes the form rather than the stored row.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class choice_handler extends activity_handler {

@@ -27,7 +27,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * did not put there - built by hand, restored or imported - by type and name.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(local\existing_match::class)]

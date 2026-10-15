@@ -41,7 +41,7 @@ require_once(__DIR__ . '/local/submission_fixtures.php');
  * says, to see how the destination copes with a source that is wrong.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(submission_pull::class)]

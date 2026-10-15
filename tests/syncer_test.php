@@ -27,7 +27,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * whether the last synced marker is allowed to move.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(syncer::class)]

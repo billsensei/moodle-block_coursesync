@@ -27,7 +27,7 @@ use block_coursesync\activity_payload;
  * other's storage format.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class url_handler extends activity_handler {

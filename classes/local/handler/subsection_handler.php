@@ -38,7 +38,7 @@ use block_coursesync\activity_payload;
  * activity inside with it. Its name is all there is to update anyway.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class subsection_handler extends activity_handler {

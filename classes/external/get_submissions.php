@@ -41,7 +41,7 @@ use core_external\external_value;
  * Team assignments are left out with a reason, never described.
  *
  * @package    block_coursesync
- * @copyright  2026 Course Sync project
+ * @copyright  2026 Bill White
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class get_submissions extends external_api {
