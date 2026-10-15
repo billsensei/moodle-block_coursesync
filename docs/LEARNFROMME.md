@@ -4517,3 +4517,27 @@ address override switched off inside the script: an unresolvable name was refuse
 `web-b` and the IP were refused as private, and `example.org` came back pinned to the address that was checked.
 The grade pull preview still ran as before (7 entries: 4 same, 1 conflict from the earlier test, 2 skipped).
 Test page "Markdown probe" (cmid 41 on B, 68 on A) is left on both sites. Run by CLI script, not the browser.
+
+## Phase 82 - Button order, title-case labels, and the run history's privacy columns (v1.24.3-beta, build 2026101504), 2026-10-15
+
+**Buttons.** `mapping_summary()` in `block_coursesync.php` now builds them in the order Check Now, See Changes,
+Pull Submissions, Pull Marks and Feedback, Pull Grades, View sync history, Manage the Connections (the last one
+is added by `connection_summary()`). View sync history was not in the user's list, so it sits just above Manage.
+Labels were changed to title case in the lang file (`syncnow`, `previewchanges`, `submissionspull`, `markspull`,
+`gradespull`, `setupmanage`).
+**Trap.** Behat's `I should see` and `I follow` are case-sensitive, so five features that quote these labels had
+to change with the strings. "Pull grades and attempts" (the button on the grades page) and the grades page title
+share the old wording but are different strings; they were left alone. No scenario asserts the order of the buttons.
+**Behat.** First attempt stopped with "Your behat test site is outdated" because the plugin had been re-synced
+into the CI install; `admin/tool/behat/cli/init.php` fixed it. Then 48 scenarios, 1,121 steps, all passed.
+
+**Privacy audit.** `block_coursesync_run` had six columns in `install.xml` that the provider neither declared nor
+exported: `skippedcount`, `failedcount`, `others`, `errorkey`, `since`, `lastsyncmoved`. Declared, given strings,
+and exported (`others` decoded like `pulled`; `since` as a date; `lastsyncmoved` as yes/no).
+**Trap.** `test_the_export_matches_what_is_declared` compares the declared fields with the exported keys, so it
+had to be changed in the same step; it would fail if only one side were fixed. The privacy test file: 18 tests
+passed. phpcs was not run (no binary in the CI install's vendor/bin).
+**Audits with nothing to fix.** Security audit, release preflight and string check found no defects. Notes from
+them: no `db/uninstall.php` on purpose (pulled data is real course data); web-service API descriptions are
+English literals, as in core.
+

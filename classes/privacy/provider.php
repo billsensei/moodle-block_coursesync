@@ -101,6 +101,12 @@ class provider implements
             'conflictcount' => 'privacy:metadata:run:conflictcount',
             'pulled' => 'privacy:metadata:run:pulled',
             'conflicts' => 'privacy:metadata:run:conflicts',
+            'skippedcount' => 'privacy:metadata:run:skippedcount',
+            'failedcount' => 'privacy:metadata:run:failedcount',
+            'others' => 'privacy:metadata:run:others',
+            'errorkey' => 'privacy:metadata:run:errorkey',
+            'since' => 'privacy:metadata:run:since',
+            'lastsyncmoved' => 'privacy:metadata:run:lastsyncmoved',
         ], 'privacy:metadata:run');
 
         $collection->add_database_table('block_coursesync_grade', [
@@ -287,6 +293,12 @@ class provider implements
                     'conflictcount' => $run->conflictcount,
                     'pulled' => json_decode((string) $run->pulled, true) ?: [],
                     'conflicts' => json_decode((string) $run->conflicts, true) ?: [],
+                    'skippedcount' => $run->skippedcount,
+                    'failedcount' => $run->failedcount,
+                    'others' => json_decode((string) $run->others, true) ?: [],
+                    'errorkey' => $run->errorkey,
+                    'since' => transform::datetime($run->since),
+                    'lastsyncmoved' => transform::yesno($run->lastsyncmoved),
                 ];
             }
 
