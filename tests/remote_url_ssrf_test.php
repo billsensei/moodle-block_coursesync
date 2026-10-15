@@ -235,4 +235,44 @@ final class remote_url_ssrf_test extends advanced_testcase {
             remote_url::check_and_pin('https://10.0.0.1/webservice/rest/server.php')
         );
     }
+
+    /**
+     * A name that gives no address cannot be checked or pinned, and curl would look
+     * it up again unpinned, so a request to it is refused rather than waved through
+     * (a name that fails one lookup and answers 127.0.0.1 the next must not get by).
+     */
+    public function test_an_unresolvable_name_is_refused_at_request_time(): void {
+        global $CFG;
+
+        $this->resetAfterTest();
+
+        $endpoint = remote_url::webservice_endpoint('https://this-name-does-not-exist.invalid');
+
+        $this->assertSame(
+            ['error' => 'errorurlunresolvable', 'resolve' => null],
+            remote_url::check_and_pin($endpoint)
+        );
+
+        $result = remote_client::ping('https://this-name-does-not-exist.invalid', 'abcdef0123456789abcdef0123456789');
+        $this->assertFalse($result->success);
+        $this->assertSame('errorurlunresolvable', $result->errorkey);
+        $this->assertDebuggingCalled();
+
+        // The development override still switches every check off.
+        $flag = remote_url::ALLOW_PRIVATE_FLAG;
+        $CFG->$flag = true;
+        $this->assertSame(['error' => null, 'resolve' => null], remote_url::check_and_pin($endpoint));
+    }
+
+    /**
+     * A name that does resolve is pinned to the address that was checked.
+     */
+    public function test_a_resolvable_name_is_pinned(): void {
+        $this->resetAfterTest();
+
+        $this->assertSame(
+            ['error' => null, 'resolve' => 'source.example.edu:8443:203.0.113.10'],
+            remote_url::check_and_pin('https://source.example.edu:8443/webservice/rest/server.php')
+        );
+    }
 }

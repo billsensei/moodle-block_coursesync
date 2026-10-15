@@ -226,7 +226,8 @@ class remote_url {
      *
      * @param string $url
      * @return array{error: string|null, resolve: string|null} a language
-     *         string identifier if refused; and a CURLOPT_RESOLVE entry
+     *         string identifier if refused (including a name that gives no
+     *         address to check); and a CURLOPT_RESOLVE entry
      *         ("host:port:address"), or null when there is nothing to pin (an
      *         address given as an IP, or private addresses allowed)
      */
@@ -255,11 +256,18 @@ class remote_url {
             }
         }
 
-        if ($addresses === [] || \core\ip_utils::is_ip_address($host)) {
-            // Nothing to pin: an IP is already what will be connected to, and
-            // a name that did not resolve here will not resolve for curl
-            // either, which it reports as unreachable.
+        if (\core\ip_utils::is_ip_address($host)) {
+            // Nothing to pin: an IP is already what will be connected to.
             return ['error' => null, 'resolve' => null];
+        }
+
+        // A name that gives no address now cannot be checked, and curl would
+        // look it up again by itself a moment later, unpinned and unchecked:
+        // a name that fails the first lookup and answers 127.0.0.1 the second
+        // would get through. So it is refused, not waved on. (Saving the
+        // address does not need DNS and stays lenient: see check_address().)
+        if ($addresses === []) {
+            return ['error' => 'errorurlunresolvable', 'resolve' => null];
         }
 
         $port = (int) ($parts['port'] ?? (strtolower($parts['scheme']) === 'http' ? 80 : 443));
@@ -284,6 +292,13 @@ class remote_url {
     protected static function resolve(string $host): array {
         if (\core\ip_utils::is_ip_address($host)) {
             return [$host];
+        }
+
+        // Under PHPUnit the fake sites the tests talk to (example.edu) have
+        // no DNS. They stand in as an RFC 5737 documentation address, the
+        // same stand-in the tests use for a public address elsewhere.
+        if (defined('PHPUNIT_TEST') && PHPUNIT_TEST && preg_match('/(^|\.)example\.edu$/', $host)) {
+            return ['203.0.113.10'];
         }
 
         $addresses = [];

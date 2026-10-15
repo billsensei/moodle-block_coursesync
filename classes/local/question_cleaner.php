@@ -71,14 +71,16 @@ class question_cleaner {
 
         // An array holding text and its format.
         if (!$isobject && isset($node['text'], $node['format']) && is_string($node['text'])) {
-            $node['text'] = activity_payload::clean_html($node['text'], (int) $node['format']);
+            [$node['text'], $node['format']] = activity_payload::clean_formatted($node['text'], (int) $node['format']);
         }
 
         foreach ($keys as $key) {
             $value = $get($key);
 
             if (is_string($value) && in_array($key . 'format', $keys, true)) {
-                $set($key, activity_payload::clean_html($value, (int) $get($key . 'format')));
+                [$text, $format] = activity_payload::clean_formatted($value, (int) $get($key . 'format'));
+                $set($key, $text);
+                $set($key . 'format', $format);
             } else if (($key !== 'files') && (is_object($value) || is_array($value))) {
                 self::walk($value);
                 $set($key, $value);

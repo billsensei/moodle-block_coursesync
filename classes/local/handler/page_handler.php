@@ -106,10 +106,12 @@ class page_handler extends activity_handler {
         $cmid = $this->create_course_module($course, $payload, $idnumber);
 
         $data = $this->make_instance_data($course, $cmid, $payload, $idnumber);
-        $data->contentformat = $payload->setting_int('contentformat', FORMAT_HTML);
         // The body is HTML from another site, so it is cleaned before it is
         // stored rather than trusted to be safe when rendered.
-        $data->content = $payload->setting_html('content', $data->contentformat);
+        [$data->content, $data->contentformat] = $payload->setting_formatted(
+            'content',
+            $payload->setting_int('contentformat', FORMAT_HTML)
+        );
         $data->display = $payload->setting_int('display', RESOURCELIB_DISPLAY_OPEN);
         $data->printintro = $payload->setting_int('printintro', 0);
         $data->printlastmodified = $payload->setting_int('printlastmodified', 1);

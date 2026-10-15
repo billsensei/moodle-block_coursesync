@@ -164,8 +164,10 @@ class feedback_handler extends activity_handler {
         // it is held to PARAM_URL for the same reason mod_url's address is.
         $data->site_after_submit = $payload->setting_url('site_after_submit');
 
-        $format = $payload->setting_int('page_after_submitformat', FORMAT_HTML);
-        $data->page_after_submit = $payload->setting_html('page_after_submit', $format);
+        [$data->page_after_submit, $format] = $payload->setting_formatted(
+            'page_after_submit',
+            $payload->setting_int('page_after_submitformat', FORMAT_HTML)
+        );
         $data->page_after_submitformat = $format;
         // This is read by feedback_add_instance() without being checked for,
         // and a zero item id means "no draft area to move anything from".

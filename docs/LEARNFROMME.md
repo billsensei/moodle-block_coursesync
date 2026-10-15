@@ -4474,3 +4474,46 @@ format through `clean_format()` (made public). A test with all three cases fails
 **Not done:** the same Markdown gap exists in `activity_payload::clean_html()` for every other Markdown
 field (activity intros, page content, and the like), which this does not touch. The test traps: `FORMAT_*`
 are strings, so `assertContains` needs casts.
+
+## Phase 81 - The Markdown gap, everywhere (v1.24.2-beta, build 2026101503), 2026-10-15
+
+Phase 80 fixed it for question categories and left the rest: `activity_payload::clean_html()` calls
+`clean_text()`, which returns Markdown without `<`, `>` or `&` unchanged, so `[x](javascript:alert(1))`
+survives and renders as a live link wherever core shows stored text without cleaning (question text,
+category descriptions).
+
+- **Fix.** New `activity_payload::clean_formatted($text, $format)` returns `[text, format]`: Markdown goes
+  through `markdown_to_html()` and comes back as FORMAT_HTML, everything else is cleaned as before and its
+  format clamped. Because the format has to be stored with the text, each site that stored text and format
+  separately changed: the intro (constructor), `question_cleaner` (both shapes: array and string-next-to-format),
+  the category insert, book chapters, quiz overall feedback, lesson pages and answers, page, assign,
+  workshop and feedback settings, and the marks and submissions results. Helpers `child_formatted()` and
+  `setting_formatted()` sit beside `child_html()` and `setting_html()`, which stay for fixed-HTML fields.
+- **Not changed on purpose.** Fields whose format is fixed to HTML (data and workshop dimensions, feedback
+  presentations) keep `child_html()`. Wiki's own `defaultformat` is a wiki setting, not a text format.
+- **Side effect.** Markdown pulled across is stored as HTML, so it is edited in the HTML editor afterwards.
+  A submission or mark comment pulled before this change as Markdown is compared by fingerprint with what is
+  pulled now (HTML), so it can show once as changed on the first pull after the upgrade. Not checked on Docker.
+- **Proof.** With the conversion disabled, 4 tests fail; the payload, cleaner and category tests cover a
+  description, a setting, a child record and a question.
+
+**Added to v1.24.2 (same day): fail closed on an unresolvable name.** An automated review pointed at
+`remote_url::check_and_pin()` returning "nothing to pin, no error" when `resolve()` found no address. That
+skipped the check and the CURLOPT_RESOLVE pin, so curl's own later lookup was unchecked (rebinding with a
+first lookup that fails). Real: fixed to return `errorurlunresolvable` (an existing string) at request time
+only; `validate()` at save time stays lenient on purpose. Moodle's `curl_security_helper` is a second layer
+but does its own lookup, so it does not make this one redundant.
+**Trap.** About 60 tests failed at once: they talk to fake `*.example.edu` hosts through a mock client and
+relied on the old pass-through. Fixed with a PHPUnit-only branch in `resolve()` mapping `example.edu` names
+to the RFC 5737 address 203.0.113.10 (the stand-in the tests already use), not by turning the SSRF checks
+off in each test. A resolvable name is now also pinned in those tests; none depended on it not being.
+**Effect.** A DNS outage at the moment of a request now reads "address could not be looked up" instead of
+"could not be reached".
+
+**Docker A/B (2026-10-15), v1.24.2.** Both upgraded to build 2026101503. A page made on B with a Markdown
+description and Markdown body, each holding a `javascript:` link, was synced into A's CLAUDEFRESH: it arrived
+as HTML with both formats set to HTML, the links stripped to bare `<a>` and the bold kept. With the private-
+address override switched off inside the script: an unresolvable name was refused as "could not be looked up",
+`web-b` and the IP were refused as private, and `example.org` came back pinned to the address that was checked.
+The grade pull preview still ran as before (7 entries: 4 same, 1 conflict from the earlier test, 2 skipped).
+Test page "Markdown probe" (cmid 41 on B, 68 on A) is left on both sites. Run by CLI script, not the browser.

@@ -194,9 +194,12 @@ class submissions_result {
         // Cleaned here, like every other text from the other site, so nothing
         // downstream has to remember to. What is compared with work already
         // here is worked out from this cleaned text (see submission_pull).
-        $text = ($submission['onlinetext'] ?? null) === null
-            ? null
-            : activity_payload::clean_html((string) $submission['onlinetext'], $format);
+        // Markdown comes in as cleaned HTML, and is stored as such.
+        $text = null;
+
+        if (($submission['onlinetext'] ?? null) !== null) {
+            [$text, $format] = activity_payload::clean_formatted((string) $submission['onlinetext'], $format);
+        }
 
         return (object) [
             'username' => clean_param((string) $submission['username'], PARAM_USERNAME),

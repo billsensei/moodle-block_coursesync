@@ -88,6 +88,45 @@ final class activity_payload_test extends advanced_testcase {
     }
 
     /**
+     * Markdown arrives as cleaned HTML and says so: clean_text() leaves a Markdown
+     * link to javascript: alone, and some of Moodle shows stored text uncleaned.
+     */
+    public function test_markdown_arrives_as_cleaned_html(): void {
+        $this->resetAfterTest();
+
+        $evil = '[click](javascript:alert(1)) and ![pic](javascript:alert(2)) **bold**';
+
+        $payload = activity_payload::from_response($this->response(['intro' => $evil, 'introformat' => FORMAT_MARKDOWN]));
+        $this->assertStringNotContainsString('javascript:', $payload->intro);
+        $this->assertStringContainsString('<strong>bold</strong>', $payload->intro);
+        $this->assertSame((int) FORMAT_HTML, $payload->introformat);
+
+        $child = ['fields' => ['t' => $evil, 'tformat' => FORMAT_MARKDOWN]];
+        [$text, $format] = activity_payload::child_formatted($child, 't', FORMAT_MARKDOWN);
+        $this->assertStringNotContainsString('javascript:', $text);
+        $this->assertSame((int) FORMAT_HTML, $format);
+
+        $withsetting = activity_payload::from_response($this->response([
+            'settings' => [['name' => 'content', 'value' => $evil]],
+        ]));
+        [$text, $format] = $withsetting->setting_formatted('content', FORMAT_MARKDOWN);
+        $this->assertStringNotContainsString('javascript:', $text);
+        $this->assertSame((int) FORMAT_HTML, $format);
+    }
+
+    /**
+     * Other formats keep their format, and nothing is invented for empty text.
+     */
+    public function test_other_formats_are_kept(): void {
+        $this->resetAfterTest();
+
+        $this->assertSame(['', (int) FORMAT_HTML], activity_payload::clean_formatted('', FORMAT_MARKDOWN));
+        $this->assertSame(['plain', (int) FORMAT_PLAIN], activity_payload::clean_formatted('plain', FORMAT_PLAIN));
+        $this->assertSame((int) FORMAT_HTML, activity_payload::clean_formatted('x', 9999)[1]);
+        $this->assertSame((int) FORMAT_MOODLE, activity_payload::clean_formatted('x', FORMAT_MOODLE)[1]);
+    }
+
+    /**
      * An event handler attribute is removed as well as a script tag.
      */
     public function test_event_handlers_are_removed(): void {

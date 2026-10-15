@@ -350,11 +350,15 @@ class quiz_handler extends activity_handler {
         global $DB;
 
         foreach ($payload->children('overallfeedback') as $child) {
-            $format = activity_payload::child_int($child, 'feedbacktextformat', FORMAT_HTML);
+            [$feedbacktext, $format] = activity_payload::child_formatted(
+                $child,
+                'feedbacktext',
+                activity_payload::child_int($child, 'feedbacktextformat', FORMAT_HTML)
+            );
 
             $localid = (int) $DB->insert_record('quiz_feedback', (object) [
                 'quizid' => $quizid,
-                'feedbacktext' => activity_payload::child_html($child, 'feedbacktext', $format),
+                'feedbacktext' => $feedbacktext,
                 'feedbacktextformat' => $format,
                 'mingrade' => (float) activity_payload::child_field($child, 'mingrade', '0'),
                 'maxgrade' => (float) activity_payload::child_field($child, 'maxgrade', '0'),

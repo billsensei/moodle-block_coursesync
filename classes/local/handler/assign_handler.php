@@ -171,8 +171,10 @@ class assign_handler extends activity_handler {
         $data->revealidentities = 0;
         $data->nosubmissions = 0;
 
-        $activityformat = $payload->setting_int('activityformat', FORMAT_HTML);
-        $activity = $payload->setting_html('activity', $activityformat);
+        [$activity, $activityformat] = $payload->setting_formatted(
+            'activity',
+            $payload->setting_int('activityformat', FORMAT_HTML)
+        );
 
         if ($activity !== '') {
             // No itemid, so mod_assign stores the text and does not go looking

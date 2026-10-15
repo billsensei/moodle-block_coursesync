@@ -135,4 +135,27 @@ final class question_cleaner_test extends advanced_testcase {
         $this->assertSame('Plain', $question->name);
         $this->assertSame('<p>ok</p>', $question->questiontext);
     }
+
+    /**
+     * Markdown anywhere in a question becomes cleaned HTML, and the format says so,
+     * because question text is shown without cleaning and clean_text() leaves a
+     * Markdown link to javascript: alone.
+     */
+    public function test_markdown_is_converted_and_cleaned(): void {
+        $evil = '[click](javascript:alert(1))';
+        $question = (object) [
+            'name' => 'Q',
+            'questiontext' => $evil,
+            'questiontextformat' => FORMAT_MARKDOWN,
+            'feedback' => [['text' => $evil, 'format' => FORMAT_MARKDOWN, 'files' => []]],
+        ];
+
+        question_cleaner::clean($question);
+
+        $this->assertStringNotContainsString('javascript:', $question->questiontext);
+        $this->assertStringContainsString('click', $question->questiontext);
+        $this->assertSame((int) FORMAT_HTML, (int) $question->questiontextformat);
+        $this->assertStringNotContainsString('javascript:', $question->feedback[0]['text']);
+        $this->assertSame((int) FORMAT_HTML, (int) $question->feedback[0]['format']);
+    }
 }

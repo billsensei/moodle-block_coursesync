@@ -174,7 +174,11 @@ class book_handler extends activity_handler {
         $now = time();
 
         foreach ($payload->children('chapter') as $chapter) {
-            $format = activity_payload::child_int($chapter, 'contentformat', FORMAT_HTML);
+            [$content, $format] = activity_payload::child_formatted(
+                $chapter,
+                'content',
+                activity_payload::child_int($chapter, 'contentformat', FORMAT_HTML)
+            );
 
             $record = (object) [
                 'bookid' => $bookid,
@@ -184,7 +188,7 @@ class book_handler extends activity_handler {
                 'pagenum' => ++$pagenum,
                 'subchapter' => activity_payload::child_int($chapter, 'subchapter', 0) ? 1 : 0,
                 'title' => clean_param(activity_payload::child_field($chapter, 'title'), PARAM_TEXT),
-                'content' => activity_payload::child_html($chapter, 'content', $format),
+                'content' => $content,
                 'contentformat' => $format,
                 'hidden' => activity_payload::child_int($chapter, 'hidden', 0) ? 1 : 0,
                 'timecreated' => $now,

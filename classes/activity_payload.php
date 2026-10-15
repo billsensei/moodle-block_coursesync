@@ -145,7 +145,10 @@ class activity_payload {
             $settings[$name] = (string) ($setting['value'] ?? '');
         }
 
-        $introformat = clean_param($data['introformat'] ?? FORMAT_HTML, PARAM_INT);
+        $intro = self::clean_formatted(
+            (string) ($data['intro'] ?? ''),
+            clean_param($data['introformat'] ?? FORMAT_HTML, PARAM_INT)
+        );
 
         return new self(
             clean_param($data['cmid'] ?? 0, PARAM_INT),
@@ -157,8 +160,8 @@ class activity_payload {
             // The description is HTML by design, so it is cleaned rather than
             // stripped: clean_text() removes scripts, event handlers and the
             // rest while leaving the markup a description legitimately uses.
-            self::clean_html((string) ($data['intro'] ?? ''), $introformat),
-            self::clean_format($introformat),
+            $intro[0],
+            $intro[1],
             max(0, clean_param($data['timemodified'] ?? 0, PARAM_INT)),
             $settings,
             self::clean_files($data['files'] ?? []),
@@ -184,6 +187,31 @@ class activity_payload {
         }
 
         return clean_text($html, $format);
+    }
+
+    /**
+     * Clean text from another site, together with the format it is stored in.
+     *
+     * clean_text() leaves Markdown that has no tags in it alone, so a link
+     * such as [x](javascript:alert(1)) stays live, and some places in Moodle
+     * (question text and a question category's description among them) show
+     * stored text without cleaning it. Markdown is therefore turned into HTML
+     * here and cleaned as HTML, and the HTML format comes back with it: store
+     * the returned format, not the one that was sent.
+     *
+     * @param string $text
+     * @param int $format one of the FORMAT_* constants
+     * @return array [the cleaned text, the format to store it in]
+     */
+    public static function clean_formatted(string $text, int $format): array {
+        $format = self::clean_format($format);
+
+        if ($format === (int) FORMAT_MARKDOWN) {
+            $text = $text === '' ? '' : markdown_to_html($text);
+            $format = (int) FORMAT_HTML;
+        }
+
+        return [self::clean_html($text, $format), $format];
     }
 
     /**
@@ -353,6 +381,18 @@ class activity_payload {
     }
 
     /**
+     * Read a field of a child record as cleaned text with the format to store it in.
+     *
+     * @param array $child one entry from children()
+     * @param string $name
+     * @param int $format one of the FORMAT_* constants
+     * @return array [the cleaned text, the format to store it in]
+     */
+    public static function child_formatted(array $child, string $name, int $format): array {
+        return self::clean_formatted(self::child_field($child, $name), $format);
+    }
+
+    /**
      * Read a type-specific setting.
      *
      * @param string $name
@@ -376,6 +416,17 @@ class activity_payload {
      */
     public function setting_url(string $name): string {
         return clean_param($this->setting($name), PARAM_URL);
+    }
+
+    /**
+     * Read a type-specific setting as cleaned text with the format to store it in.
+     *
+     * @param string $name
+     * @param int $format one of the FORMAT_* constants
+     * @return array [the cleaned text, the format to store it in]
+     */
+    public function setting_formatted(string $name, int $format): array {
+        return self::clean_formatted($this->setting($name), $format);
     }
 
     /**

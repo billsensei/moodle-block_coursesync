@@ -284,7 +284,11 @@ class lesson_handler extends activity_handler {
                 continue;
             }
 
-            $format = activity_payload::child_int($page, 'contentsformat', FORMAT_HTML);
+            [$contents, $format] = activity_payload::child_formatted(
+                $page,
+                'contents',
+                activity_payload::child_int($page, 'contentsformat', FORMAT_HTML)
+            );
 
             $record = (object) [
                 'lessonid' => $lessonid,
@@ -297,7 +301,7 @@ class lesson_handler extends activity_handler {
                 'timecreated' => $now,
                 'timemodified' => $now,
                 'title' => clean_param(activity_payload::child_field($page, 'title'), PARAM_TEXT),
-                'contents' => activity_payload::child_html($page, 'contents', $format),
+                'contents' => $contents,
                 'contentsformat' => $format,
             ];
 
@@ -345,8 +349,16 @@ class lesson_handler extends activity_handler {
                 continue;
             }
 
-            $answerformat = activity_payload::child_int($answer, 'answerformat', FORMAT_HTML);
-            $responseformat = activity_payload::child_int($answer, 'responseformat', FORMAT_HTML);
+            [$answertext, $answerformat] = activity_payload::child_formatted(
+                $answer,
+                'answer',
+                activity_payload::child_int($answer, 'answerformat', FORMAT_HTML)
+            );
+            [$responsetext, $responseformat] = activity_payload::child_formatted(
+                $answer,
+                'response',
+                activity_payload::child_int($answer, 'responseformat', FORMAT_HTML)
+            );
 
             $record = (object) [
                 'lessonid' => $lessonid,
@@ -358,9 +370,9 @@ class lesson_handler extends activity_handler {
                 'flags' => activity_payload::child_int($answer, 'flags', 0),
                 'timecreated' => $now,
                 'timemodified' => $now,
-                'answer' => activity_payload::child_html($answer, 'answer', $answerformat),
+                'answer' => $answertext,
                 'answerformat' => $answerformat,
-                'response' => activity_payload::child_html($answer, 'response', $responseformat),
+                'response' => $responsetext,
                 'responseformat' => $responseformat,
             ];
 

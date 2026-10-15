@@ -283,8 +283,10 @@ class workshop_handler extends activity_handler {
             'conclusion' => 'conclusioneditor',
             ] as $field => $editor
         ) {
-            $format = $payload->setting_int($field . 'format', FORMAT_HTML);
-            $data->$field = $payload->setting_html($field, $format);
+            [$data->$field, $format] = $payload->setting_formatted(
+                $field,
+                $payload->setting_int($field . 'format', FORMAT_HTML)
+            );
             $data->{$field . 'format'} = $format;
             $data->$editor = ['text' => $data->$field, 'format' => $format, 'itemid' => 0];
         }
