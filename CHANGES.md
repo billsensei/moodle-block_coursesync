@@ -19,6 +19,9 @@ only. The full running history is in [changelog.md](changelog.md).
   - 5.2 deprecated `course_delete_module()` and `moveto_module()`. They now go through
     `local\course_modules`, which uses the course format actions where they exist.
 - The CI workflow runs MOODLE_500 to MOODLE_503, each with its own PHP and database minimums.
+- The Behat quiz scenario adds its random question with a new step, `quiz "X" has a random question from
+  category "Y" on page N`. 5.2 removed the "random" type from core's questions generator, so the old setup row
+  failed there. Tests only; no plugin code changed. Behat passes on 5.1, 5.2 and 5.3 locally and on 5.0 to 5.3 in CI.
 
 ### Fixed
 
@@ -27,6 +30,11 @@ only. The full running history is in [changelog.md](changelog.md).
   declare or export (it only says which grade of an activity a row is). The `user_deleted` observer
   forgot a user's pulled grades, attempts, submissions and marks but kept the sync runs they started,
   leaving a user id that pointed at nobody; it now removes those too. Another user's runs stay.
+- **The private-address check refuses `::ffff:0.0.0.0` and the SIIT form `::ffff:0:a.b.c.d`.** Every other
+  IPv4-mapped address (`::ffff:127.0.0.1`, `::ffff:169.254.169.254`, ...) was already refused, because
+  Moodle's `address_in_subnet()` unwraps it, but the mapped all-zeros address and the SIIT twin got through.
+  `remote_url` now judges any mapped address by the IPv4 address inside it and blocks `::ffff:0:0:0/96`.
+  Only an address an administrator enters is checked, and the private-address override is still off by default.
 
 ### Added
 
