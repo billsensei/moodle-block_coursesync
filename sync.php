@@ -35,6 +35,7 @@ $instanceid = required_param('instanceid', PARAM_INT);
 $courseid = required_param('courseid', PARAM_INT);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
 $chosen = optional_param_array('cmids', [], PARAM_INT);
+$questionsonly = optional_param_array('questionsonly', [], PARAM_INT);
 
 $course = get_course($courseid);
 require_login($course);
@@ -195,6 +196,7 @@ if (!$confirm) {
             . html_writer::tag('th', get_string('previewcoltype', 'block_coursesync'), ['scope' => 'col'])
             . html_writer::tag('th', get_string('previewcolmodified', 'block_coursesync'), ['scope' => 'col'])
             . html_writer::tag('th', get_string('syncstatuscolumn', 'block_coursesync'), ['scope' => 'col'])
+            . html_writer::tag('th', get_string('syncquestionsonlycolumn', 'block_coursesync'), ['scope' => 'col'])
         );
 
         // Every row can be chosen; only new ones start ticked. "Select all"
@@ -222,6 +224,23 @@ if (!$confirm) {
                     'class' => 'form-check-input',
                 ]);
 
+                // Only a quiz has questions that can be copied without it.
+                $questionsbox = '';
+
+                if ($activity->modname === 'quiz') {
+                    $questionsbox = html_writer::empty_tag('input', [
+                        'type' => 'checkbox',
+                        'name' => 'questionsonly[]',
+                        'value' => (int) $activity->cmid,
+                        'id' => $id . '-questions',
+                        'class' => 'form-check-input',
+                    ]) . html_writer::tag(
+                        'label',
+                        get_string('syncquestionsonlylabel', 'block_coursesync', s($activity->name)),
+                        ['for' => $id . '-questions', 'class' => 'visually-hidden']
+                    );
+                }
+
                 $out .= html_writer::tag(
                     'tr',
                     html_writer::tag('td', $checkbox)
@@ -229,6 +248,7 @@ if (!$confirm) {
                     . html_writer::tag('td', s($activity->get_type_name()))
                     . html_writer::tag('td', userdate($activity->timemodified))
                     . html_writer::tag('td', $statuslabels[$row['status']])
+                    . html_writer::tag('td', $questionsbox)
                 );
             }
 
@@ -331,7 +351,7 @@ require_sesskey();
 
 // Only what was ticked. An empty selection is a decision, not a request to copy
 // everything, so it is passed through as the empty set rather than as null.
-$result = syncer::run($instanceid, $course->id, true, null, $chosen);
+$result = syncer::run($instanceid, $course->id, true, null, $chosen, $questionsonly);
 
 if (!$result->success) {
     echo $OUTPUT->notification($result->get_message(), 'error', false);
@@ -357,6 +377,8 @@ if ($result->items !== []) {
                 ['class' => 'badge bg-secondary']),
             'linked' => html_writer::tag('span', get_string('synclinkedbadge', 'block_coursesync'),
                 ['class' => 'badge bg-info text-dark']),
+            'questions' => html_writer::tag('span', get_string('syncquestionsonlybadge', 'block_coursesync'),
+                ['class' => 'badge bg-success']),
             default => html_writer::tag(
                 'span',
                 get_string('syncfailed', 'block_coursesync'),

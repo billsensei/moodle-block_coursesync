@@ -76,3 +76,26 @@ Feature: Syncing quiz questions
     And I should see "2.00"
     And I should see "1.00"
     And I should see "Total of marks: 3.00"
+
+  @javascript
+  Scenario: A quiz's questions can be copied without the quiz
+    Given I am on the "DEST" "block_coursesync > Setup" page logged in as "teacher1"
+    And I enter the Course Sync token
+    And I press "Save and test"
+    And I follow "Next"
+    And I set the field "Remote course ID or shortname" to "SRC"
+    And I press "Save the course"
+
+    When I am on the "DEST" "block_coursesync > Sync" page
+    And I set the field "Unit quiz" to ""
+    And I set the field "Copy only the questions of Unit quiz, not the quiz" to "1"
+    And I press "Copy the ticked activities"
+    Then I should see "Questions copied"
+    And I should see "The quiz itself was not copied"
+
+    # No quiz was made, and it is still on offer as new.
+    When I am on "Destination Course" course homepage
+    Then I should not see "Unit quiz" in the "page-content" "region"
+    When I am on the "DEST" "block_coursesync > Sync" page
+    Then the field "Unit quiz" matches value "1"
+

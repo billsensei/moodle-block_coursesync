@@ -78,6 +78,7 @@ class history {
         );
         $conflicts = self::items_with_outcome($result, 'conflict');
         $others = array_merge(
+            self::items_with_outcome($result, 'questions'),
             self::items_with_outcome($result, 'skipped'),
             self::items_with_outcome($result, 'failed')
         );

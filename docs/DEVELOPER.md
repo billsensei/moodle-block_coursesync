@@ -451,6 +451,11 @@ added locally or referenced by a quiz. History records the outcome as
 `updated`, stored among `pulled` so the fresh copy is recognised as this
 plugin's from then on.
 
+`syncer::run()` takes a `$questionsonly` list of quiz cmids (the `questionsonly[]` boxes on `sync.php`);
+`quiz_handler::copy_questions_only()` runs the question half of the quiz copy and nothing else, and the
+result is a `questions` outcome (`sync_result::add_questions_copied()`), which counts as a deselected
+quiz so the last-synced marker is held. A quiz that is also ticked wins.
+
 A quiz's questions are reused by idnumber when it is replaced. A question edited
 on the source is carried as a new version of the same bank entry
 (`question_bank_sync_trait::should_update_question()`), unless the newest version

@@ -90,6 +90,27 @@ class sync_result {
     }
 
     /**
+     * Record a quiz whose questions were copied without the quiz.
+     *
+     * @param string $name
+     * @param string $modname
+     * @param int $remotecmid
+     * @param string[] $notes language string identifiers for anything the user should know
+     * @return void
+     */
+    public function add_questions_copied(string $name, string $modname, int $remotecmid, array $notes = []): void {
+        $this->items[] = [
+            'outcome' => 'questions',
+            'name' => $name,
+            'modname' => $modname,
+            'remotecmid' => $remotecmid,
+            'localcmid' => 0,
+            'notes' => $notes,
+            'detail' => 'syncquestionsonlydetail',
+        ];
+    }
+
+    /**
      * Record an activity whose local copy was brought up to date.
      *
      * @param string $name
@@ -219,7 +240,7 @@ class sync_result {
     /**
      * How many activities had a given outcome.
      *
-     * @param string $outcome one of created, updated, conflict, skipped, failed
+     * @param string $outcome one of created, updated, linked, questions, conflict, skipped, failed
      * @return int
      */
     public function count(string $outcome): int {
@@ -237,7 +258,8 @@ class sync_result {
      */
     public function has_deselected(): bool {
         foreach ($this->items as $item) {
-            if (($item['detail'] ?? null) === 'syncskippeddeselected') {
+            // Copying only a quiz's questions leaves the quiz itself not copied.
+            if (($item['detail'] ?? null) === 'syncskippeddeselected' || $item['outcome'] === 'questions') {
                 return true;
             }
         }
@@ -292,6 +314,10 @@ class sync_result {
 
         if ($this->count('linked') > 0) {
             $message .= ' ' . get_string('synclinkedsummary', 'block_coursesync', $this->count('linked'));
+        }
+
+        if ($this->count('questions') > 0) {
+            $message .= ' ' . get_string('syncquestionsonlysummary', 'block_coursesync', $this->count('questions'));
         }
 
         return $message;

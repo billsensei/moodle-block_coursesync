@@ -4689,3 +4689,23 @@ wrong argv position, so the first "ticked" run ticked nothing and looked like a 
 **Behat (5.1 CI install):** 48 scenarios, 1122 steps, all passed. Behat on 5.0, 5.2 and 5.3 only runs in the GitHub workflow.
 
 **Trap:** `pkill -f` / `pgrep -f` with a pattern that appears in the command line kills or matches the shell running it.
+
+## Phase 88 - Questions only (v1.26.0-beta, build 2026102001), 2026-10-20
+
+**Trigger:** asked whether a question bank can be copied without the quizzes. A Question bank activity already can; questions
+that live in a quiz could only come with it.
+
+**Design:** a second checkbox on quiz rows (`questionsonly[]`), `syncer::copy_questions_only()` fetches the quiz payload and calls
+the new `quiz_handler::copy_questions_only()`, which is the System Bank half of `create_from_remote_data()` with no quiz made.
+New `questions` outcome; it counts as deselected so `lastsync` is held and the quiz is still offered as new. Stored in the history's
+`others`. Ticking the quiz wins over the box. No schema change.
+
+**Proof:** `tests/questions_only_test.php`, four tests; with the list ignored the first two fail (checked).
+**Traps while writing the tests:** my first set-up deleted every `question_versions` row, the source's included; and a "no new
+version" assertion compared against the whole table, which also grows when the test edits the source question. Count only the
+destination's `coursesync-%` entries.
+
+**Result:** PHPUnit 636 tests, 3090 assertions, 1 skipped on 5.0, 5.1, 5.2 and 5.3; phpcs and phpdoc clean (phpdoc caught the
+missing `@param` on `run_locked()`); Behat on 5.1: 49 scenarios, 1150 steps, all passed, including the new questions-only
+scenario. Not run: Behat on 5.0, 5.2, 5.3 (GitHub workflow), and a live pull between Docker sites.
+Also: the v1.25.0-beta workflow finished green on the push to `main` and on the tag.

@@ -313,6 +313,7 @@ class syncer {
      * @param bool $full look at every activity rather than only what has changed
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means everything
+     * @param int[]|null $questionsonly remote quiz ids whose questions, and not the quiz, were chosen
      * @return sync_result
      */
     public static function run(
@@ -320,7 +321,8 @@ class syncer {
         int $courseid,
         bool $full = false,
         ?http_client $client = null,
-        ?array $only = null
+        ?array $only = null,
+        ?array $questionsonly = null
     ): sync_result {
         global $USER;
 
@@ -344,7 +346,7 @@ class syncer {
         }
 
         try {
-            return self::run_locked($blockinstanceid, $courseid, $full, $client, $only);
+            return self::run_locked($blockinstanceid, $courseid, $full, $client, $only, $questionsonly);
         } finally {
             $lock->release();
         }
@@ -398,6 +400,7 @@ class syncer {
      * @param bool $full
      * @param http_client|null $client
      * @param int[]|null $only
+     * @param int[]|null $questionsonly remote quiz ids whose questions alone were chosen
      * @return sync_result
      */
     protected static function run_locked(
@@ -405,7 +408,8 @@ class syncer {
         int $courseid,
         bool $full,
         ?http_client $client,
-        ?array $only
+        ?array $only,
+        ?array $questionsonly = null
     ): sync_result {
         global $USER;
 
@@ -457,7 +461,21 @@ class syncer {
         // no marker - are linked now, ticked or not: see link_matches().
         [$linked, $owned] = self::link_matches($course->id, $activities, $result);
 
+        $questionsonly = array_map('intval', $questionsonly ?? []);
+
         foreach ($activities as $activity) {
+            // A quiz whose questions alone were chosen. Ticking the quiz as
+            // well wins: it brings the questions with it.
+            if (
+                $activity->modname === 'quiz'
+                && in_array((int) $activity->cmid, $questionsonly, true)
+                && !in_array((int) $activity->cmid, $chosen ?? [], true)
+            ) {
+                self::copy_questions_only($course, $record, $token, $activity, $result, $client);
+
+                continue;
+            }
+
             // One activity going wrong in a way nobody foresaw is reported
             // against that activity, not allowed to end the run: the rest
             // still get their turn, and the run is still written to the
@@ -594,6 +612,70 @@ class syncer {
         }
 
         self::handle_one($course, $blockinstanceid, $record, $token, $activity, $result, $client);
+    }
+
+    /**
+     * Copy the questions of a source quiz into this course's shared bank, without the quiz.
+     *
+     * Nothing is created that a later run would take for the quiz, so the quiz
+     * stays on offer as new. The questions are tracked and updated like any
+     * others, so asking again after an edit on the source gives them a new
+     * version.
+     *
+     * @param \stdClass $course the destination course
+     * @param \stdClass $record the block's connection record
+     * @param string $token the source's web service token
+     * @param activity $activity the quiz the source reported
+     * @param sync_result $result updated in place
+     * @param http_client|null $client injected only by tests
+     * @return void
+     */
+    protected static function copy_questions_only(
+        \stdClass $course,
+        \stdClass $record,
+        string $token,
+        activity $activity,
+        sync_result $result,
+        ?http_client $client
+    ): void {
+        $fetched = remote_client::get_activity($record->remoteurl, $token, $activity->cmid, $client);
+
+        if (!$fetched->success) {
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, $fetched->errorkey);
+
+            return;
+        }
+
+        $payload = $fetched->payload;
+        $handler = handler_registry::get($payload->modname);
+
+        if (!$handler instanceof local\handler\quiz_handler) {
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, 'errorunsupportedtype');
+
+            return;
+        }
+
+        $problem = $handler->check_permission($course) ?? $handler->check_payload($payload);
+
+        if ($problem !== null) {
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, $problem);
+
+            return;
+        }
+
+        try {
+            $handler->copy_questions_only($course, $payload);
+        } catch (\Throwable $e) {
+            debugging('block_coursesync: could not copy the questions of remote cmid ' . $activity->cmid . ': '
+                . $e->getMessage(), DEBUG_DEVELOPER);
+
+            $result->add_failed($activity->name, $activity->modname, $activity->cmid, 'errorcreatefailed');
+
+            return;
+        }
+
+        // The quiz's own notes, not notes_for(): the quiz's description and where it sat did not travel.
+        $result->add_questions_copied($payload->name, $payload->modname, $activity->cmid, $handler->notes($payload));
     }
 
     /**

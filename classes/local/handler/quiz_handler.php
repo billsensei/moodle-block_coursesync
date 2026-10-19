@@ -484,6 +484,33 @@ class quiz_handler extends activity_handler {
     }
 
     /**
+     * DESTINATION SIDE. Rebuild only the quiz's categories and questions, in this
+     * course's shared System Bank, and create no quiz.
+     *
+     * This is the question half of create_from_remote_data(), so the questions
+     * land, are reused by their ID number and are updated when the source edited
+     * them exactly as they do for a whole quiz. Unlike there, a failure is not
+     * swallowed: with no quiz to report, the caller has to be told.
+     *
+     * @param \stdClass $course the destination course
+     * @param activity_payload $payload what the source site sent
+     * @return void
+     */
+    public function copy_questions_only(\stdClass $course, activity_payload $payload): void {
+        global $CFG;
+
+        require_once($CFG->libdir . '/questionlib.php');
+        require_once($CFG->dirroot . '/question/engine/bank.php');
+        require_once($CFG->dirroot . '/question/format/xml/format.php');
+
+        $bankcm = \core_question\local\bank\question_bank_helper::get_default_open_instance_system_type($course, true);
+        $bankcontext = \context_module::instance($bankcm->id);
+
+        $this->sync_question_bank_categories($bankcontext, $payload);
+        $this->sync_question_bank_questions($bankcontext, $payload);
+    }
+
+    /**
      * DESTINATION SIDE. The settings the new quiz is created with, cleaned.
      *
      * @param \stdClass $course the destination course
