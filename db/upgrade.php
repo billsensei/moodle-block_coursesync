@@ -262,5 +262,25 @@ function xmldb_block_coursesync_upgrade($oldversion) {
         upgrade_block_savepoint(true, 2026101001, 'coursesync');
     }
 
+    if ($oldversion < 2026101901) {
+        $table = new xmldb_table('block_coursesync_question');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('entryid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('questionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('fingerprint', XMLDB_TYPE_CHAR, '40', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timesynced', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+        $table->add_index('entryid', XMLDB_INDEX_UNIQUE, ['entryid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_block_savepoint(true, 2026101901, 'coursesync');
+    }
+
     return true;
 }

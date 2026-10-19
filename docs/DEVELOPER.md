@@ -451,9 +451,15 @@ added locally or referenced by a quiz. History records the outcome as
 `updated`, stored among `pulled` so the fresh copy is recognised as this
 plugin's from then on.
 
-A quiz's questions are reused by idnumber when it is replaced, so an edit to a
-question on the source (a new version of the same bank entry) is not picked up,
-and editing a question does not change the quiz's own `timemodified` either.
+A quiz's questions are reused by idnumber when it is replaced. A question edited
+on the source is carried as a new version of the same bank entry
+(`question_bank_sync_trait::should_update_question()`), unless the newest version
+here is not the one `block_coursesync_question` says Course Sync wrote - somebody
+edited it here, so it is kept and counted. Editing a question does not change a
+quiz's or bank's own `timemodified`, so `get_modified_activities` raises the time
+of a `quiz` or `qbank` to that of its newest question. A question with no row
+(copied before v1.25.0) is updated only if the source changed it after the copy
+(`modified` child field) and it has just one version here.
 
 ### What the candidate list changed about conflicts
 

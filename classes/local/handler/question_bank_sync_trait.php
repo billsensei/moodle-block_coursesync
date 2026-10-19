@@ -54,6 +54,12 @@ trait question_bank_sync_trait {
     /** @var int Questions that arrived as a type this handler does not rebuild. */
     protected int $unsupportedcount = 0;
 
+    /** @var int Questions that were edited on the source and so got a new version here. */
+    protected int $updatedcount = 0;
+
+    /** @var int Questions edited on the source but also edited here, so left as they are here. */
+    protected int $keptlocalcount = 0;
+
     /**
      * Rebuilding questions is adding questions, so it needs the permission to.
      *
@@ -123,6 +129,7 @@ trait question_bank_sync_trait {
                         'remoteid' => (int) $question->questionbankentryid,
                         'categoryid' => (int) $category->id,
                         'qtype' => (string) $question->qtype,
+                        'modified' => (int) $question->timemodified,
                         'xml' => $writer->writequestion($question),
                     ],
                 ];
@@ -292,12 +299,14 @@ trait question_bank_sync_trait {
             }
 
             $remoteid = activity_payload::child_int($child, 'remoteid', 0);
+            $fragment = activity_payload::child_field($child, 'xml');
+            $entry = $this->find_question_entry($categoryid, $remoteid);
 
-            if ($this->reuse_existing_question($targetcontext, $categoryid, $remoteid)) {
+            $modified = activity_payload::child_int($child, 'modified', 0);
+
+            if ($entry && !$this->should_update_question($entry, $fragment, $modified)) {
                 continue;
             }
-
-            $fragment = activity_payload::child_field($child, 'xml');
 
             // The XML reader only parses a whole file, so a single fragment
             // is wrapped the same way a one-question export file would be.
@@ -308,7 +317,10 @@ trait question_bank_sync_trait {
             $question = is_array($parsed) ? reset($parsed) : false;
 
             if (!$question || $question->qtype !== $qtype) {
-                $this->unsupportedcount++;
+                // A new version that cannot be read leaves the version here as it was.
+                if (!$entry) {
+                    $this->unsupportedcount++;
+                }
 
                 continue;
             }
@@ -317,31 +329,47 @@ trait question_bank_sync_trait {
             // every other field from there is, before anything is saved.
             \block_coursesync\local\question_cleaner::clean($question);
 
-            $this->save_question($targetcontext, $categoryid, $remoteid, $question);
+            $this->save_question($targetcontext, $categoryid, $remoteid, $question, $fragment, $entry ?: null);
         }
     }
 
     /**
-     * DESTINATION SIDE. If this question already exists in this category -
-     * from an earlier sync into the same shared context - remember its
-     * local id and report that there is nothing left to do.
+     * DESTINATION SIDE. The bank entry an earlier sync made for this question
+     * in this category, if there is one.
      *
-     * @param \context $targetcontext where the category lives
      * @param int $categoryid the local category
      * @param int $remoteid the question's id on the source site
-     * @return bool true if an existing question was found and remembered
+     * @return \stdClass|false
      */
-    protected function reuse_existing_question(\context $targetcontext, int $categoryid, int $remoteid): bool {
+    protected function find_question_entry(int $categoryid, int $remoteid) {
         global $DB;
 
-        $entry = $DB->get_record('question_bank_entries', [
+        return $DB->get_record('question_bank_entries', [
             'idnumber' => 'coursesync-' . $remoteid,
             'questioncategoryid' => $categoryid,
         ]);
+    }
 
-        if (!$entry) {
-            return false;
-        }
+    /**
+     * DESTINATION SIDE. A question is already here: decide whether the source's
+     * copy of it is newer, and remember the question that is current here.
+     *
+     * A question edited on the source gets a new version here, on the same bank
+     * entry, so every quiz that uses it follows. It is left alone when the
+     * latest version here is not the one this plugin wrote - somebody here
+     * edited it, and their work is not overwritten. A question from before this
+     * was tracked has no record; with a modified time from the source it is
+     * updated only if it changed after it was copied and was never edited here,
+     * and otherwise the source's copy becomes the baseline to compare with next
+     * time.
+     *
+     * @param \stdClass $entry the question_bank_entries row
+     * @param string $fragment the question's XML as the source sent it
+     * @param int $modified when the source's question last changed, 0 if it did not say
+     * @return bool true if a new version should be written
+     */
+    protected function should_update_question(\stdClass $entry, string $fragment, int $modified): bool {
+        global $DB;
 
         $versions = $DB->get_records(
             'question_versions',
@@ -350,17 +378,91 @@ trait question_bank_sync_trait {
                 'status' => \core_question\local\bank\question_version_status::QUESTION_STATUS_READY,
             ],
             'version DESC',
-            'id, questionid',
+            'id, questionid, version',
             0,
             1
         );
-        $version = reset($versions);
+        $latest = reset($versions);
 
-        if ($version) {
-            $this->remember_id('question', $remoteid, (int) $version->questionid);
+        if (!$latest) {
+            return false;
         }
 
-        return true;
+        $this->remember_id('question', $this->remoteid_of($entry), (int) $latest->questionid);
+
+        $fingerprint = sha1($fragment);
+        $row = $DB->get_record('block_coursesync_question', ['entryid' => $entry->id]);
+
+        if ($row) {
+            if ($row->fingerprint === $fingerprint) {
+                return false;
+            }
+
+            if ((int) $row->questionid !== (int) $latest->questionid) {
+                $this->keptlocalcount++;
+
+                return false;
+            }
+
+            return true;
+        }
+
+        // Written before changes were tracked: there is nothing to compare with.
+        $editedhere = (int) $entry->nextversion > 2;
+        $copiedat = (int) $DB->get_field('question', 'timecreated', ['id' => $latest->questionid]);
+
+        if (!$editedhere && $modified > $copiedat) {
+            return true;
+        }
+
+        if ($editedhere && $modified > $copiedat) {
+            $this->keptlocalcount++;
+        }
+
+        $this->record_question_sync((int) $entry->id, (int) $latest->questionid, $fingerprint);
+
+        return false;
+    }
+
+    /**
+     * The source's id for a question, which its entry's idnumber carries.
+     *
+     * @param \stdClass $entry
+     * @return int
+     */
+    protected function remoteid_of(\stdClass $entry): int {
+        return (int) substr((string) $entry->idnumber, strlen('coursesync-'));
+    }
+
+    /**
+     * DESTINATION SIDE. Remember which version this plugin wrote for an entry,
+     * and what the source sent for it.
+     *
+     * @param int $entryid
+     * @param int $questionid
+     * @param string $fingerprint
+     * @return void
+     */
+    protected function record_question_sync(int $entryid, int $questionid, string $fingerprint): void {
+        global $DB;
+
+        $row = $DB->get_record('block_coursesync_question', ['entryid' => $entryid]);
+
+        if ($row) {
+            $row->questionid = $questionid;
+            $row->fingerprint = $fingerprint;
+            $row->timesynced = time();
+            $DB->update_record('block_coursesync_question', $row);
+
+            return;
+        }
+
+        $DB->insert_record('block_coursesync_question', (object) [
+            'entryid' => $entryid,
+            'questionid' => $questionid,
+            'fingerprint' => $fingerprint,
+            'timesynced' => time(),
+        ]);
     }
 
     /**
@@ -375,13 +477,17 @@ trait question_bank_sync_trait {
      * @param int $categoryid the local category this question belongs in
      * @param int $remoteid the question's id on the source site
      * @param \stdClass $question parsed by qformat_xml::readquestions()
+     * @param string $fragment the question's XML as the source sent it
+     * @param \stdClass|null $entry the existing bank entry to add a new version to, null for a new question
      * @return void
      */
     protected function save_question(
         \context $targetcontext,
         int $categoryid,
         int $remoteid,
-        \stdClass $question
+        \stdClass $question,
+        string $fragment,
+        ?\stdClass $entry = null
     ): void {
         global $DB, $USER;
 
@@ -399,18 +505,25 @@ trait question_bank_sync_trait {
 
         $question->id = $DB->insert_record('question', $question);
 
-        $entry = (object) [
-            'questioncategoryid' => $categoryid,
-            'idnumber' => $question->idnumber ?? null,
-            'ownerid' => $question->createdby,
-            'nextversion' => 2,
-        ];
-        $entry->id = $DB->insert_record('question_bank_entries', $entry);
+        if ($entry === null) {
+            $entry = (object) [
+                'questioncategoryid' => $categoryid,
+                'idnumber' => $question->idnumber ?? null,
+                'ownerid' => $question->createdby,
+                'nextversion' => 2,
+            ];
+            $entry->id = $DB->insert_record('question_bank_entries', $entry);
+            $versionnumber = 1;
+        } else {
+            $versionnumber = (int) $entry->nextversion;
+            $DB->set_field('question_bank_entries', 'nextversion', $versionnumber + 1, ['id' => $entry->id]);
+            $this->updatedcount++;
+        }
 
         $version = (object) [
             'questionbankentryid' => $entry->id,
             'questionid' => $question->id,
-            'version' => 1,
+            'version' => $versionnumber,
             'status' => \core_question\local\bank\question_version_status::QUESTION_STATUS_READY,
         ];
         $DB->insert_record('question_versions', $version);
@@ -472,6 +585,7 @@ trait question_bank_sync_trait {
             \core_tag_tag::set_item_tags('core_question', 'question', $question->id, $targetcontext, $tags);
         }
 
+        $this->record_question_sync((int) $entry->id, (int) $question->id, sha1($fragment));
         $this->remember_id('question', $remoteid, $question->id);
     }
 }

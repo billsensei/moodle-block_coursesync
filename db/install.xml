@@ -163,5 +163,20 @@
         <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="block_coursesync_question" COMMENT="One row per question a sync wrote into a question bank here: the bank entry, the version written, and a fingerprint of what the source sent, so a later sync can tell a question edited on the source from one edited here.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="entryid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The question_bank_entries row here."/>
+        <FIELD NAME="questionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The question version this plugin last wrote for the entry."/>
+        <FIELD NAME="fingerprint" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="SHA-1 of the question the source sent when that version was written."/>
+        <FIELD NAME="timesynced" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="entryid" UNIQUE="true" FIELDS="entryid"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>

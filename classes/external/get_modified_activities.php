@@ -166,7 +166,129 @@ class get_modified_activities extends external_api {
             }
         }
 
+        return self::with_question_times($times, $bymodname);
+    }
+
+    /**
+     * A question bank or quiz counts as changed when one of its questions was.
+     *
+     * Editing a question writes a new question version, and touches neither the
+     * bank's nor the quiz's own row, so its modified time alone would never say
+     * so. For a quiz that is the questions it uses: the ones in its fixed slots,
+     * and everything in the categories its random slots draw from.
+     *
+     * @param array $times cmid => unix time
+     * @param array $bymodname modname => [instance id => cmid]
+     * @return array cmid => unix time
+     */
+    protected static function with_question_times(array $times, array $bymodname): array {
+        global $DB, $CFG;
+
+        require_once($CFG->libdir . '/questionlib.php');
+
+        $ready = \core_question\local\bank\question_version_status::QUESTION_STATUS_READY;
+
+        // A question bank: every ready question in a category of its own context.
+        if (!empty($bymodname['qbank'])) {
+            [$insql, $params] = $DB->get_in_or_equal(array_values($bymodname['qbank']), SQL_PARAMS_NAMED);
+            $params['ready'] = $ready;
+            $params['level'] = CONTEXT_MODULE;
+
+            $rows = $DB->get_records_sql(
+                "SELECT ctx.instanceid AS cmid, MAX(q.timemodified) AS changed
+                   FROM {context} ctx
+                   JOIN {question_categories} qc ON qc.contextid = ctx.id
+                   JOIN {question_bank_entries} qbe ON qbe.questioncategoryid = qc.id
+                   JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id AND qv.status = :ready
+                   JOIN {question} q ON q.id = qv.questionid
+                  WHERE ctx.contextlevel = :level AND ctx.instanceid {$insql}
+               GROUP BY ctx.instanceid",
+                $params
+            );
+
+            foreach ($rows as $row) {
+                $times[(int) $row->cmid] = max($times[(int) $row->cmid], (int) $row->changed);
+            }
+        }
+
+        foreach ($bymodname['quiz'] ?? [] as $quizid => $cmid) {
+            $changed = self::quiz_question_time((int) $quizid, (int) $cmid, $ready);
+            $times[$cmid] = max($times[$cmid], $changed);
+        }
+
         return $times;
+    }
+
+    /**
+     * When the newest question a quiz uses last changed.
+     *
+     * @param int $quizid
+     * @param int $cmid
+     * @param string $ready the status of a question that is ready to use
+     * @return int 0 when the quiz uses none
+     */
+    protected static function quiz_question_time(int $quizid, int $cmid, string $ready): int {
+        global $DB;
+
+        $modcontextid = \context_module::instance($cmid)->id;
+        $newest = 0;
+
+        $fixed = $DB->get_field_sql(
+            "SELECT MAX(q.timemodified)
+               FROM {quiz_slots} qs
+               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz'
+                    AND qr.questionarea = 'slot' AND qr.usingcontextid = :ctx
+               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid AND qv.status = :ready
+               JOIN {question} q ON q.id = qv.questionid
+              WHERE qs.quizid = :quizid",
+            ['ctx' => $modcontextid, 'ready' => $ready, 'quizid' => $quizid]
+        );
+        $newest = max($newest, (int) $fixed);
+
+        $categoryids = [];
+
+        $setrefs = $DB->get_records_sql(
+            "SELECT sr.id, sr.filtercondition
+               FROM {quiz_slots} qs
+               JOIN {question_set_references} sr ON sr.itemid = qs.id AND sr.component = 'mod_quiz'
+                    AND sr.questionarea = 'slot'
+              WHERE qs.quizid = :quizid",
+            ['quizid' => $quizid]
+        );
+
+        foreach ($setrefs as $setref) {
+            $filter = json_decode((string) $setref->filtercondition, true) ?: [];
+            $categoryid = (int) ($filter['filter']['category']['values'][0] ?? 0);
+
+            if ($categoryid === 0) {
+                continue;
+            }
+
+            $categoryids[$categoryid] = true;
+
+            if (!empty($filter['filter']['category']['filteroptions']['includesubcategories'])) {
+                foreach (\question_categorylist($categoryid) as $descendantid) {
+                    $categoryids[(int) $descendantid] = true;
+                }
+            }
+        }
+
+        if ($categoryids !== []) {
+            [$insql, $params] = $DB->get_in_or_equal(array_keys($categoryids), SQL_PARAMS_NAMED);
+            $params['ready'] = $ready;
+
+            $random = $DB->get_field_sql(
+                "SELECT MAX(q.timemodified)
+                   FROM {question_bank_entries} qbe
+                   JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id AND qv.status = :ready
+                   JOIN {question} q ON q.id = qv.questionid
+                  WHERE qbe.questioncategoryid {$insql}",
+                $params
+            );
+            $newest = max($newest, (int) $random);
+        }
+
+        return $newest;
     }
 
     /**

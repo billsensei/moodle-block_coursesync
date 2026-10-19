@@ -759,6 +759,14 @@ class quiz_handler extends activity_handler {
             $notes[] = ['syncqbankunsupportedcount', $this->unsupportedcount];
         }
 
+        if ($this->updatedcount > 0) {
+            $notes[] = ['syncqbankupdatedcount', $this->updatedcount];
+        }
+
+        if ($this->keptlocalcount > 0) {
+            $notes[] = ['syncqbankkeptlocalcount', $this->keptlocalcount];
+        }
+
         if ($this->unresolvedslotcount > 0) {
             $notes[] = ['syncquizunresolvedslotcount', $this->unresolvedslotcount];
         }

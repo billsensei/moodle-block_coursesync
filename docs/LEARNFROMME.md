@@ -4652,3 +4652,40 @@ any mapped address. Eight new refused cases plus one "mapped public address is s
 without the fix (checked by stashing it). Full suite on 5.0, 5.1, 5.2, 5.3: 626 tests, 0 warnings, 1 skipped; phpcs and phpdoc clean.
 Local Behat on 5.1 before the change: 48 scenarios, 1122 steps, all passed. Trap: PHPUnit on the local CI install needed a
 `phpunit/cli/init.php` run first, since the version had moved on.
+
+## Phase 87 - Question edits on the source are carried across (v1.25.0-beta, build 2026101901), 2026-10-19
+
+**Trigger:** the known gap in DEVELOPER.md: questions were reused by idnumber for ever, so a source edit never arrived,
+and editing a question left its quiz's and bank's `timemodified` alone, so nothing was even offered as changed.
+
+**Design:** two halves. Source: `get_modified_activities::with_question_times()` raises a `qbank`'s time to its newest ready
+question, and a `quiz`'s to its fixed-slot questions and every question in its random slots' categories (subcategories
+included). Destination: an existing entry is no longer just reused; `should_update_question()` compares a SHA-1 of the XML
+fragment with `block_coursesync_question` and writes a new version on the same entry (`nextversion`), so slots that follow the
+entry follow the edit. A newest version that is not the one we wrote means a local edit: kept, counted, never overwritten.
+Questions copied before the table existed use the source's new `modified` field against the local copy's `timecreated`,
+and an entry with `nextversion > 2` counts as edited here.
+
+**Proof:** five new tests; with `should_update_question()` forced to return false, three of the four handler tests fail.
+Full suite on the 5.1 CI install: 631 tests (626 before), 1 skipped. phpcs clean after fixing three long lines and the lang
+string order. **Trap:** the CI database container had been stopped for days; `docker start coursesync-ci-db` first. Another:
+my first extra test failed only because generator-made questions are "modified now", so a "since" baseline needs their
+`timemodified` set old.
+
+**Moodle 5.0 to 5.3:** the full suite on the web-d, web-e and web-f containers (5.0, 5.2, 5.3), after upgrading each to build 2026101901: 631 tests, 3071 assertions, 1 skipped, no warnings or notices, identical to 5.1.
+
+**Live check (5.2 source, 5.3 destination).** Throwaway scripts built a course with a quiz and a Question bank on web-e,
+pulled it into web-f, edited both questions on the source, and pulled again. Both activities showed as
+`conflictchangedupstream` with their own rows untouched, so detection works across sites. Ticking the quiz gave
+`coursesync-19` a v2 with the edited name on the same entry and the note "1 question(s) ... new version"; ticking it again
+added no v3. **Found a real bug:** ticking the bank failed with "Modules with FEATURE_CAN_DISPLAY set to false can not be
+moved from section 0", because `copy_update::take_local_setup()` moves the replacement into the old bank's place and 5.2+
+refuse that for a Question bank. Not caused by this phase, but a bank is now flagged changed far more often, so it
+surfaced. Fix: do not move a module whose type cannot be displayed. New test `test_a_question_bank_can_take_its_predecessors_setup`
+errors on 5.3 without the fix (checked). A replaced bank has a new context, so its edited question arrives as a fresh v1,
+not as v2 of the old entry; that is by design, the old bank is deleted. **Trap:** my pull script read the ticked ids from the
+wrong argv position, so the first "ticked" run ticked nothing and looked like a no-op.
+
+**Behat (5.1 CI install):** 48 scenarios, 1122 steps, all passed. Behat on 5.0, 5.2 and 5.3 only runs in the GitHub workflow.
+
+**Trap:** `pkill -f` / `pgrep -f` with a pattern that appears in the command line kills or matches the shell running it.

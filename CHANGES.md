@@ -3,51 +3,39 @@
 What is new or changed in the current version of Course Sync (`block_coursesync`)
 only. The full running history is in [changelog.md](changelog.md).
 
-## Unreleased (build 2026101506, v1.24.5-beta)
-
-### Changed
-
-- **Supports Moodle 5.0 to 5.3** (`$plugin->requires` 2025041400, `$plugin->supported` 500-503;
-  it was 5.1 only). Found by running the whole PHPUnit suite on 5.0, 5.2 and 5.3 sites, then
-  pulling a course with a page, forum, assignment, label and a quiz with a random slot between
-  every pair of 5.0, 5.1, 5.2 and 5.3:
-  - 5.2 removed `ASSIGN_ATTEMPT_REOPEN_METHOD_NONE`, so every assignment sync failed. A source's
-    "none" now becomes "manual" on a 5.2+ site.
-  - 5.2 no longer gives a random quiz slot the question type "random" (it is null, with a
-    `random` flag), so Pull Attempts treated every quiz with a random question as changed and
-    skipped all its attempts. Both ends now say "random" for such a slot.
-  - 5.2 deprecated `course_delete_module()` and `moveto_module()`. They now go through
-    `local\course_modules`, which uses the course format actions where they exist.
-- The CI workflow runs MOODLE_500 to MOODLE_503, each with its own PHP and database minimums.
-- The Behat quiz scenario adds its random question with a new step, `quiz "X" has a random question from
-  category "Y" on page N`. 5.2 removed the "random" type from core's questions generator, so the old setup row
-  failed there. Tests only; no plugin code changed. Behat passes on 5.1, 5.2 and 5.3 locally and on 5.0 to 5.3 in CI.
-
-### Fixed
-
-- **Privacy: the grade `itemnumber` is declared and exported, and a deleted user's runs go with them.**
-  `block_coursesync_grade.itemnumber` was the one column of the pull tables the provider did not
-  declare or export (it only says which grade of an activity a row is). The `user_deleted` observer
-  forgot a user's pulled grades, attempts, submissions and marks but kept the sync runs they started,
-  leaving a user id that pointed at nobody; it now removes those too. Another user's runs stay.
-- **The private-address check refuses `::ffff:0.0.0.0` and the SIIT form `::ffff:0:a.b.c.d`.** Every other
-  IPv4-mapped address (`::ffff:127.0.0.1`, `::ffff:169.254.169.254`, ...) was already refused, because
-  Moodle's `address_in_subnet()` unwraps it, but the mapped all-zeros address and the SIIT twin got through.
-  `remote_url` now judges any mapped address by the IPv4 address inside it and blocks `::ffff:0:0:0/96`.
-  Only an address an administrator enters is checked, and the private-address override is still off by default.
+## Unreleased (build 2026101901, v1.25.0-beta)
 
 ### Added
 
-- **Pull Grades says when the other site is too old to send manual grade items.** A source
-  from before v1.24.0 ignores the request for manual items and answers with activity grades
-  only, which looked exactly like a course with none. When no manual item comes back, the
-  pull now asks the other site's ping for its Course Sync version, and if it is older than
-  v1.24.0 (or reports none) the results page says so and tells the teacher to upgrade it
-  there. A source that did send manual items is never asked, and a ping that fails adds no
-  note. This costs one extra small request only on pulls that returned no manual items.
+- **A question edited on the source is carried across.** Until now a question was copied once and then
+  reused by its idnumber for ever, so editing it on the source never reached the destination, and editing
+  a question did not even mark its quiz or Question bank as changed.
+  - The source now counts a quiz as changed when a question it uses changed (the questions in its fixed
+    slots, and everything in the categories its random slots draw from), and a Question bank as changed
+    when a question in it did. Both then show as "Changed since it was copied" as any other change does.
+  - On the destination, a question that was edited gets a **new version on the same bank entry**, so every
+    quiz that uses it follows, and nothing is duplicated. The results page says how many were updated.
+  - A question somebody edited **here** is not overwritten: if the newest version is not the one Course
+    Sync wrote, it is left as it is and the results page counts it.
+  - New table `block_coursesync_question` remembers, per bank entry, the version Course Sync wrote and a
+    fingerprint of what the source sent. It holds nothing about a person. A question copied before this
+    version has no row: it is updated if the source changed it after the copy and nobody edited it here,
+    and otherwise its current state becomes the baseline. A source on an older version sends no change
+    time for a question, so its questions only get a baseline, never an update.
+  - A quiz kept as the old edition (because people have attempted it) points at the same bank entries, so
+    it too uses the newest version of an edited question for new attempts.
+
+### Fixed
+
+- **Replacing a Question bank failed on Moodle 5.2 and 5.3.** The new bank was moved into the old one's place, and
+  5.2+ refuse to move a module that is never shown on the course page (a Question bank sits hidden in section 0):
+  "Modules with FEATURE_CAN_DISPLAY set to false can not be moved from section 0". The copy was rolled back and the
+  results page said the update failed. Such a module is no longer moved. Found by the live check of question edits.
 
 ### Tests
 
-- A source reporting an older version, and one reporting no version, are noted; a current
-  source with no manual items, one that sent manual items, and a ping that fails are not.
-  The first two fail without the check.
+- A Question bank can take its predecessor's setup (fails on 5.2 and 5.3 without the fix).
+- A source edit makes a new version on the same entry; an unchanged question adds none; a question edited
+  here is kept and counted; a question from before tracking is updated only if untouched here; a question
+  edit makes its quiz and its bank count as changed. The version tests fail without the change (checked).
+

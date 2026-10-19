@@ -541,6 +541,162 @@ final class quiz_handler_test extends advanced_testcase {
     }
 
     /**
+     * A source quiz with one short answer question, copied once.
+     *
+     * @return array [source course, target course, quiz, question, first copy, entry id]
+     */
+    protected function quiz_with_one_copied_question(): array {
+        global $CFG, $DB;
+
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $source = $this->getDataGenerator()->create_course();
+        $target = $this->getDataGenerator()->create_course();
+        $quiz = $this->getDataGenerator()->get_plugin_generator('mod_quiz')
+            ->create_instance(['course' => $source->id, 'name' => 'Edited quiz']);
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $question = $qgen->create_question('shortanswer', null, [
+            'category' => $qgen->create_question_category()->id,
+            'name' => 'Original name',
+        ]);
+        \quiz_add_quiz_question($question->id, $quiz, 0, 1.0);
+
+        [$cm] = $this->round_trip($quiz->cmid, $target);
+        $entryid = (int) $DB->get_field(
+            'question_bank_entries',
+            'id',
+            ['idnumber' => 'coursesync-' . $question->questionbankentryid]
+        );
+
+        return [$source, $target, $quiz, $question, $cm, $entryid];
+    }
+
+    /**
+     * Edit a question as a teacher would, which writes a new version.
+     *
+     * @param \stdClass $question
+     * @param string $name
+     * @return void
+     */
+    protected function edit_question(\stdClass $question, string $name): void {
+        $this->getDataGenerator()->get_plugin_generator('core_question')
+            ->update_question($question, null, ['name' => $name, 'timemodified' => time() + 100]);
+    }
+
+    /**
+     * A question edited on the source gets a new version on the same bank
+     * entry here, and a quiz copied afterwards uses it.
+     */
+    public function test_a_question_edited_on_the_source_gets_a_new_version_here(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        [, $target, $quiz, $question, , $entryid] = $this->quiz_with_one_copied_question();
+        $this->assertSame(1, $DB->count_records('question_versions', ['questionbankentryid' => $entryid]));
+
+        $this->edit_question($question, 'Edited on the source');
+        [, , $handler] = $this->round_trip($quiz->cmid, $target);
+
+        $this->assertSame(1, $DB->count_records('question_bank_entries', ['id' => $entryid]));
+        $this->assertSame(2, $DB->count_records('question_versions', ['questionbankentryid' => $entryid]));
+        $this->assertSame(3, (int) $DB->get_field('question_bank_entries', 'nextversion', ['id' => $entryid]));
+
+        $latest = $DB->get_record_sql(
+            'SELECT q.name FROM {question_versions} qv JOIN {question} q ON q.id = qv.questionid
+              WHERE qv.questionbankentryid = ? ORDER BY qv.version DESC',
+            [$entryid],
+            IGNORE_MULTIPLE
+        );
+        $this->assertSame('Edited on the source', $latest->name);
+        $payload = activity_payload::from_response(get_activity::execute($quiz->cmid));
+        $this->assertContains(['syncqbankupdatedcount', 1], $handler->notes($payload));
+    }
+
+    /**
+     * Copying again with nothing changed adds no version.
+     */
+    public function test_an_unchanged_question_gets_no_new_version(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        [, $target, $quiz, , , $entryid] = $this->quiz_with_one_copied_question();
+
+        $this->round_trip($quiz->cmid, $target);
+        $this->round_trip($quiz->cmid, $target);
+
+        $this->assertSame(1, $DB->count_records('question_versions', ['questionbankentryid' => $entryid]));
+    }
+
+    /**
+     * A question somebody edited here is not overwritten by the source's edit.
+     */
+    public function test_a_question_edited_here_is_kept(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        [, $target, $quiz, $question, , $entryid] = $this->quiz_with_one_copied_question();
+
+        $localquestion = \question_bank::load_question_data(
+            (int) $DB->get_field_sql(
+                'SELECT questionid FROM {question_versions} WHERE questionbankentryid = ?',
+                [$entryid]
+            )
+        );
+        $this->edit_question($localquestion, 'Edited here');
+        $this->edit_question($question, 'Edited on the source');
+
+        [, , $handler] = $this->round_trip($quiz->cmid, $target);
+
+        $this->assertSame(2, $DB->count_records('question_versions', ['questionbankentryid' => $entryid]));
+        $names = $DB->get_fieldset_sql(
+            'SELECT q.name FROM {question_versions} qv JOIN {question} q ON q.id = qv.questionid
+              WHERE qv.questionbankentryid = ?',
+            [$entryid]
+        );
+        $this->assertNotContains('Edited on the source', $names);
+        $payload = activity_payload::from_response(get_activity::execute($quiz->cmid));
+        $this->assertContains(['syncqbankkeptlocalcount', 1], $handler->notes($payload));
+    }
+
+    /**
+     * A question copied before changes were tracked has no record of what was
+     * written: it is updated if the source changed it after the copy and
+     * nobody edited it here, and otherwise left alone.
+     */
+    public function test_a_question_copied_before_tracking_is_updated_only_if_untouched_here(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        [, $target, $quiz, $question, , $entryid] = $this->quiz_with_one_copied_question();
+        $DB->delete_records('block_coursesync_question');
+
+        // Nothing changed: no new version, and a baseline is recorded.
+        $this->round_trip($quiz->cmid, $target);
+        $this->assertSame(1, $DB->count_records('question_versions', ['questionbankentryid' => $entryid]));
+        $this->assertSame(1, $DB->count_records('block_coursesync_question'));
+
+        $DB->delete_records('block_coursesync_question');
+        $this->edit_question($question, 'Edited on the source');
+        $this->round_trip($quiz->cmid, $target);
+        $this->assertSame(2, $DB->count_records('question_versions', ['questionbankentryid' => $entryid]));
+
+        // Edited here as well: the source's edit is not applied.
+        $DB->delete_records('block_coursesync_question');
+        $DB->set_field('question_bank_entries', 'nextversion', 4, ['id' => $entryid]);
+        $this->edit_question($question, 'Edited again on the source');
+        $this->round_trip($quiz->cmid, $target);
+        $this->assertSame(2, $DB->count_records('question_versions', ['questionbankentryid' => $entryid]));
+    }
+
+    /**
      * Turn a question into one of a type this site does not have installed -
      * what a third-party question type looks like to a site without that
      * plugin, and the one kind of question every core type being supported

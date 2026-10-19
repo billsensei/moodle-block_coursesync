@@ -251,4 +251,40 @@ final class get_modified_activities_test extends advanced_testcase {
         $this->expectException(\required_capability_exception::class);
         get_modified_activities::execute($course->id, 0);
     }
+
+    /**
+     * Editing a question makes the quiz that uses it, and the bank that holds
+     * it, count as changed, though neither's own row was touched.
+     */
+    public function test_a_question_edit_counts_as_a_change_to_its_quiz_and_bank(): void {
+        global $CFG, $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $course = $this->getDataGenerator()->create_course();
+        $quiz = $this->getDataGenerator()->get_plugin_generator('mod_quiz')
+            ->create_instance(['course' => $course->id, 'name' => 'Quiz']);
+        $qbank = $this->getDataGenerator()->create_module('qbank', ['course' => $course->id, 'name' => 'Bank']);
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+
+        $quizquestion = $qgen->create_question('truefalse', null, ['category' => $qgen->create_question_category()->id]);
+        \quiz_add_quiz_question($quizquestion->id, $quiz, 0, 1.0);
+        $bankquestion = $qgen->create_question('truefalse', null, [
+            'category' => $qgen->create_question_category(['contextid' => \context_module::instance($qbank->cmid)->id])->id,
+        ]);
+
+        $this->set_modified($quiz, 'quiz', 1000);
+        $this->set_modified($qbank, 'qbank', 1000);
+        $DB->set_field('question', 'timemodified', 1000);
+        $this->assertSame([], get_modified_activities::execute($course->id, 5000));
+
+        $qgen->update_question($quizquestion, null, ['timemodified' => 6000]);
+        $qgen->update_question($bankquestion, null, ['timemodified' => 7000]);
+
+        $names = array_column(get_modified_activities::execute($course->id, 5000), 'timemodified', 'name');
+        $this->assertSame(['Quiz' => 6000, 'Bank' => 7000], $names);
+    }
 }

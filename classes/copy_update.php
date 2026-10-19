@@ -233,7 +233,15 @@ class copy_update {
         // Moving needs the module as modinfo knows it (its type, current
         // section and visibility), not just its row.
         \rebuild_course_cache($old->course, true);
-        local\course_modules::move(get_fast_modinfo($old->course)->get_cm($new->id), $section, $beforemod ?: null);
+
+        $newcm = get_fast_modinfo($old->course)->get_cm($new->id);
+
+        // A module that is never shown on the course page (a Question bank) sits
+        // hidden in section 0 and has no place to keep: Moodle 5.2 and later
+        // refuse to move one, even within the section.
+        if (plugin_supports('mod', $newcm->modname, FEATURE_CAN_DISPLAY, true)) {
+            local\course_modules::move($newcm, $section, $beforemod ?: null);
+        }
 
         $update = (object) ['id' => $new->id];
 

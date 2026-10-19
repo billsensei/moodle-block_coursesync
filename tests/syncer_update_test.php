@@ -685,4 +685,28 @@ final class syncer_update_test extends advanced_testcase {
 
         $this->assertTrue(copy_update::has_people_data((int) $assign->cmid));
     }
+
+    /**
+     * Replacing a Question bank carries its local setup over without trying to
+     * move it: Moodle 5.2 and later refuse to move a module that is never shown
+     * on the course page, so this failed there before.
+     */
+    public function test_a_question_bank_can_take_its_predecessors_setup(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course();
+        $old = $this->getDataGenerator()->create_module('qbank', ['course' => $course->id]);
+        $new = $this->getDataGenerator()->create_module('qbank', ['course' => $course->id]);
+
+        copy_update::take_local_setup(
+            $DB->get_record('course_modules', ['id' => $old->cmid], '*', MUST_EXIST),
+            $DB->get_record('course_modules', ['id' => $new->cmid], '*', MUST_EXIST),
+            true
+        );
+
+        $this->assertTrue($DB->record_exists('course_modules', ['id' => $new->cmid]));
+    }
 }

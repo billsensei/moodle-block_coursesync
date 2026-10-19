@@ -242,7 +242,10 @@ come across. A random short-answer matching question picks its
 short-answer questions from its own category, and those come across with
 it; if it is set to include subcategories, a copied quiz only brings the
 subcategories it uses elsewhere, so check it has enough to choose from. Only the current version of each question travels, not
-its edit history, and student attempts and usage statistics never do.
+its edit history, and student attempts and usage statistics never do. If you edit
+a question on the other site, the quiz or Question bank using it shows as changed;
+copying it again gives the question a new version here. A question you have
+edited here yourself is left as you made it, and the results say so.
 
 Anything else in the other course is listed as skipped, so you know it was seen
 and left.
