@@ -4709,3 +4709,9 @@ destination's `coursesync-%` entries.
 missing `@param` on `run_locked()`); Behat on 5.1: 49 scenarios, 1150 steps, all passed, including the new questions-only
 scenario. Not run: Behat on 5.0, 5.2, 5.3 (GitHub workflow), and a live pull between Docker sites.
 Also: the v1.25.0-beta workflow finished green on the push to `main` and on the tag.
+
+**Phase 88 follow-up - the v1.26.0 workflow was red.** All 16 jobs failed at the Grunt step, before any test ran: gherkinlint
+`no-multiple-empty-lines` on `quiz_sync.feature`, a blank line at the end that my appended Behat scenario left. My local gate list
+had phpcs, phpdoc, PHPUnit and Behat but not `moodle-plugin-ci grunt --max-lint-warnings 0`, which is what lints `.feature` files.
+Fixed in v1.26.1-beta (tag v1.26.0-beta left where it was). **Rule:** run `moodle-plugin-ci grunt --max-lint-warnings 0` before
+any push that touches a `.feature` or JS file.

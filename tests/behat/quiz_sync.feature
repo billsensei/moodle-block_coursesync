@@ -98,4 +98,3 @@ Feature: Syncing quiz questions
     Then I should not see "Unit quiz" in the "page-content" "region"
     When I am on the "DEST" "block_coursesync > Sync" page
     Then the field "Unit quiz" matches value "1"
-
