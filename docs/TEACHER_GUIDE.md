@@ -247,10 +247,12 @@ a question on the other site, the quiz or Question bank using it shows as change
 copying it again gives the question a new version here. A question you have
 edited here yourself is left as you made it, and the results say so.
 
-**Questions without the quiz.** Each quiz in the list has a **Questions only** box. Tick it to
-copy the quiz's questions into this course's question bank and nothing else: no quiz is made, and
-the quiz stays in the list as something you can still copy. If you tick the quiz as well, the whole
-quiz is copied and the box makes no difference.
+**Questions without the quiz.** The page has two sections. **Activities** is everything
+to copy as an activity. **Question content** lists each Question bank, and a row "Questions in
+<quiz>" for every quiz. Tick that row to copy the quiz's questions into this course's question bank and
+nothing else: no quiz is made, and the quiz stays in the Activities list as something you can still copy.
+If you tick the quiz in Activities as well, the whole quiz is copied and the questions row makes no
+difference.
 
 Anything else in the other course is listed as skipped, so you know it was seen
 and left.

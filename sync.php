@@ -175,7 +175,29 @@ if (!$confirm) {
             );
         }
 
+        // Two sections on one page, one form and one button: the activities, and
+        // the question content - Question banks, and each quiz's questions on
+        // their own. A quiz is in both: ticked in the first it is copied whole,
+        // ticked in the second only its questions are. A Question bank is only
+        // in the second.
+        $isbank = static fn(array $row): bool => $row['activity']->modname === 'qbank';
+        $questionrows = array_values(array_filter(array_merge($newrows, $changedrows, $alreadyrows), $isbank));
+
+        foreach (array_merge($newrows, $changedrows, $alreadyrows) as $row) {
+            if ($row['activity']->modname === 'quiz') {
+                $questionrows[] = ['activity' => $row['activity'], 'status' => 'questionsonly'];
+            }
+        }
+
+        $withoutbanks = static fn(array $rows): array => array_values(
+            array_filter($rows, static fn(array $row): bool => !$isbank($row))
+        );
+        $newrows = $withoutbanks($newrows);
+        $changedrows = $withoutbanks($changedrows);
+        $alreadyrows = $withoutbanks($alreadyrows);
+
         $statuslabels = [
+            'questionsonly' => get_string('syncstatusquestionsonly', 'block_coursesync'),
             'new' => get_string('syncstatusnew', 'block_coursesync'),
             'changedreplace' => get_string('syncstatuschangedreplace', 'block_coursesync'),
             'changednewedition' => get_string('syncstatuschangednewedition', 'block_coursesync'),
@@ -196,7 +218,6 @@ if (!$confirm) {
             . html_writer::tag('th', get_string('previewcoltype', 'block_coursesync'), ['scope' => 'col'])
             . html_writer::tag('th', get_string('previewcolmodified', 'block_coursesync'), ['scope' => 'col'])
             . html_writer::tag('th', get_string('syncstatuscolumn', 'block_coursesync'), ['scope' => 'col'])
-            . html_writer::tag('th', get_string('syncquestionsonlycolumn', 'block_coursesync'), ['scope' => 'col'])
         );
 
         // Every row can be chosen; only new ones start ticked. "Select all"
@@ -214,41 +235,43 @@ if (!$confirm) {
                 // Select all reaches only what is plainly new or changed.
                 $bulk = !$already && !$matched && $row['status'] !== 'ambiguous';
 
-                $checkbox = html_writer::empty_tag('input', [
-                    'type' => 'checkbox',
-                    'name' => 'cmids[]',
-                    'value' => (int) $activity->cmid,
-                    'id' => $id,
-                    'checked' => $row['status'] === 'new' ? 'checked' : null,
-                    'data-coursesync-bulk' => $bulk ? 1 : null,
-                    'class' => 'form-check-input',
-                ]);
-
-                // Only a quiz has questions that can be copied without it.
-                $questionsbox = '';
-
-                if ($activity->modname === 'quiz') {
-                    $questionsbox = html_writer::empty_tag('input', [
+                if ($row['status'] === 'questionsonly') {
+                    // The questions of a quiz, without the quiz.
+                    $qid = $id . '-questions';
+                    $checkbox = html_writer::empty_tag('input', [
                         'type' => 'checkbox',
                         'name' => 'questionsonly[]',
                         'value' => (int) $activity->cmid,
-                        'id' => $id . '-questions',
+                        'id' => $qid,
                         'class' => 'form-check-input',
-                    ]) . html_writer::tag(
+                    ]);
+                    $label = html_writer::tag(
                         'label',
                         get_string('syncquestionsonlylabel', 'block_coursesync', s($activity->name)),
-                        ['for' => $id . '-questions', 'class' => 'visually-hidden']
+                        ['for' => $qid]
                     );
+                    $type = get_string('syncquestionsinquiz', 'block_coursesync');
+                } else {
+                    $checkbox = html_writer::empty_tag('input', [
+                        'type' => 'checkbox',
+                        'name' => 'cmids[]',
+                        'value' => (int) $activity->cmid,
+                        'id' => $id,
+                        'checked' => $row['status'] === 'new' ? 'checked' : null,
+                        'data-coursesync-bulk' => $bulk ? 1 : null,
+                        'class' => 'form-check-input',
+                    ]);
+                    $label = html_writer::tag('label', s($activity->name), ['for' => $id]);
+                    $type = s($activity->get_type_name());
                 }
 
                 $out .= html_writer::tag(
                     'tr',
                     html_writer::tag('td', $checkbox)
-                    . html_writer::tag('td', html_writer::tag('label', s($activity->name), ['for' => $id]))
-                    . html_writer::tag('td', s($activity->get_type_name()))
+                    . html_writer::tag('td', $label)
+                    . html_writer::tag('td', $type)
                     . html_writer::tag('td', userdate($activity->timemodified))
                     . html_writer::tag('td', $statuslabels[$row['status']])
-                    . html_writer::tag('td', $questionsbox)
                 );
             }
 
@@ -306,6 +329,10 @@ if (!$confirm) {
 
         $PAGE->requires->js_call_amd('block_coursesync/choose', 'init');
 
+        if ($newrows !== [] || $changedrows !== [] || $alreadyrows !== []) {
+            echo $OUTPUT->heading(get_string('syncsectionactivities', 'block_coursesync'), 3);
+        }
+
         $rendergroup($newrows, 'syncgroupnew', 'syncchoosecaptionnew');
         $rendergroup($changedrows, 'syncgroupchanged', 'syncchoosecaptionchanged');
 
@@ -327,7 +354,33 @@ if (!$confirm) {
             ]), 'warning', false);
         }
 
-        $rendergroup($alreadyrows, 'syncgrouppresent', 'syncchoosecaptionpresent', $collisionwarning);
+        $rendergroup(
+            $alreadyrows,
+            'syncgrouppresent',
+            'syncchoosecaptionpresent',
+            $alreadyrows === [] ? '' : $collisionwarning
+        );
+
+        if ($questionrows !== []) {
+            echo $OUTPUT->heading(get_string('syncsectionquestions', 'block_coursesync'), 3);
+            echo html_writer::tag(
+                'p',
+                get_string('syncsectionquestionsintro', 'block_coursesync'),
+                ['class' => 'text-muted']
+            );
+            echo $alreadyrows === [] ? $collisionwarning : '';
+            echo html_writer::tag(
+                'table',
+                html_writer::tag(
+                    'caption',
+                    get_string('syncchoosecaptionquestions', 'block_coursesync'),
+                    ['class' => 'visually-hidden']
+                )
+                . html_writer::tag('thead', $head)
+                . html_writer::tag('tbody', $renderrows($questionrows)),
+                ['class' => 'table table-striped']
+            );
+        }
 
         echo html_writer::tag(
             'div',

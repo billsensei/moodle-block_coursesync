@@ -4715,3 +4715,14 @@ Also: the v1.25.0-beta workflow finished green on the push to `main` and on the 
 had phpcs, phpdoc, PHPUnit and Behat but not `moodle-plugin-ci grunt --max-lint-warnings 0`, which is what lints `.feature` files.
 Fixed in v1.26.1-beta (tag v1.26.0-beta left where it was). **Rule:** run `moodle-plugin-ci grunt --max-lint-warnings 0` before
 any push that touches a `.feature` or JS file.
+
+## Phase 89 - Two sections on the Choose page (v1.27.0-beta, build 2026102003), 2026-10-20
+
+**Decision (the user's):** keep one run and one engine, split the page into two sections. A separate button and run were
+rejected: two runs would share one lock and one last-synced marker, a Question bank is still an activity on the source, and a
+quiz copied before its questions would arrive with empty slots.
+**Change:** `sync.php` only, plus strings. The qbank rows leave the activity groups and join a "Question content" table with one
+`questionsonly` row per quiz; the extra column from v1.26.0 is gone. `syncer`, the form fields (`cmids[]`, `questionsonly[]`)
+and the results are unchanged. **Rule from Phase 88:** run `moodle-plugin-ci grunt` before pushing a `.feature` change.
+**Result:** Behat on 5.1: 49 scenarios, 1152 steps, all passed (the quiz scenario now uses the field "Questions in Unit quiz");
+PHPUnit on 5.1 unchanged at 636; phpcs, phpdoc and grunt clean. Not run: Behat on 5.0, 5.2, 5.3 (workflow).

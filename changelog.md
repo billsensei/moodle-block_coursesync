@@ -8,7 +8,19 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
-## Unreleased (build 2026102002, v1.26.1-beta)
+## Unreleased (build 2026102003, v1.27.0-beta, 2026-10-20)
+
+### Changed
+
+- **"Choose what to copy" is now two sections, still one form and one button.** *Activities* is the list as
+  before. *Question content* is new: each Question bank, and, for each quiz, a row "Questions in <quiz>" that
+  copies the quiz's questions without the quiz (this replaces the "Questions only" column of v1.26.0).
+  A Question bank no longer appears among the activities; a quiz is in both lists, ticked in the first it is
+  copied whole, ticked in the second only its questions are. Question banks are ticked, selected and updated
+  exactly as before. Nothing changes in the run, the lock, the last-synced marker or the history.
+  Behat's field for a quiz's questions is now "Questions in <quiz>".
+
+## v1.26.1-beta (build 2026102002)
 
 ### Fixed
 

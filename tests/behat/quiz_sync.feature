@@ -88,7 +88,9 @@ Feature: Syncing quiz questions
 
     When I am on the "DEST" "block_coursesync > Sync" page
     And I set the field "Unit quiz" to ""
-    And I set the field "Copy only the questions of Unit quiz, not the quiz" to "1"
+    Then I should see "Question content"
+    And I should see "Questions in a quiz"
+    And I set the field "Questions in Unit quiz" to "1"
     And I press "Copy the ticked activities"
     Then I should see "Questions copied"
     And I should see "The quiz itself was not copied"
