@@ -91,7 +91,11 @@ final class syncer_match_test extends advanced_testcase {
             'timemodified' => 1750000000,
         ], $activities);
 
-        return new http_client(['mock' => new MockHandler([new Response(200, [], json_encode($rows))])]);
+        return new http_client(['mock' => new MockHandler([
+            new Response(200, [], json_encode($rows)),
+            // The sections call: none, so activities go in by number as before.
+            new Response(200, [], '[]'),
+        ])]);
     }
 
     /**
@@ -109,7 +113,8 @@ final class syncer_match_test extends advanced_testcase {
             'idnumber' => '',
             'timemodified' => $a[3] ?? 1750000000,
         ], $activities);
-        $responses = [new Response(200, [], json_encode($rows))];
+        // The sections call that follows detection: none, so activities go in by number as before.
+        $responses = [new Response(200, [], json_encode($rows)), new Response(200, [], '[]')];
 
         foreach ($payloads as $payload) {
             $responses[] = new Response(200, [], json_encode($payload));

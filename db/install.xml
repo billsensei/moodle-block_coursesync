@@ -178,5 +178,23 @@
         <INDEX NAME="entryid" UNIQUE="true" FIELDS="entryid"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="block_coursesync_section" COMMENT="Which section here stands for which section on the source site, so a later sync puts activities in the same place even after sections are moved or inserted. One row per source section that has been matched or created here.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="blockinstanceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The block that syncs this course."/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="remotesectionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="course_sections.id on the source site."/>
+        <FIELD NAME="localsectionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="course_sections.id here. The number is looked up each time: it changes whenever a section is inserted or moved."/>
+        <FIELD NAME="timesynced" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="blockinstanceid-remotesectionid" UNIQUE="true" FIELDS="blockinstanceid, remotesectionid"/>
+        <INDEX NAME="blockinstanceid-localsectionid" UNIQUE="true" FIELDS="blockinstanceid, localsectionid"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>

@@ -282,5 +282,28 @@ function xmldb_block_coursesync_upgrade($oldversion) {
         upgrade_block_savepoint(true, 2026101901, 'coursesync');
     }
 
+    if ($oldversion < 2026110101) {
+        $table = new xmldb_table('block_coursesync_section');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('blockinstanceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('remotesectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('localsectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timesynced', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+        $table->add_index('blockinstanceid-remotesectionid', XMLDB_INDEX_UNIQUE, ['blockinstanceid', 'remotesectionid']);
+        $table->add_index('blockinstanceid-localsectionid', XMLDB_INDEX_UNIQUE, ['blockinstanceid', 'localsectionid']);
+        $table->add_index('courseid', XMLDB_INDEX_NOTUNIQUE, ['courseid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_block_savepoint(true, 2026110101, 'coursesync');
+    }
+
     return true;
 }

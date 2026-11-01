@@ -155,6 +155,53 @@ class remote_client {
     }
 
     /**
+     * The ordinary sections of the mapped remote course.
+     *
+     * Null means the sections are not available, and never means the run
+     * should fail: a source running an older version has no such function, and
+     * a source whose administrator built their own web service may not have
+     * added it. Either way the activities are still placed as they always were.
+     *
+     * @param string $baseurl normalised base URL of the remote site
+     * @param string $token the remote site's web service token
+     * @param int $courseid the resolved remote course id
+     * @param \core\http_client|null $client injected only by tests
+     * @return array[]|null each ['id' => int, 'section' => int, 'name' => string, 'visible' => bool],
+     *                      in source order; null when they could not be had
+     */
+    public static function get_sections(
+        string $baseurl,
+        string $token,
+        int $courseid,
+        ?http_client $client = null
+    ): ?array {
+        $outcome = self::call($baseurl, $token, 'block_coursesync_get_sections', [
+            'courseid' => $courseid,
+        ], $client);
+
+        if ($outcome['errorkey'] !== null || !is_array($outcome['data'])) {
+            return null;
+        }
+
+        $sections = [];
+
+        foreach ($outcome['data'] as $row) {
+            if (!is_array($row) || !isset($row['id'], $row['section'])) {
+                return null;
+            }
+
+            $sections[] = [
+                'id' => clean_param($row['id'], PARAM_INT),
+                'section' => clean_param($row['section'], PARAM_INT),
+                'name' => clean_param((string) ($row['name'] ?? ''), PARAM_TEXT),
+                'visible' => (bool) ($row['visible'] ?? true),
+            ];
+        }
+
+        return $sections;
+    }
+
+    /**
      * Fetch everything needed to rebuild one activity.
      *
      * @param string $baseurl normalised base URL of the remote site

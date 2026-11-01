@@ -25,8 +25,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'block_coursesync';
-$plugin->version = 2026102003;
+$plugin->version = 2026110101;
 $plugin->requires = 2025041400;
 $plugin->supported = [500, 503];
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = 'v1.27.0-beta';
+$plugin->release = 'v1.28.0-beta';

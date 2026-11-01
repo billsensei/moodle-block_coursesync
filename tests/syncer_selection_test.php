@@ -94,7 +94,8 @@ final class syncer_selection_test extends advanced_testcase {
      * @return http_client
      */
     protected function mock_source(array $activities, array $payloads = []): http_client {
-        $responses = [new Response(200, [], json_encode($activities))];
+        // The sections call that follows detection: none, so activities go in by number as before.
+        $responses = [new Response(200, [], json_encode($activities)), new Response(200, [], '[]')];
 
         foreach ($payloads as $payload) {
             $responses[] = new Response(200, [], json_encode($payload));

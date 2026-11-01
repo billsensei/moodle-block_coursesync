@@ -64,6 +64,7 @@ The service contains these functions:
 | `block_coursesync_ping` | Confirms the site is reachable and the token works. Returns the site name, the Moodle release and the installed plugin version. Nothing else. |
 | `block_coursesync_get_course` | Resolves a course id or shortname, so the destination can confirm a mapping before saving it. Returns the id, shortname, full name, visibility and activity count. |
 | `block_coursesync_get_modified_activities` | Lists activities in a course changed after a given time: course module id, type, name, ID number and modification time. Metadata only — no activity content. |
+| `block_coursesync_get_sections` | Lists the course's ordinary sections - number, name and visibility - so the destination can put copied activities in matching sections. |
 | `block_coursesync_get_activity` | Returns everything needed to rebuild one activity, plus a list of any files it holds. |
 | `block_coursesync_get_activity_file` | Serves one chunk of one file belonging to a synced activity. |
 

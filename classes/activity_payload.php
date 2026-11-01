@@ -55,6 +55,13 @@ class activity_payload {
     /** @var bool Whether the activity is visible on the source site. */
     public readonly bool $visible;
 
+    /**
+     * @var bool What the activity goes back to when its section is shown: its own setting,
+     *      where visible says only that it is hidden because its section is. Taken from
+     *      visible when the source does not say.
+     */
+    public readonly bool $visibleold;
+
     /** @var string Activity description. */
     public readonly string $intro;
 
@@ -89,6 +96,7 @@ class activity_payload {
      * @param array[] $files
      * @param array[] $children
      * @param int $subsectioncmid course module id on the source site of the subsection holding it, or 0
+     * @param bool|null $visibleold what it goes back to when its section is shown; null takes visible
      */
     public function __construct(
         int $cmid,
@@ -103,7 +111,8 @@ class activity_payload {
         array $settings,
         array $files = [],
         array $children = [],
-        int $subsectioncmid = 0
+        int $subsectioncmid = 0,
+        ?bool $visibleold = null
     ) {
         $this->cmid = $cmid;
         $this->modname = $modname;
@@ -111,6 +120,7 @@ class activity_payload {
         $this->idnumber = $idnumber;
         $this->sectionnum = $sectionnum;
         $this->visible = $visible;
+        $this->visibleold = $visibleold ?? $visible;
         $this->intro = $intro;
         $this->introformat = $introformat;
         $this->timemodified = $timemodified;
@@ -166,7 +176,8 @@ class activity_payload {
             $settings,
             self::clean_files($data['files'] ?? []),
             self::clean_children($data['children'] ?? []),
-            max(0, clean_param($data['subsectioncmid'] ?? 0, PARAM_INT))
+            max(0, clean_param($data['subsectioncmid'] ?? 0, PARAM_INT)),
+            isset($data['visibleold']) ? (bool) $data['visibleold'] : null
         );
     }
 

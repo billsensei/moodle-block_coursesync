@@ -45,6 +45,12 @@ class sync_result {
     /** @var int The history row this run was written to. */
     public int $runid = 0;
 
+    /** @var int How many sections the run created here to match the source's. */
+    public int $sectionscreated = 0;
+
+    /** @var bool Whether the source could not list its sections, so activities went in by number. */
+    public bool $sectionsunavailable = false;
+
     /**
      * The run could not start or could not finish.
      *
@@ -318,6 +324,14 @@ class sync_result {
 
         if ($this->count('questions') > 0) {
             $message .= ' ' . get_string('syncquestionsonlysummary', 'block_coursesync', $this->count('questions'));
+        }
+
+        if ($this->sectionscreated > 0) {
+            $message .= ' ' . get_string('syncsectionscreated', 'block_coursesync', $this->sectionscreated);
+        }
+
+        if ($this->sectionsunavailable && $this->count('created') > 0) {
+            $message .= ' ' . get_string('syncsectionsunavailable', 'block_coursesync');
         }
 
         return $message;

@@ -59,6 +59,16 @@ $functions = [
         'loginrequired' => true,
     ],
 
+    'block_coursesync_get_sections' => [
+        'classname' => 'block_coursesync\\external\\get_sections',
+        'methodname' => 'execute',
+        'description' => 'Lists the ordinary sections of a course, so a destination can place activities in matching ones.',
+        'type' => 'read',
+        'ajax' => false,
+        'capabilities' => 'block/coursesync:sync',
+        'loginrequired' => true,
+    ],
+
     'block_coursesync_get_activity' => [
         'classname' => 'block_coursesync\\external\\get_activity',
         'methodname' => 'execute',
@@ -149,6 +159,7 @@ $services = [
             'block_coursesync_ping',
             'block_coursesync_get_course',
             'block_coursesync_get_modified_activities',
+            'block_coursesync_get_sections',
             'block_coursesync_get_activity',
             'block_coursesync_get_activity_file',
             'block_coursesync_get_grades',

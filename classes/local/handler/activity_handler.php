@@ -368,7 +368,9 @@ abstract class activity_handler {
         $newcm->section = 0;
         $newcm->idnumber = $idnumber;
         $newcm->visible = $payload->visible ? 1 : 0;
-        $newcm->visibleold = $newcm->visible;
+        // What it goes back to if its section is hidden and then shown: its own
+        // setting on the source, not the section's.
+        $newcm->visibleold = $payload->visibleold ? 1 : 0;
         $newcm->visibleoncoursepage = 1;
         $newcm->groupmode = 0;
         $newcm->groupingid = 0;
@@ -690,8 +692,10 @@ abstract class activity_handler {
      * DESTINATION SIDE. The section number to create an activity in.
      *
      * In this course's copy of the subsection that holds it on the source, if
-     * that has been copied here; otherwise in the ordinary section it (or its
-     * subsection) is in, as resolve_section() finds it.
+     * that has been copied here; otherwise in the section here that stands for
+     * the ordinary section it (or its subsection) is in on the source, when this
+     * run was given the source's sections (see section_map); otherwise in the
+     * section with the same number, as resolve_section() finds it.
      *
      * @param \stdClass $course the destination course
      * @param activity_payload $payload
@@ -700,7 +704,15 @@ abstract class activity_handler {
     protected function target_section(\stdClass $course, activity_payload $payload): int {
         $subsection = self::local_subsection_section($course, $payload);
 
-        return $subsection ?? $this->resolve_section($course, $payload->sectionnum);
+        if ($subsection !== null) {
+            return $subsection;
+        }
+
+        // The section the source's section is paired with, when this run was
+        // given the source's sections. Otherwise - an older source, or one whose
+        // service lacks the function - by number, as it always was.
+        return \block_coursesync\local\section_map::local_number($course, $payload->sectionnum)
+            ?? $this->resolve_section($course, $payload->sectionnum);
     }
 
     /**

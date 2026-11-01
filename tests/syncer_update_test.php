@@ -141,7 +141,8 @@ final class syncer_update_test extends advanced_testcase {
      */
     protected function mock_source(array $activities, array $payloads = []): http_client {
         return new http_client(['mock' => new MockHandler(array_merge(
-            [new Response(200, [], json_encode($activities))],
+            // Detection, then the sections call: none, so activities go in by number as before.
+            [new Response(200, [], json_encode($activities)), new Response(200, [], '[]')],
             $payloads
         ))]);
     }

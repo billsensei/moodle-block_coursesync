@@ -164,6 +164,7 @@ class block_coursesync extends block_base {
         \block_coursesync\attempt_pull::delete_for_block_instance($this->instance->id);
         \block_coursesync\submission_pull::delete_for_block_instance($this->instance->id);
         \block_coursesync\marks_pull::delete_for_block_instance($this->instance->id);
+        \block_coursesync\local\section_map::delete_for_block_instance($this->instance->id);
 
         return true;
     }

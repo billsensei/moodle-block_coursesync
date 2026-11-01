@@ -17,6 +17,7 @@
 namespace block_coursesync;
 
 use block_coursesync\local\file_sync;
+use block_coursesync\local\section_map;
 use core\http_client;
 use block_coursesync\local\handler\activity_handler;
 use block_coursesync\local\handler\handler_registry;
@@ -463,6 +464,75 @@ class syncer {
 
         $questionsonly = array_map('intval', $questionsonly ?? []);
 
+        // Where the source keeps its sections, so what is copied can go in the
+        // same ones. Asked for only when there is something to place, and never
+        // allowed to fail the run: a source that cannot say - an older one, or
+        // one whose web service lacks the function - leaves activities going in
+        // by section number, as they always did.
+        $sectionsprimed = false;
+
+        if ($activities !== []) {
+            $sections = remote_client::get_sections($record->remoteurl, $token, (int) $record->remotecourseid, $client);
+
+            if ($sections === null) {
+                $result->sectionsunavailable = true;
+            } else {
+                $sectionsprimed = section_map::prime($blockinstanceid, $course, $sections);
+            }
+        }
+
+        try {
+            self::sync_each($course, $record, $token, $activities, $result, $client, $chosen, $linked, $owned, $questionsonly);
+        } finally {
+            if ($sectionsprimed) {
+                // After the last activity is in: hiding a section reaches into
+                // what is in it.
+                section_map::apply_visibility($course);
+                $result->sectionscreated = section_map::created_count((int) $course->id);
+            }
+
+            section_map::release((int) $course->id);
+        }
+
+        // The marker moves only when the run is trustworthy. Moving it after a
+        // partial failure would hide the activities that did not make it, and
+        // moving it past something the teacher deliberately left out would mean
+        // never being offered it again.
+        if ($result->is_clean() && !$result->has_deselected()) {
+            connection::set_last_sync($blockinstanceid, $runstarted);
+            $result->lastsyncupdated = true;
+        }
+
+        return self::finish($blockinstanceid, $courseid, (int) $USER->id, $timestarted, $result);
+    }
+
+    /**
+     * Work through the activities a run was asked about, one at a time.
+     *
+     * @param \stdClass $course the destination course
+     * @param \stdClass $record the block's connection record
+     * @param string $token the source's web service token
+     * @param activity[] $activities what the source reported, subsections first
+     * @param sync_result $result updated in place
+     * @param http_client|null $client injected only by tests
+     * @param int[]|null $chosen remote course module ids the teacher chose; null means everything
+     * @param int[] $linked remote course module id => the activity here that was just linked to it
+     * @param int[] $owned remote course module id => the activity here, matched, that has its own ID number
+     * @param int[] $questionsonly quizzes whose questions alone were chosen
+     * @return void
+     */
+    protected static function sync_each(
+        \stdClass $course,
+        \stdClass $record,
+        string $token,
+        array $activities,
+        sync_result $result,
+        ?http_client $client,
+        ?array $chosen,
+        array $linked,
+        array $owned,
+        array $questionsonly
+    ): void {
         foreach ($activities as $activity) {
             // A quiz whose questions alone were chosen. Ticking the quiz as
             // well wins: it brings the questions with it.
@@ -489,17 +559,6 @@ class syncer {
                 $result->add_failed($activity->name, $activity->modname, $activity->cmid, 'errorcreatefailed');
             }
         }
-
-        // The marker moves only when the run is trustworthy. Moving it after a
-        // partial failure would hide the activities that did not make it, and
-        // moving it past something the teacher deliberately left out would mean
-        // never being offered it again.
-        if ($result->is_clean() && !$result->has_deselected()) {
-            connection::set_last_sync($blockinstanceid, $runstarted);
-            $result->lastsyncupdated = true;
-        }
-
-        return self::finish($blockinstanceid, $courseid, (int) $USER->id, $timestarted, $result);
     }
 
     /**
@@ -807,7 +866,11 @@ class syncer {
             return;
         }
 
-        $created = self::create_copy($course, $record, $token, $activity, $result, $client, '');
+        // Rebuilt for an activity already here and then moved to its place, so
+        // no sections are made on its account.
+        $created = section_map::without_creating(
+            static fn() => self::create_copy($course, $record, $token, $activity, $result, $client, '')
+        );
 
         if ($created === null) {
             return;
@@ -907,7 +970,11 @@ class syncer {
     ): void {
         global $DB;
 
-        $created = self::create_copy($course, $record, $token, $activity, $result, $client, '');
+        // Rebuilt for an activity already here and then moved to its place, so
+        // no sections are made on its account.
+        $created = section_map::without_creating(
+            static fn() => self::create_copy($course, $record, $token, $activity, $result, $client, '')
+        );
 
         if ($created === null) {
             return;

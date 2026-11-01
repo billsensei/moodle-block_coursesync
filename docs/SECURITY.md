@@ -68,6 +68,7 @@ All nine check `block/coursesync:sync` in the relevant context and call
 | `block_coursesync_ping` | system context, or any one course (so the role can be assigned in a category) |
 | `block_coursesync_get_course` | the course's context |
 | `block_coursesync_get_modified_activities` | the course's context |
+| `block_coursesync_get_sections` | the course's context |
 | `block_coursesync_get_activity` | the course's context |
 | `block_coursesync_get_activity_file` | the course's context |
 | `block_coursesync_get_grades` | the course's context, plus `block/coursesync:exportgrades` there |

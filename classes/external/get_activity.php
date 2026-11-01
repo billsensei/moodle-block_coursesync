@@ -140,6 +140,7 @@ class get_activity extends external_api {
             'sectionnum' => $sectionnum,
             'subsectioncmid' => $subsectioncmid,
             'visible' => (bool) $cminfo->visible,
+            'visibleold' => (bool) $cminfo->visibleold,
             'intro' => (string) ($instance->intro ?? ''),
             'introformat' => (int) ($instance->introformat ?? FORMAT_HTML),
             'timemodified' => (int) ($instance->timemodified ?? $cminfo->added),
@@ -239,6 +240,11 @@ class get_activity extends external_api {
                 VALUE_OPTIONAL
             ),
             'visible' => new external_value(PARAM_BOOL, 'Whether the activity is visible on the source site.'),
+            'visibleold' => new external_value(
+                PARAM_BOOL,
+                'What the activity goes back to when its section is shown: its own visibility, not its section\'s.',
+                VALUE_OPTIONAL
+            ),
             'intro' => new external_value(PARAM_RAW, 'Activity description.'),
             'introformat' => new external_value(PARAM_INT, 'Format of the description.'),
             'timemodified' => new external_value(PARAM_INT, 'When the activity was last modified.'),

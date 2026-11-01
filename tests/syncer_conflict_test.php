@@ -89,7 +89,8 @@ final class syncer_conflict_test extends advanced_testcase {
      * @return http_client
      */
     protected function mock_source(array $activities, ?array $payload = null): http_client {
-        $responses = [new Response(200, [], json_encode($activities))];
+        // The sections call that follows detection: none, so activities go in by number as before.
+        $responses = [new Response(200, [], json_encode($activities)), new Response(200, [], '[]')];
 
         if ($payload !== null) {
             $responses[] = new Response(200, [], json_encode($payload));
@@ -302,6 +303,7 @@ final class syncer_conflict_test extends advanced_testcase {
         // Detection reports an activity, then the payload fetch fails.
         $client = new http_client(['mock' => new MockHandler([
             new Response(200, [], json_encode([$this->detected(11)])),
+            new Response(200, [], '[]'),
             new Response(200, [], json_encode([
                 'exception' => 'moodle_exception',
                 'errorcode' => 'erroractivitynotfound',

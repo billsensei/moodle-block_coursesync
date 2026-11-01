@@ -348,6 +348,8 @@ final class subsection_test extends advanced_testcase {
                 'idnumber' => '',
                 'timemodified' => time(),
             ]])),
+            // The sections call: none, so activities go in by number as before.
+            new Response(200, [], '[]'),
             new Response(200, [], json_encode([
                 'cmid' => (int) $subsection->cmid,
                 'modname' => 'subsection',

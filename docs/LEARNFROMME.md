@@ -4726,3 +4726,76 @@ quiz copied before its questions would arrive with empty slots.
 and the results are unchanged. **Rule from Phase 88:** run `moodle-plugin-ci grunt` before pushing a `.feature` change.
 **Result:** Behat on 5.1: 49 scenarios, 1152 steps, all passed (the quiz scenario now uses the field "Questions in Unit quiz");
 PHPUnit on 5.1 unchanged at 636; phpcs, phpdoc and grunt clean. Not run: Behat on 5.0, 5.2, 5.3 (workflow).
+
+## Phase 90 - Activities go in the same section as on the source (v1.28.0-beta, build 2026110101), 2026-11-01
+
+**Ask:** can a sync keep the sections, and what sits in them, as on the original site? **Done (step 1):** missing sections are
+made, activities land in the matching one, new sections take the source's name and visibility. **Not done (step 2):** section
+descriptions, the order of activities inside a section, updating names of sections that already exist (an opt-in), and grouping
+the Choose page by section. Said so in the release notes rather than leaving it to be found.
+
+**Design.** New source function `get_sections` (ordinary sections only: id, number, name or '', visible). Destination table
+`block_coursesync_section` pairs source section id with local section id; `local\section_map` is primed per run from the source's
+list and asked by `activity_handler::target_section()`, the one place every handler goes through, so no handler changed.
+Pairing: use the existing pairing; else adopt the local section with the **same number** if unclaimed; else create. Creation is
+lazy (only when an activity needs it) but fills **every** missing section up to that number, in source order.
+
+**Advisor review before coding changed three things.** (1) My first rule adopted only an *unnamed, empty* section at the same
+number, which would have left every course that already syncs by number (CSA and both pilot sites) with a second set of sections;
+now any unclaimed same-number section is adopted and renamed only if unnamed. Same-name matching was dropped: it can pair source
+section 5 with local section 2. (2) Creating one section per activity, appended, gives the wrong order when the first activity
+copied is from section 7; now everything up to it is created in order. (3) Map by section **id**, look the number up at placement
+time, unique index on (block, local section) so two source sections never share one.
+
+**Found by the final advisor review, not by a test I had written.** A replacement and a "copy beside" are built through the same
+create path as a new activity (`create_copy()`) and only then moved back to the old one's place (`copy_update`). So replacing an
+activity an earlier version had clamped into the last section made every section up to its source number, and the result said
+"Sections added" on a run that only refreshed something - contradicting the promise that a course that already syncs keeps its
+sections. Reproduced first (2 sections made), then fixed with `section_map::without_creating()` around the two `create_copy()` calls
+in `handle_update()` and `copy_beside()`; already-paired sections are still used there. `test_replacing_an_activity_does_not_create_sections`.
+Also made `apply_visibility()` one transaction: set-arrivals-visible then hide must not be split, or a failure between them leaves
+activities that were hidden on the source visible to students.
+
+**Traps hit, in order.**
+- `core_external\external_util` does not exist; it is `core_external\util`. The source function threw `Error`, `remote_client`
+  swallowed it as "could not talk to it", and the symptom was only "no sections, falls back". Printing the direct call's exception
+  found it in one step. **A fallback that hides a crash looks exactly like a working fallback** - test the primary path first.
+- Every existing test that scripts the source with a `MockHandler` queue broke (24): the new call sits between detection and the
+  first payload, so each response shifted by one. Fixed by queuing an empty `[]` after detection in five files. Tests built on
+  the `source_on_this_site` trait broke differently: it threw `coding_exception` for an unknown function, and a mock that catches
+  `moodle_exception` turned that into a "codingerror" answer. The trait now answers `get_sections` for real.
+- Hiding a section writes each activity's *current* `visible` into `visibleold`. Activities from a hidden source section arrive
+  hidden, so hiding the new section recorded "hidden" and showing it later left them hidden. Fixed twice: the payload now carries
+  `visibleold` (optional, so old sources and destinations are unaffected), and before hiding a created section its arrivals whose
+  own setting is visible are set visible so the hide records it. Sections are hidden **after** the run's activities are in.
+- `formatactions::section()->set_visibility()` is 5.2+ only; `update($info, ['visible' => ...])` exists on 5.0-5.3, as does
+  `update(..., ['name' => ...])` (5.0 caps a name at 255 characters, later 1333, so names are cut to 255).
+  `move_section_to()` is deprecated in 5.2 and produced a notice; the test helper uses `move_after()` where it exists.
+- `get_fast_modinfo($id, 0, true)` returns null (already noted in subsection_test); I used it as a chain twice more, in a script.
+- The Behat `section` selector needs markup this version no longer has; core addresses sections as
+  `[data-for='section'][data-number='N']` (css_element). Default section name is "Section N" on 5.0-5.3, not "Topic N".
+- Wrote "3 new sections were added" in the scenario; the source's section 1 is *adopted*, so the count was 2. The string also read
+  badly for 1 ("1 new sections"), so it is now "Sections added to match the other course: N."
+- My Phase 88 gate list: `moodle-plugin-ci grunt --max-lint-warnings 0` run (this phase adds a `.feature`), exit 0.
+- Stopping the PHP server: `pkill -f "php -S ..."` matches its own shell and kills it (exit 144). Use `ss -ltnp` for the PID and
+  check `/proc/<pid>/cmdline`; `PHP_CLI_SERVER_WORKERS=2` leaves two listeners, kill both.
+- phpdoc first ran with the CI database container stopped and **exited 0** after printing a connection error. Start
+  `coursesync-ci-db` first. (It does fire on a real problem: it caught the missing `@param` for `visibleold`.)
+
+**Proof of value.** New: `tests/local/section_sync_test.php` (18 tests) and `tests/behat/section_sync.feature`. With the
+`section_map::local_number()` call removed from `target_section()` the Behat scenario fails (checked); the unit tests include the
+case that matters most, a course already synced by number keeping its sections and its teacher's section name.
+
+**Live check, 5.1 <-> 5.1 over HTTPS (site B source, site A destination).** A throwaway 5-section source with names and a hidden
+fifth section, a 1-section destination. First run, before site B was upgraded: B's web service did not yet list the new function,
+so this was the "function not in the service" case for real - the run succeeded, activities went in by number, and the result
+said why. After `admin/cli/upgrade.php` on B (which adds the function to the built-in service) the same run created sections 2-5
+(1 adopted and named), put each page in its own section, hid the fifth with its page still remembering it was visible. Both
+courses were deleted afterwards. **A source whose web service was built by hand needs the function added.**
+
+**Result:** PHPUnit 654 tests, 3167 assertions, 1 skipped, identical on 5.0, 5.1, 5.2 and 5.3 (was 636 / 3090); phplint, phpcs
+(0 warnings), phpdoc, validate, savepoints and grunt clean; Behat on 5.1: 50 scenarios, 1175 steps, all passed. Schema: the
+upgraded table and the fresh-install table (PHPUnit's) are identical columns and indexes. phpmd exits 0 as always; its new
+findings are the test class (17 public methods) and one more constructor parameter on `activity_payload` (14).
+Not run: Behat on 5.0, 5.2, 5.3 (the GitHub workflow), and live pulls involving sites on 5.0, 5.2 and 5.3.
+Uncommitted: this phase, and the column-width change to `sync.php` from Phase 89's follow-up, as two separate diffs.

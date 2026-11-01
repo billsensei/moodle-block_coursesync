@@ -33,13 +33,14 @@ sites and behaves differently at each end:
 | **Source** | Exposes the Course Sync external service. Needs web services enabled and a token issued to a sync account. |
 | **Destination** | Holds the block, stores the source's address, token and course mapping, and makes the calls. |
 
-The service contains nine functions, all read-only:
+The service contains twelve functions, all read-only:
 
 | Function | Returns |
 | --- | --- |
 | `block_coursesync_ping` | Site name, Moodle release, installed plugin version |
 | `block_coursesync_get_course` | A course resolved from an id or shortname, with its activity count |
 | `block_coursesync_get_modified_activities` | Activity metadata for changes after a given time: course module id, type, name, ID number, modification time |
+| `block_coursesync_get_sections` | The course's ordinary sections - number, name (empty if nobody named it) and visibility - so the destination can put activities in matching sections |
 | `block_coursesync_get_activity` | Everything needed to rebuild one activity: the common envelope, type-specific settings, and a list of its files |
 | `block_coursesync_get_activity_file` | One chunk of one file belonging to an activity, base64 encoded |
 | `block_coursesync_get_quiz_attempts` | Students' finished quiz attempts - times and per-question marks, not answers - with each quiz's outline. Same gates as `get_grades` |
@@ -160,6 +161,30 @@ Nothing else changes. The external function, the syncer, the block UI and the
 language strings are all type-agnostic — they ask the registry what is supported
 rather than naming types themselves. `page_handler` is the worked example, and
 `activity_handler` carries the full contract in its docblock.
+
+### Sections
+
+An activity goes in the section that stands for its section on the source. Each
+source section is paired with a section here (table `block_coursesync_section`),
+so the pairing survives either site inserting or moving a section.
+
+- A source section with no pairing yet takes the section here with the same
+  number, if nothing has claimed it - that is where earlier versions put the
+  activity, so a course that already syncs keeps its sections. It is renamed
+  only if nobody had named it.
+- Otherwise a new section is made. Every missing section up to the one an
+  activity needs is made, in source order, so numbers here match numbers there.
+  New sections take the source's name, and are hidden if the source's is - after
+  the run, so each activity keeps its own setting for when the section is shown.
+- Sections a teacher has named, arranged or shown are never renamed, hidden or
+  moved. Only ordinary sections are used; a subsection's own section is handled
+  by the subsection.
+- A source that cannot list its sections (an older version, or a web service
+  built by hand without the function) changes nothing: activities go in by
+  section number as before, and the result says so.
+
+Not yet: section descriptions, the order of activities within a section, and
+updating the names of sections that already exist.
 
 The payload that travels between sites is a fixed envelope (name, intro, section,
 visibility) plus a flat map of type-specific settings. That is what lets one
