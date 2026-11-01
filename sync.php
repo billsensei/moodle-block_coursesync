@@ -220,6 +220,16 @@ if (!$confirm) {
             . html_writer::tag('th', get_string('syncstatuscolumn', 'block_coursesync'), ['scope' => 'col'])
         );
 
+        // The same column widths in every table on the page, so Activity, Type,
+        // Modified and Status line up from one table to the next instead of each
+        // table sizing its columns to its own longest text.
+        $widths = [6, 28, 16, 22, 28];
+        $colgroup = html_writer::tag('colgroup', implode('', array_map(
+            static fn(int $width): string => html_writer::empty_tag('col', ['style' => 'width: ' . $width . '%;']),
+            $widths
+        )));
+        $tableattributes = ['class' => 'table table-striped', 'style' => 'table-layout: fixed; width: 100%;'];
+
         // Every row can be chosen; only new ones start ticked. "Select all"
         // reaches only new and changed ones (data-coursesync-bulk), so one
         // click never copies everything already here a second time.
@@ -286,7 +296,9 @@ if (!$confirm) {
         ) use (
             $OUTPUT,
             $head,
-            $renderrows
+            $renderrows,
+            $colgroup,
+            $tableattributes
         ): void {
             if ($rows === []) {
                 return;
@@ -297,9 +309,10 @@ if (!$confirm) {
             echo html_writer::tag(
                 'table',
                 html_writer::tag('caption', get_string($captionkey, 'block_coursesync'), ['class' => 'visually-hidden'])
+                . $colgroup
                 . html_writer::tag('thead', $head)
                 . html_writer::tag('tbody', $renderrows($rows)),
-                ['class' => 'table table-striped']
+                $tableattributes
             );
         };
 
@@ -376,9 +389,10 @@ if (!$confirm) {
                     get_string('syncchoosecaptionquestions', 'block_coursesync'),
                     ['class' => 'visually-hidden']
                 )
+                . $colgroup
                 . html_writer::tag('thead', $head)
                 . html_writer::tag('tbody', $renderrows($questionrows)),
-                ['class' => 'table table-striped']
+                $tableattributes
             );
         }
 
