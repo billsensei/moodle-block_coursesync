@@ -4848,4 +4848,21 @@ section and is null on a server error.
 
 **Result:** PHPUnit 668 tests, 3201 assertions, 1 skipped, identical on 5.0, 5.1, 5.2 and 5.3 (was 654 / 3167); phplint, phpcs
 (0 warnings), phpdoc, validate and savepoints clean; Behat on 5.1: 52 scenarios, 1215 steps, all passed. Not run locally: grunt /
-gherkinlint (CI runs it), Behat on 5.0, 5.2, 5.3, and a live pull between two sites. Uncommitted: this phase.
+gherkinlint (CI runs it). Committed as c9bf752 and tagged v1.29.0-beta.
+
+**Follow-up (2026-11-01) - Behat on 5.0/5.2/5.3 and live pulls.** Decision kept: the opt-in stays as built (descriptions, description
+files, adopting a named same-number section), as the user chose. Behat on the Docker sites web-d/e/f (selenium service started with
+`docker compose up -d --no-deps selenium`): 52 scenarios, 1215 steps, all passed on each of 5.0, 5.2 and 5.3 (5.1 already passed).
+Trap: the first 5.2/5.3 run failed 44/52 with "Short name is already used for another course (C1)". I had run the Behat init as
+`php admin/tool/behat/cli/init.php`, which exists only on 5.0; on 5.1+ it is `public/admin/tool/behat/cli/init.php` (while
+`admin/cli/*.php` such as cfg.php and upgrade.php stay at the root). The failed init was hidden by `>/dev/null`, so the stale test
+database was reused. Re-running init with the right path fixed it. Do not discard init output.
+Live pull: a throwaway source course SECSRC (topics format, 3 named sections with HTML summaries, one holding `<script>`, section 3
+hidden, Page B created before Page A and the section's sequence set to A,B) on each of 5.0 (d), 5.1 (a), 5.2 (e), 5.3 (f), pulled
+over HTTPS with the real `syncer::run(..., $updatesections = true)` into a new course. All 12 source/destination pairs: 4 copied,
+0 failed, sections named as on the source, summaries copied, the `<script>` stripped, section 3 hidden, order A,B in section 1.
+Traps: web-f's `curlsecurityallowedport` lacked 8443/8446 and had to be set to match the others; `course_add_cm_to_section()` on an
+activity already in a section duplicates it in the sequence (set the sequence directly to reorder a fixture); the fixture scripts
+were rebuilt because the earlier ones were gone (scratchpad). Not run: section description *files* over the wire (the fixture had
+none), and the opt-in against already-named destination sections on live sites (covered by PHPUnit). The phase itself shipped as
+c9bf752 (v1.29.0-beta); this follow-up only records the extra checks.
