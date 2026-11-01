@@ -36,6 +36,7 @@ $courseid = required_param('courseid', PARAM_INT);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
 $chosen = optional_param_array('cmids', [], PARAM_INT);
 $questionsonly = optional_param_array('questionsonly', [], PARAM_INT);
+$updatesections = optional_param('updatesections', 0, PARAM_BOOL);
 
 $course = get_course($courseid);
 require_login($course);
@@ -125,7 +126,31 @@ if (!$confirm) {
     // of this page; "changed" next; what is already here last. Nothing but
     // "new" starts ticked, because everything else replaces or duplicates
     // something already in this course.
-    $bycmid = static fn(array $a, array $b): int => $a['activity']->cmid <=> $b['activity']->cmid;
+    // Where each activity sits on the other course, when it can say: its
+    // section's number and name, and its place in the order. Rows are then
+    // grouped and ordered the way that course is; without it, by id as before.
+    $layout = syncer::source_layout($instanceid);
+    $placement = [];
+    $sectionorder = [];
+
+    foreach ($layout ?? [] as $number => $section) {
+        $sectionorder[$number] = count($sectionorder);
+
+        foreach ($section['cmids'] as $position => $cmid) {
+            $placement[$cmid] = ['section' => $number, 'name' => $section['name'], 'position' => $position];
+        }
+    }
+
+    $bycmid = static function (array $a, array $b) use ($placement, $sectionorder): int {
+        $pa = $placement[$a['activity']->cmid] ?? null;
+        $pb = $placement[$b['activity']->cmid] ?? null;
+        $oa = $pa === null ? PHP_INT_MAX : $sectionorder[$pa['section']];
+        $ob = $pb === null ? PHP_INT_MAX : $sectionorder[$pb['section']];
+
+        return $oa <=> $ob
+            ?: ($pa['position'] ?? 0) <=> ($pb['position'] ?? 0)
+            ?: $a['activity']->cmid <=> $b['activity']->cmid;
+    };
     $rows = static function (array $activities, callable $status) use ($bycmid): array {
         $rows = array_map(
             static fn(activity $activity): array => ['activity' => $activity, 'status' => $status($activity)],
@@ -233,10 +258,31 @@ if (!$confirm) {
         // Every row can be chosen; only new ones start ticked. "Select all"
         // reaches only new and changed ones (data-coursesync-bulk), so one
         // click never copies everything already here a second time.
-        $renderrows = static function (array $rows) use ($statuslabels): string {
+        $renderrows = static function (array $rows, bool $grouped = true) use ($statuslabels, $placement): string {
             $out = '';
+            $group = null;
 
             foreach ($rows as $row) {
+                if ($grouped && $placement !== []) {
+                    $at = $placement[$row['activity']->cmid] ?? null;
+                    $key = $at === null ? -1 : $at['section'];
+
+                    if ($key !== $group) {
+                        $group = $key;
+                        $title = match (true) {
+                            $at === null => get_string('syncsectionelsewhere', 'block_coursesync'),
+                            $at['name'] !== '' => s($at['name']),
+                            $at['section'] === 0 => get_string('general'),
+                            default => get_string('section') . ' ' . $at['section'],
+                        };
+                        $out .= html_writer::tag(
+                            'tr',
+                            html_writer::tag('th', $title, ['colspan' => 5, 'scope' => 'rowgroup']),
+                            ['class' => 'table-secondary', 'data-coursesync-group' => $key]
+                        );
+                    }
+                }
+
                 $activity = $row['activity'];
                 $id = 'coursesync-cm-' . (int) $activity->cmid;
                 $already = in_array($row['status'], ['presentreplace', 'presentcopy', 'collision'], true);
@@ -391,10 +437,28 @@ if (!$confirm) {
                 )
                 . $colgroup
                 . html_writer::tag('thead', $head)
-                . html_writer::tag('tbody', $renderrows($questionrows)),
+                . html_writer::tag('tbody', $renderrows($questionrows, false)),
                 $tableattributes
             );
         }
+
+        echo html_writer::tag(
+            'div',
+            html_writer::empty_tag('input', [
+                'type' => 'checkbox',
+                'name' => 'updatesections',
+                'value' => 1,
+                'id' => 'coursesync-updatesections',
+                'class' => 'form-check-input me-2',
+            ])
+            . html_writer::tag('label', get_string('syncupdatesections', 'block_coursesync'), [
+                'for' => 'coursesync-updatesections',
+            ])
+            . html_writer::tag('div', get_string('syncupdatesections_desc', 'block_coursesync'), [
+                'class' => 'form-text',
+            ]),
+            ['class' => 'mb-3']
+        );
 
         echo html_writer::tag(
             'div',
@@ -418,7 +482,7 @@ require_sesskey();
 
 // Only what was ticked. An empty selection is a decision, not a request to copy
 // everything, so it is passed through as the empty set rather than as null.
-$result = syncer::run($instanceid, $course->id, true, null, $chosen, $questionsonly);
+$result = syncer::run($instanceid, $course->id, true, null, $chosen, $questionsonly, (bool) $updatesections);
 
 if (!$result->success) {
     echo $OUTPUT->notification($result->get_message(), 'error', false);

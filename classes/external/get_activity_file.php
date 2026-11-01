@@ -183,7 +183,7 @@ class get_activity_file extends external_api {
      * @param int $length
      * @return string
      */
-    protected static function read_part(\stored_file $file, int $offset, int $length): string {
+    public static function read_part(\stored_file $file, int $offset, int $length): string {
         $handle = $file->get_content_file_handle();
 
         if (!$handle) {

@@ -26,6 +26,7 @@ use block_coursesync\external\get_marks;
 use block_coursesync\external\get_submission_file;
 use block_coursesync\external\get_submissions;
 use block_coursesync\external\get_modified_activities;
+use block_coursesync\external\get_section_file;
 use block_coursesync\external\get_sections;
 use block_coursesync\external\ping;
 use block_coursesync\local\handler\handler_registry;
@@ -87,6 +88,17 @@ trait source_on_this_site {
 
         if ($function === 'block_coursesync_get_sections') {
             return get_sections::execute((int) $params['courseid']);
+        }
+
+        if ($function === 'block_coursesync_get_section_file') {
+            return get_section_file::execute(
+                (int) $params['courseid'],
+                (int) $params['sectionid'],
+                (string) $params['filepath'],
+                (string) $params['filename'],
+                (int) $params['offset'],
+                (int) $params['length']
+            );
         }
 
         if ($function === 'block_coursesync_get_quiz_attempts') {

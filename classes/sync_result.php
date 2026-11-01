@@ -48,6 +48,15 @@ class sync_result {
     /** @var int How many sections the run created here to match the source's. */
     public int $sectionscreated = 0;
 
+    /** @var bool Whether the teacher asked for the sections already here to be updated. */
+    public bool $updatesectionsasked = false;
+
+    /** @var int How many sections already here were brought into line, at the teacher's request. */
+    public int $sectionsupdated = 0;
+
+    /** @var int How many files used by section descriptions could not be copied. */
+    public int $sectionfilesfailed = 0;
+
     /** @var bool Whether the source could not list its sections, so activities went in by number. */
     public bool $sectionsunavailable = false;
 
@@ -307,7 +316,22 @@ class sync_result {
         }
 
         if ($this->items === []) {
-            return get_string('syncnothingtodo', 'block_coursesync');
+            // Nothing copied, but sections may have been brought into line.
+            $notes = [];
+
+            if ($this->sectionscreated > 0) {
+                $notes[] = get_string('syncsectionscreated', 'block_coursesync', $this->sectionscreated);
+            }
+
+            if ($this->sectionsupdated > 0) {
+                $notes[] = get_string('syncsectionsupdated', 'block_coursesync', $this->sectionsupdated);
+            }
+
+            if ($this->sectionfilesfailed > 0) {
+                $notes[] = get_string('syncsectionfilesfailed', 'block_coursesync', $this->sectionfilesfailed);
+            }
+
+            return $notes === [] ? get_string('syncnothingtodo', 'block_coursesync') : implode(' ', $notes);
         }
 
         $message = get_string('syncsummary', 'block_coursesync', (object) [
@@ -330,7 +354,15 @@ class sync_result {
             $message .= ' ' . get_string('syncsectionscreated', 'block_coursesync', $this->sectionscreated);
         }
 
-        if ($this->sectionsunavailable && $this->count('created') > 0) {
+        if ($this->sectionsupdated > 0) {
+            $message .= ' ' . get_string('syncsectionsupdated', 'block_coursesync', $this->sectionsupdated);
+        }
+
+        if ($this->sectionfilesfailed > 0) {
+            $message .= ' ' . get_string('syncsectionfilesfailed', 'block_coursesync', $this->sectionfilesfailed);
+        }
+
+        if ($this->sectionsunavailable && ($this->count('created') > 0 || $this->updatesectionsasked)) {
             $message .= ' ' . get_string('syncsectionsunavailable', 'block_coursesync');
         }
 

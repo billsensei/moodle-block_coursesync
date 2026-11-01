@@ -33,14 +33,15 @@ sites and behaves differently at each end:
 | **Source** | Exposes the Course Sync external service. Needs web services enabled and a token issued to a sync account. |
 | **Destination** | Holds the block, stores the source's address, token and course mapping, and makes the calls. |
 
-The service contains twelve functions, all read-only:
+The service contains thirteen functions, all read-only:
 
 | Function | Returns |
 | --- | --- |
 | `block_coursesync_ping` | Site name, Moodle release, installed plugin version |
 | `block_coursesync_get_course` | A course resolved from an id or shortname, with its activity count |
 | `block_coursesync_get_modified_activities` | Activity metadata for changes after a given time: course module id, type, name, ID number, modification time |
-| `block_coursesync_get_sections` | The course's ordinary sections - number, name (empty if nobody named it) and visibility - so the destination can put activities in matching sections |
+| `block_coursesync_get_sections` | The course's ordinary sections - number, name (empty if nobody named it), visibility, description, the activities in each in order, and the files the description uses - so the destination can put activities in matching sections and match them |
+| `block_coursesync_get_section_file` | One chunk of one file used by a section's description, base64 encoded; the course's own `section` file area only |
 | `block_coursesync_get_activity` | Everything needed to rebuild one activity: the common envelope, type-specific settings, and a list of its files |
 | `block_coursesync_get_activity_file` | One chunk of one file belonging to an activity, base64 encoded |
 | `block_coursesync_get_quiz_attempts` | Students' finished quiz attempts - times and per-question marks, not answers - with each quiz's outline. Same gates as `get_grades` |
@@ -183,8 +184,24 @@ so the pairing survives either site inserting or moving a section.
   built by hand without the function) changes nothing: activities go in by
   section number as before, and the result says so.
 
-Not yet: section descriptions, the order of activities within a section, and
-updating the names of sections that already exist.
+- **Descriptions.** A section made here gets the source's description, and the
+  files it uses (copied the way an activity's files are, checked against their
+  SHA-1; a file that cannot be fetched is counted in the result, never fatal).
+  A section adopted from a same-number one gets it only if its description is
+  empty. Descriptions are cleaned like any other remote text: HTML is cleaned before
+  it is kept, Markdown is turned into HTML and cleaned, plain text is kept as sent
+  and escaped whenever it is shown, and an unknown format is read as HTML.
+- **Order.** A new activity is placed before the next activity that follows it on
+  the source and is already in the same section here, so the order matches
+  whatever order they are copied in. Only the new activity is placed: anything
+  a teacher arranged here is not moved. (Order inside a subsection is not kept.)
+- **Choose page.** Activities are grouped under their source section's name, in
+  source order. If the source cannot say, the list is flat as before.
+- **Update existing sections (opt-in).** A checkbox on the Choose page, unticked
+  by default. When ticked, every source section is paired (a missing one is
+  made), and each paired section takes the source's name and description. A
+  source section with no name or description never blanks one here. Visibility
+  is never touched.
 
 The payload that travels between sites is a fixed envelope (name, intro, section,
 visibility) plus a flat map of type-specific settings. That is what lets one

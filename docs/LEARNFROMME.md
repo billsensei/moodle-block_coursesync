@@ -4799,3 +4799,53 @@ upgraded table and the fresh-install table (PHPUnit's) are identical columns and
 findings are the test class (17 public methods) and one more constructor parameter on `activity_payload` (14).
 Not run: Behat on 5.0, 5.2, 5.3 (the GitHub workflow), and live pulls involving sites on 5.0, 5.2 and 5.3.
 Uncommitted: this phase, and the column-width change to `sync.php` from Phase 89's follow-up, as two separate diffs.
+
+## Phase 91 - Section descriptions, order, opt-in update, grouped Choose page (v1.29.0-beta, build 2026110102), 2026-11-01
+
+**What it does.** Step 2 of section sync. (1) `get_sections` also returns each section's `summary`, `summaryformat`, `cmids`
+(its activities in display order) and `files`; a new `get_section_file` serves a description's files in chunks. (2) A section
+made here gets the source's description and files; an adopted one only if its own description is empty. (3) A new activity is
+placed with `course_add_cm_to_section($course, $cmid, $sectionnum, $beforemod)`, where `$beforemod` is the first activity that
+follows it on the source and is already in that section here, so the final order is the source's whatever the copy order, and
+nothing a teacher arranged is moved. (4) An unticked checkbox on the Choose page runs `section_map::update_existing()`: pairs
+every source section, then gives each paired section the source's name and description. (5) The Choose page groups rows under
+the source's section names (`syncer::source_layout()`), flat when the source cannot say.
+
+**Decisions.**
+- *Wire compatibility first.* The v1.28 client reads named keys only, so extra keys on the response are harmless; an unknown
+  *parameter* would not be. So `get_sections` gained response fields and no parameters. A new destination reading an old source
+  gets `null` for summary/cmids ("cannot tell"), which is deliberately not "empty": nothing is blanked or reordered.
+- *Order by `$beforemod`, not a reorder pass.* A reorder-everything pass would undo a teacher's arrangement on every sync. The
+  hook lives in `activity_handler::finish_creation()` and reads the new activity's idnumber (`coursesync-N`), so no handler
+  needed changing. Replace/copy-beside run under `without_creating()` and return null; `copy_update` already puts those back.
+- *Descriptions follow the name rule*: written on sections this plugin made, and on adopted ones only when empty.
+- *The opt-in deliberately goes further than step 1*: it pairs every source section (adopting a same-number one even if named)
+  and then overwrites name and description. It is explicit and unticked, and says so in its help text. Visibility is never
+  touched, and a blank source name/description never blanks a local one.
+- `get_section_file` takes a course id and a section id, never a context or item id; it checks the section belongs to the course
+  and has no `component`, reads only `course`/`section`, and needs `block/coursesync:sync`.
+- Section `summary`: HTML and Moodle format go through `clean_text()` before they are stored; plain is kept as sent (`clean_text` returns it unchanged; it is escaped on display) and Markdown is converted with
+  `markdown_to_html()`, cleaned and stored as HTML (an automated review flagged raw Markdown). The format is
+  the source's to name, so it is held to the four Moodle has. Found by the advisor, then proved by a failing test.
+
+**Traps hit.**
+- `get_message()` returned "Nothing new to copy." when no activity was copied, hiding that sections were updated. It now reports
+  the section notes when there are no items.
+- Test fixture: `Guzzle` mock closures must return a promise (`Create::promiseFor`), not a Response. A scripted-error test needs
+  `assertDebuggingCalled()` because `remote_client` calls `debugging()` on HTTP 500.
+- `FORMAT_HTML` is the string `'1'`; the client casts it to int, and the test must compare against an int.
+- Language keys are sorted by `strcmp`: `syncsectionfilesfailed` goes before `syncsectionquestions`, and `syncsectionsupdated`
+  after `syncsectionsunavailable`. Checked with a script over the whole file.
+- phpcs: a multi-line `if (a && !preg_match(...))` fails PSR12; assign the condition to a variable.
+- `moodle-plugin-ci` lives at `~/cs-pro/moodle-plugin-ci/bin/moodle-plugin-ci`, not on PATH.
+
+**Proof of value.** New `tests/local/section_content_test.php` (16 tests, including exact counts: 3 created, 1 updated, so sections made by the same run are not counted or fetched twice) and two scenarios in `section_sync.feature`. Covers: description
+and file copied to a made section, script stripped from a description, an adopted section keeps its own description, an old-shape
+source changes nothing, activities copied in the order C,A,D,B end up A,B,C,D, a teacher's own activity is not moved, existing
+sections untouched unless asked, the opt-in updates names/descriptions with no activity ticked, a blank source name never blanks
+one, `get_section_file` serves chunks / refuses another course's section / needs the sync permission, `source_layout()` lists by
+section and is null on a server error.
+
+**Result:** PHPUnit 668 tests, 3201 assertions, 1 skipped, identical on 5.0, 5.1, 5.2 and 5.3 (was 654 / 3167); phplint, phpcs
+(0 warnings), phpdoc, validate and savepoints clean; Behat on 5.1: 52 scenarios, 1215 steps, all passed. Not run locally: grunt /
+gherkinlint (CI runs it), Behat on 5.0, 5.2, 5.3, and a live pull between two sites. Uncommitted: this phase.

@@ -46,3 +46,19 @@ Feature: Copied activities go in the same section as on the other site
     And I should see "Week three page" in the "[data-for='section'][data-number='3']" "css_element"
     And I should not see "Week three page" in the "[data-for='section'][data-number='1']" "css_element"
     And I should not see "Week one page" in the "[data-for='section'][data-number='3']" "css_element"
+
+  Scenario: The Choose page groups activities by the sections of the other course
+    When I am on the "DEST" "block_coursesync > Sync" page
+    Then I should see "Section 1" in the "table" "css_element"
+    And I should see "Section 3" in the "table" "css_element"
+    And "Week three page" "table_row" should appear after "Week one page" "table_row"
+    And "Week three page" "table_row" should appear after "Section 3" "table_row"
+    And "Week one page" "table_row" should appear before "Section 3" "table_row"
+
+  Scenario: Asking to bring the existing sections into line is offered, and a run with it works
+    When I am on the "DEST" "block_coursesync > Sync" page
+    Then the field "Also bring the sections in this course into line with the other course" matches value ""
+    When I set the field "Also bring the sections in this course into line with the other course" to "1"
+    And I press "Copy the ticked activities"
+    Then I should see "2 copied"
+    And I should not see "could not"

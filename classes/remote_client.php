@@ -195,10 +195,85 @@ class remote_client {
                 'section' => clean_param($row['section'], PARAM_INT),
                 'name' => clean_param((string) ($row['name'] ?? ''), PARAM_TEXT),
                 'visible' => (bool) ($row['visible'] ?? true),
+                // What a source from before step 2 does not send. Null says
+                // "cannot tell", which is not the same as "empty".
+                'summary' => isset($row['summary']) ? (string) $row['summary'] : null,
+                'summaryformat' => clean_param($row['summaryformat'] ?? FORMAT_HTML, PARAM_INT),
+                'cmids' => isset($row['cmids']) && is_array($row['cmids'])
+                    ? array_values(array_map('intval', $row['cmids']))
+                    : null,
+                'files' => self::section_files($row['files'] ?? null),
             ];
         }
 
         return $sections;
+    }
+
+    /**
+     * The files a section's description uses, as the source listed them.
+     *
+     * @param mixed $files
+     * @return array[] each with filepath, filename, filesize and contenthash
+     */
+    protected static function section_files($files): array {
+        $out = [];
+
+        foreach (is_array($files) ? $files : [] as $file) {
+            if (!is_array($file) || !isset($file['filename'], $file['filepath'], $file['contenthash'])) {
+                continue;
+            }
+
+            $out[] = [
+                'filepath' => clean_param((string) $file['filepath'], PARAM_PATH),
+                'filename' => clean_param((string) $file['filename'], PARAM_FILE),
+                'filesize' => clean_param($file['filesize'] ?? 0, PARAM_INT),
+                'contenthash' => clean_param((string) $file['contenthash'], PARAM_ALPHANUM),
+                'timemodified' => clean_param($file['timemodified'] ?? 0, PARAM_INT),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Fetch one chunk of a file a section's description uses.
+     *
+     * @param string $baseurl normalised base URL of the remote site
+     * @param string $token the remote site's web service token
+     * @param int $courseid the remote course id
+     * @param int $sectionid the section id on the source site
+     * @param string $filepath
+     * @param string $filename
+     * @param int $offset
+     * @param int $length
+     * @param \core\http_client|null $client injected only by tests
+     * @return file_chunk
+     */
+    public static function get_section_file(
+        string $baseurl,
+        string $token,
+        int $courseid,
+        int $sectionid,
+        string $filepath,
+        string $filename,
+        int $offset,
+        int $length,
+        ?http_client $client = null
+    ): file_chunk {
+        $outcome = self::call($baseurl, $token, 'block_coursesync_get_section_file', [
+            'courseid' => $courseid,
+            'sectionid' => $sectionid,
+            'filepath' => $filepath,
+            'filename' => $filename,
+            'offset' => $offset,
+            'length' => $length,
+        ], $client);
+
+        if ($outcome['errorkey'] !== null) {
+            return file_chunk::failure($outcome['errorkey']);
+        }
+
+        return self::chunk_from($outcome['data']);
     }
 
     /**

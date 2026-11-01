@@ -616,9 +616,12 @@ final class section_sync_test extends advanced_testcase {
             ['id' => 6, 'section' => 2, 'name' => '', 'visible' => false],
         ]))])]);
 
+        // A source from before descriptions and order were sent says nothing
+        // about them, which is not the same as saying they are empty.
+        $nothing = ['summary' => null, 'summaryformat' => (int) FORMAT_HTML, 'cmids' => null, 'files' => []];
         $this->assertSame([
-            ['id' => 5, 'section' => 1, 'name' => 'One', 'visible' => true],
-            ['id' => 6, 'section' => 2, 'name' => '', 'visible' => false],
+            ['id' => 5, 'section' => 1, 'name' => 'One', 'visible' => true] + $nothing,
+            ['id' => 6, 'section' => 2, 'name' => '', 'visible' => false] + $nothing,
         ], remote_client::get_sections('https://source.example.edu', 'abcdef0123456789abcdef0123456789', 1, $good));
 
         $malformed = new http_client(['mock' => new MockHandler([new Response(200, [], json_encode([['name' => 'No ids']]))])]);

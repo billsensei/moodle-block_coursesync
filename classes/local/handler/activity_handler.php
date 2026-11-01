@@ -438,9 +438,16 @@ abstract class activity_handler {
 
         require_once($CFG->dirroot . '/course/lib.php');
 
-        \course_add_cm_to_section($course, $cmid, $sectionnum);
+        $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
+
+        // Before the activity that follows it on the source, when that is
+        // already in this section; otherwise at the end.
+        $before = \block_coursesync\local\section_map::before_cmid($course, (string) $cm->idnumber, $sectionnum);
+
+        \course_add_cm_to_section($course, $cmid, $sectionnum, $before);
         \rebuild_course_cache($course->id, true);
 
+        // Read again: placing it in the section changed the row.
         $cm = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
         $modcontext = \context_module::instance($cmid);
 

@@ -208,6 +208,46 @@ class syncer {
     }
 
     /**
+     * How the source arranges its activities: section by section, in order.
+     *
+     * For showing the Choose page grouped the way the other course is. Null
+     * whenever the source cannot say - an older one, a service without the
+     * function, or any failure - and the page then lists them flat, as before.
+     *
+     * @param int $blockinstanceid
+     * @param http_client|null $client injected only by tests
+     * @return array[]|null in source order: [number => ['name' => string, 'cmids' => int[]]]
+     */
+    public static function source_layout(int $blockinstanceid, ?http_client $client = null): ?array {
+        [$record, $token, $problem] = self::open_connection($blockinstanceid);
+
+        if ($problem !== null) {
+            return null;
+        }
+
+        $sections = remote_client::get_sections($record->remoteurl, $token, (int) $record->remotecourseid, $client);
+
+        if ($sections === null) {
+            return null;
+        }
+
+        $layout = [];
+
+        foreach ($sections as $section) {
+            if ($section['cmids'] === null) {
+                // Sent without its activities: a source from before they were.
+                return null;
+            }
+
+            $layout[$section['section']] = ['name' => $section['name'], 'cmids' => $section['cmids']];
+        }
+
+        ksort($layout);
+
+        return $layout;
+    }
+
+    /**
      * Move the new activities that are already here under another guise -
      * same type and name, no marker - from new to matched, and mark the ones
      * whose name was ambiguous. See local\existing_match.
@@ -315,6 +355,7 @@ class syncer {
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means everything
      * @param int[]|null $questionsonly remote quiz ids whose questions, and not the quiz, were chosen
+     * @param bool $updatesections also bring the sections already here into line with the source's
      * @return sync_result
      */
     public static function run(
@@ -323,7 +364,8 @@ class syncer {
         bool $full = false,
         ?http_client $client = null,
         ?array $only = null,
-        ?array $questionsonly = null
+        ?array $questionsonly = null,
+        bool $updatesections = false
     ): sync_result {
         global $USER;
 
@@ -347,7 +389,7 @@ class syncer {
         }
 
         try {
-            return self::run_locked($blockinstanceid, $courseid, $full, $client, $only, $questionsonly);
+            return self::run_locked($blockinstanceid, $courseid, $full, $client, $only, $questionsonly, $updatesections);
         } finally {
             $lock->release();
         }
@@ -402,6 +444,7 @@ class syncer {
      * @param http_client|null $client
      * @param int[]|null $only
      * @param int[]|null $questionsonly remote quiz ids whose questions alone were chosen
+     * @param bool $updatesections whether sections already here are to be brought into line
      * @return sync_result
      */
     protected static function run_locked(
@@ -410,7 +453,8 @@ class syncer {
         bool $full,
         ?http_client $client,
         ?array $only,
-        ?array $questionsonly = null
+        ?array $questionsonly = null,
+        bool $updatesections = false
     ): sync_result {
         global $USER;
 
@@ -471,20 +515,34 @@ class syncer {
         // by section number, as they always did.
         $sectionsprimed = false;
 
-        if ($activities !== []) {
+        $result->updatesectionsasked = $updatesections;
+
+        if ($activities !== [] || $updatesections) {
             $sections = remote_client::get_sections($record->remoteurl, $token, (int) $record->remotecourseid, $client);
 
             if ($sections === null) {
                 $result->sectionsunavailable = true;
             } else {
-                $sectionsprimed = section_map::prime($blockinstanceid, $course, $sections);
+                $sectionsprimed = section_map::prime($blockinstanceid, $course, $sections, [
+                    'baseurl' => $record->remoteurl,
+                    'token' => $token,
+                    'courseid' => (int) $record->remotecourseid,
+                    'client' => $client,
+                ]);
             }
         }
 
         try {
             self::sync_each($course, $record, $token, $activities, $result, $client, $chosen, $linked, $owned, $questionsonly);
+
+            if ($sectionsprimed && $updatesections) {
+                section_map::update_existing($course);
+            }
         } finally {
             if ($sectionsprimed) {
+                $result->sectionsupdated = section_map::updated_count((int) $course->id);
+                $result->sectionfilesfailed = section_map::files_failed_count((int) $course->id);
+
                 // After the last activity is in: hiding a section reaches into
                 // what is in it.
                 section_map::apply_visibility($course);

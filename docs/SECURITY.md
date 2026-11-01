@@ -60,7 +60,7 @@ Phase 7 replaced one such guard in `setup.php` with `require_sesskey()`.
 
 ### Web service functions
 
-All nine check `block/coursesync:sync` in the relevant context and call
+All thirteen check `block/coursesync:sync` in the relevant context and call
 `validate_context()`. Sesskey does not apply: these are token-authenticated.
 
 | Function | Capability checked in |
@@ -69,6 +69,7 @@ All nine check `block/coursesync:sync` in the relevant context and call
 | `block_coursesync_get_course` | the course's context |
 | `block_coursesync_get_modified_activities` | the course's context |
 | `block_coursesync_get_sections` | the course's context |
+| `block_coursesync_get_section_file` | the course's context; the section must belong to that course and be an ordinary one, and only the `course`/`section` file area is read |
 | `block_coursesync_get_activity` | the course's context |
 | `block_coursesync_get_activity_file` | the course's context |
 | `block_coursesync_get_grades` | the course's context, plus `block/coursesync:exportgrades` there |
@@ -506,6 +507,17 @@ cleans every field there so nothing downstream has to remember to:
 | `introformat` | restricted to the formats this site implements |
 | file `filename` / `filepath` / `filearea` | `PARAM_FILE` / `PARAM_PATH` / `PARAM_AREA`; a file that does not survive cleaning is dropped |
 | setting names | `PARAM_ALPHANUMEXT` |
+
+Sections come through `remote_client::get_sections()` and `section_map`, not the
+payload, and are cleaned the same way:
+
+| Field | Cleaned as |
+| --- | --- |
+| `id`, `section`, `cmids` | `PARAM_INT` |
+| `name` | `PARAM_TEXT`, cut to 255 characters |
+| `summary` | `clean_text()` for HTML and Moodle format; Markdown is converted to HTML and cleaned; plain text is kept as sent and escaped on display |
+| `summaryformat` | held to Moodle's four formats; anything else is read as HTML |
+| description `files` | `filepath`/`filename`/`contenthash` as `PARAM_PATH`/`PARAM_FILE`/`PARAM_ALPHANUM`; at most 50 per section, each at most 50 MB, each checked against its SHA-1, stored only in this course's `course`/`section` area under the paired section |
 
 Handlers use the cleaned accessors for anything that reaches a sensitive place:
 

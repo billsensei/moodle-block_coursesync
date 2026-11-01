@@ -16,6 +16,9 @@
 
 namespace block_coursesync\local;
 
+use block_coursesync\remote_client;
+use block_coursesync\syncer;
+
 /**
  * Which section here stands for which section on the source site.
  *
@@ -47,6 +50,12 @@ namespace block_coursesync\local;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class section_map {
+    /** @var int The most files one section description is given. */
+    protected const MAX_FILES = 50;
+
+    /** @var int The largest file one section description is given, in bytes. */
+    protected const MAX_FILE_BYTES = 52428800;
+
     /** @var int The most characters Moodle 5.0 allows in a section name. */
     protected const MAX_NAME = 255;
 
@@ -58,6 +67,12 @@ class section_map {
 
     /** @var int[][] Per course id: ids of created sections whose source counterpart is hidden. */
     protected static array $tohide = [];
+
+    /** @var int[] Per course id: how many existing sections the teacher asked to have updated and were. */
+    protected static array $updated = [];
+
+    /** @var int[] Per course id: how many description files could not be fetched. */
+    protected static array $filesfailed = [];
 
     /** @var int How many without_creating() scopes are open; while any is, nothing is paired or made. */
     protected static int $frozen = 0;
@@ -71,9 +86,11 @@ class section_map {
      * @param int $blockinstanceid the block that syncs the course
      * @param \stdClass $course the destination course
      * @param array[] $remote what remote_client::get_sections() returned
+     * @param array|null $source how to reach the source for a description's files:
+     *      baseurl, token, courseid and client; null leaves the files behind
      * @return bool whether sections will be used for this run
      */
-    public static function prime(int $blockinstanceid, \stdClass $course, array $remote): bool {
+    public static function prime(int $blockinstanceid, \stdClass $course, array $remote, ?array $source = null): bool {
         global $CFG;
 
         require_once($CFG->dirroot . '/course/lib.php');
@@ -96,10 +113,15 @@ class section_map {
                 'id' => (int) $row['id'],
                 'name' => (string) $row['name'],
                 'visible' => (bool) $row['visible'],
+                // Null from a source that cannot say, so nothing is copied.
+                'summary' => $row['summary'] ?? null,
+                'summaryformat' => (int) ($row['summaryformat'] ?? FORMAT_HTML),
+                'cmids' => $row['cmids'] ?? null,
+                'files' => $row['files'] ?? [],
             ];
         }
 
-        self::$primed[(int) $course->id] = ['block' => $blockinstanceid, 'sections' => $sections];
+        self::$primed[(int) $course->id] = ['block' => $blockinstanceid, 'sections' => $sections, 'source' => $source];
 
         return $sections !== [];
     }
@@ -132,7 +154,13 @@ class section_map {
      * @return void
      */
     public static function release(int $courseid): void {
-        unset(self::$primed[$courseid], self::$created[$courseid], self::$tohide[$courseid]);
+        unset(
+            self::$primed[$courseid],
+            self::$created[$courseid],
+            self::$tohide[$courseid],
+            self::$updated[$courseid],
+            self::$filesfailed[$courseid]
+        );
     }
 
     /**
@@ -143,6 +171,147 @@ class section_map {
      */
     public static function created_count(int $courseid): int {
         return self::$created[$courseid] ?? 0;
+    }
+
+    /**
+     * How many existing sections this run brought into line with the source.
+     *
+     * @param int $courseid
+     * @return int
+     */
+    public static function updated_count(int $courseid): int {
+        return self::$updated[$courseid] ?? 0;
+    }
+
+    /**
+     * How many files used by section descriptions could not be fetched.
+     *
+     * @param int $courseid
+     * @return int
+     */
+    public static function files_failed_count(int $courseid): int {
+        return self::$filesfailed[$courseid] ?? 0;
+    }
+
+    /**
+     * Where a new activity goes within its section, so it sits where it did on the source.
+     *
+     * The first activity that follows it on the source, in the same source
+     * section, and is already in the same section here - so wherever the run
+     * happens to copy them, they end up in the source's order, and an
+     * arrangement a teacher made here is never disturbed: only the new
+     * activity is placed. Null puts it at the end, as before.
+     *
+     * @param \stdClass $course the destination course
+     * @param string $idnumber the ID number the new activity carries (see syncer::build_idnumber())
+     * @param int $localsectionnum the section here it is going in
+     * @return int|null the course module id here to put it before
+     */
+    public static function before_cmid(\stdClass $course, string $idnumber, int $localsectionnum): ?int {
+        global $DB;
+
+        $state = self::$primed[(int) $course->id] ?? null;
+
+        $ours = preg_match('/^coursesync-(\d+)$/', $idnumber, $found) === 1;
+
+        if ($state === null || self::$frozen > 0 || !$ours) {
+            return null;
+        }
+
+        $remotecmid = (int) $found[1];
+        $sectionid = $DB->get_field('course_sections', 'id', ['course' => $course->id, 'section' => $localsectionnum]);
+
+        foreach ($state['sections'] as $remote) {
+            $cmids = $remote['cmids'];
+            $at = is_array($cmids) ? array_search($remotecmid, $cmids, true) : false;
+
+            if ($at === false) {
+                continue;
+            }
+
+            foreach (array_slice($cmids, $at + 1) as $following) {
+                $local = syncer::find_existing((int) $course->id, (int) $following);
+
+                if (
+                    $local > 0
+                    && (int) $DB->get_field('course_modules', 'section', ['id' => $local]) === (int) $sectionid
+                ) {
+                    return $local;
+                }
+            }
+
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Bring the sections already paired up to date with the source.
+     *
+     * Only when a teacher asks for it: pairs every source section first (an
+     * unnamed one here is adopted, a missing one made), then gives each its
+     * source name and description. A name or description the source has not
+     * got is never used to blank one here, and visibility is left alone.
+     *
+     * @param \stdClass $course the destination course
+     * @return void
+     */
+    public static function update_existing(\stdClass $course): void {
+        global $DB;
+
+        $state = self::$primed[(int) $course->id] ?? null;
+
+        if ($state === null || $state['sections'] === [] || self::$frozen > 0) {
+            return;
+        }
+
+        self::pair_through($course, $state, max(array_keys($state['sections'])));
+
+        // Every pairing, including those made a moment ago. A section just
+        // made or adopted already has the source's name and description, so
+        // nothing is changed again for it.
+        $pairs = $DB->get_records('block_coursesync_section', [
+            'blockinstanceid' => $state['block'],
+            'courseid' => $course->id,
+        ]);
+        $fresh = [];
+
+        foreach ($pairs as $pair) {
+            $fresh[(int) $pair->remotesectionid] = (int) $pair->localsectionid;
+        }
+
+        $modinfo = get_fast_modinfo($course->id);
+
+        foreach ($state['sections'] as $remote) {
+            $localid = $fresh[$remote['id']] ?? null;
+            $info = $localid === null ? null : $modinfo->get_section_info_by_id($localid);
+
+            if (!$info) {
+                continue;
+            }
+
+            $changes = [];
+            $name = \core_text::substr(trim($remote['name']), 0, self::MAX_NAME);
+
+            if ($name !== '' && $name !== trim((string) $info->name)) {
+                $changes['name'] = $name;
+            }
+
+            if ($changes !== []) {
+                \core_courseformat\formatactions::section($course)->update($info, $changes);
+            }
+
+            $summarychanged = self::description_differs($course, $info, $remote);
+
+            if ($summarychanged) {
+                self::copy_description($course, $state, $info, $remote);
+            }
+
+            if ($changes !== [] || $summarychanged) {
+                self::$updated[(int) $course->id] = (self::$updated[(int) $course->id] ?? 0) + 1;
+            }
+        }
     }
 
     /**
@@ -304,6 +473,7 @@ class section_map {
 
         $cap = self::section_limit();
         $naming = [];
+        $describe = [];
         $touched = false;
 
         ksort($state['sections']);
@@ -327,6 +497,11 @@ class section_map {
                 }
 
                 $localid = (int) $adopted->id;
+
+                // Likewise a description: only one nobody has written.
+                if (trim((string) $adopted->summary) === '') {
+                    $describe[$localid] = $remote;
+                }
             } else {
                 if (self::ordinary_section_count((int) $course->id) >= $cap) {
                     // The site's limit on sections. This one and any after it
@@ -336,6 +511,7 @@ class section_map {
 
                 $localid = self::create_section($course);
                 $naming[$localid] = $remote['name'];
+                $describe[$localid] = $remote;
                 self::$created[(int) $course->id] = (self::$created[(int) $course->id] ?? 0) + 1;
 
                 if (!$remote['visible']) {
@@ -368,6 +544,154 @@ class section_map {
 
             if ($name !== '' && $info) {
                 \core_courseformat\formatactions::section($course)->update($info, ['name' => $name]);
+            }
+        }
+
+        foreach ($describe as $localid => $remote) {
+            $info = $modinfo->get_section_info_by_id($localid);
+
+            if ($info && self::description_differs($course, $info, $remote)) {
+                self::copy_description($course, $state, $info, $remote);
+            }
+        }
+    }
+
+    /**
+     * Whether the source has a description that this section does not.
+     *
+     * @param \stdClass $course
+     * @param \section_info $info the section here
+     * @param array $remote the source's section
+     * @return bool
+     */
+    protected static function description_differs(\stdClass $course, \section_info $info, array $remote): bool {
+        // A source that did not send one, or sent nothing, is not a reason to
+        // blank what is here.
+        if ($remote['summary'] === null || trim($remote['summary']) === '') {
+            return false;
+        }
+
+        [$text, $format] = self::stored_summary($remote);
+
+        return $text !== (string) $info->summary || $format !== (int) $info->summaryformat;
+    }
+
+    /**
+     * What is kept of a source section's description, and its format.
+     *
+     * The format is the source's to name, so it is held to the ones Moodle has;
+     * anything else is read as HTML. HTML is cleaned here, and Markdown is turned
+     * into HTML and cleaned. Plain text is kept as sent: it is escaped whenever
+     * it is shown. Each is cleaned again for display, as every description is.
+     *
+     * @param array $remote the source's section
+     * @return array [text, format]
+     */
+    protected static function stored_summary(array $remote): array {
+        $format = (int) $remote['summaryformat'];
+
+        $known = [(int) FORMAT_MOODLE, (int) FORMAT_HTML, (int) FORMAT_PLAIN, (int) FORMAT_MARKDOWN];
+
+        if (!in_array($format, $known, true)) {
+            $format = (int) FORMAT_HTML;
+        }
+
+        $text = (string) $remote['summary'];
+
+        if ($format === (int) FORMAT_MARKDOWN) {
+            // Turned into HTML and cleaned, and kept as HTML, so what is stored
+            // is never raw remote markup labelled as something else.
+            $text = clean_text(markdown_to_html($text), FORMAT_HTML);
+            $format = (int) FORMAT_HTML;
+        } else if ($format === (int) FORMAT_HTML || $format === (int) FORMAT_MOODLE) {
+            $text = clean_text($text, $format);
+        }
+
+        return [$text, $format];
+    }
+
+    /**
+     * Give a section the source's description, and the files it uses.
+     *
+     * The files are fetched first and the old ones removed only when they have
+     * all arrived, so a failed transfer leaves the section as it was. A file
+     * that cannot be fetched leaves the description without it and is counted,
+     * so the run says so; it never fails the run.
+     *
+     * @param \stdClass $course the destination course
+     * @param array $state this run's state for the course
+     * @param \section_info $info the section here
+     * @param array $remote the source's section
+     * @return void
+     */
+    protected static function copy_description(\stdClass $course, array $state, \section_info $info, array $remote): void {
+        $files = [];
+        $source = $state['source'] ?? null;
+
+        if ($source !== null) {
+            foreach (array_slice($remote['files'], 0, self::MAX_FILES) as $file) {
+                if ($file['filesize'] > self::MAX_FILE_BYTES || $file['filename'] === '') {
+                    self::$filesfailed[(int) $course->id] = (self::$filesfailed[(int) $course->id] ?? 0) + 1;
+
+                    continue;
+                }
+
+                try {
+                    $files[] = [
+                        'file' => $file,
+                        'path' => file_sync::download(
+                            static fn(int $offset) => remote_client::get_section_file(
+                                $source['baseurl'],
+                                $source['token'],
+                                $source['courseid'],
+                                $remote['id'],
+                                $file['filepath'],
+                                $file['filename'],
+                                $offset,
+                                file_sync::CHUNK,
+                                $source['client']
+                            ),
+                            $file['contenthash'],
+                            $file['filesize']
+                        ),
+                    ];
+                } catch (\Throwable $e) {
+                    self::$filesfailed[(int) $course->id] = (self::$filesfailed[(int) $course->id] ?? 0) + 1;
+                }
+            }
+        }
+
+        [$text, $format] = self::stored_summary($remote);
+
+        \core_courseformat\formatactions::section($course)->update($info, [
+            'summary' => $text,
+            'summaryformat' => $format,
+        ]);
+
+        // Files are touched only when some arrived: a description whose files
+        // could not be fetched keeps whatever it had.
+        if ($files === []) {
+            return;
+        }
+
+        $fs = get_file_storage();
+        $contextid = \context_course::instance($course->id)->id;
+        $fs->delete_area_files($contextid, 'course', 'section', $info->id);
+
+        foreach ($files as $item) {
+            try {
+                $fs->create_file_from_pathname((object) [
+                    'contextid' => $contextid,
+                    'component' => 'course',
+                    'filearea' => 'section',
+                    'itemid' => (int) $info->id,
+                    'filepath' => $item['file']['filepath'],
+                    'filename' => $item['file']['filename'],
+                    'timecreated' => time(),
+                    'timemodified' => $item['file']['timemodified'] ?: time(),
+                ], $item['path']);
+            } finally {
+                @unlink($item['path']);
             }
         }
     }
