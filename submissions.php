@@ -167,7 +167,11 @@ foreach ($result->by_activity(grade_pull_result::KIND_SUBMISSION) as $activity) 
         if ($remotecmid) {
             $ticked = $activity[grade_pull_result::ADD] + $activity[grade_pull_result::UPDATE] > 0;
             $box = html_writer::label(
-                get_string('pullchoosefor', 'block_coursesync', format_string($activity['name'])),
+                get_string(
+                    'pullchoosefor',
+                    'block_coursesync',
+                    format_string($activity['name'], true, ['context' => $coursecontext])
+                ),
                 'chosen' . $remotecmid,
                 false,
                 ['class' => 'visually-hidden']

@@ -4931,3 +4931,43 @@ Not run: phpcs on the test file, and the full 618-test suite on any version (onl
 - The Docker sites were stopped (`Exited`) at the start; `docker compose -p coursesync up -d db-d db-e db-f web-d web-e web-f`
   in `env/` brings up what 5.0/5.2/5.3 need, then run phpunit with `docker exec coursesync-web-X-1` (5.0 has no `public/`).
 - The mutation was made in the `ci/moodle` copy and restored from a backup; confirm with `diff -q` against the source tree.
+
+## Phase 94 - Security review of the whole plugin, two LOW fixes (no version bump; still v1.29.1-beta, build 2026110301), 2026-11-03
+
+**Ask.** The user ran `/moodle-dev:moodle-security-review` on the whole plugin (every PHP file outside `tests/` and `lang/`,
+about 28k lines), then asked for the two LOW findings to be fixed.
+
+**Method.** Greps for the mechanical checks (superglobals, raw drivers, `eval`/`unserialize`/`print_error`, SQL built from
+strings, `LIKE`/`IN`, `echo`, `format_string` without context, Mustache `{{{`), then reading the code behind each hit and tracing
+the main flows: the seven entry pages, the web service functions (`get_submission_file` in full), `remote_url`/`remote_client`
+for outbound requests, `connection` for the token, and where remote text reaches output or the database.
+
+**Result: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 2 LOW.** Every page calls `require_login($course)`, `require_capability` on the course
+context, checks that the block instance belongs to that course, and calls `require_sesskey()` on each state-changing branch. No
+superglobals; all input typed. The three SQL strings that interpolate use `$insql` from `get_in_or_equal()`. Remote strings are
+wrapped in `s()`/`format_string()`. No `pluginfile` callback (files travel only through the web service functions, which go
+through `file_storage` and re-check the switch and capabilities). Outbound calls use `core\http_client`, private ranges are
+blocked, redirects refused. Token encrypted with `core\encryption`. `unserialize` (4 places) always with
+`allowed_classes => false`, on handler data.
+
+**The two LOW findings (fixed).** `submissions.php:170` and `marks.php:172` called `format_string($activity['name'])` with no
+`context` option, for the visually-hidden checkbox label. Output was still escaped; only site filters ran under the page context
+instead of the course. Both now pass `true, ['context' => $coursecontext]`.
+
+**Result of the fix.** Both files lint clean; `moodle-plugin-ci phpcs` clean. PHPUnit on 5.1: `submission_pull_test.php`
+49 tests / 260 assertions, `marks_pull_test.php` 32 tests / 219 assertions, OK. Behat `@block_coursesync`: 52 scenarios,
+1221 steps, all passed on 5.0 (web-d), 5.1 (CI install), 5.2 (web-e) and 5.3 (web-f). Not run: PHPUnit on 5.0/5.2/5.3 for these
+two files, the full PHPUnit suite, phpdoc/validate. Not committed or pushed.
+
+**Not covered by the review.** Only the paths above were read closely; the activity handlers (about 20 files) were checked by
+grep and spot reads, not line by line. `edit_form.php` and `block_coursesync.php` have no `defined('MOODLE_INTERNAL') || die();`
+line (class files, no side effects, CI phpcs passes), so it was not rated. No dynamic testing.
+
+**Traps.**
+- The first edit made the `get_string(...)` call 135 characters, over Moodle's 132-character line limit; it had to be wrapped
+  over several lines. Check `awk 'length>132'` after an inline fix.
+- `vendor/bin/phpcs` does not exist in `ci/moodle`; use `~/cs-pro/moodle-plugin-ci/bin/moodle-plugin-ci phpcs <path>`.
+- A background shell command that starts Behat and then sleeps (`... & sleep 60; tail`) returns after the sleep, so its "completed" notice is not the
+  Behat run ending; check `pgrep -f "[v]endor/bin/behat"` instead.
+- Selenium allows one session, so 5.0/5.2/5.3 ran one at a time after 5.1. Docker sites and Selenium were stopped afterwards;
+  `coursesync-ci-db` was left running.
