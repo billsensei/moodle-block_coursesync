@@ -53,8 +53,15 @@ Feature: The Choose what to copy page groups activities by whether they can be c
     And the "Brand new page" "checkbox" should be enabled
     And the field "Brand new page" matches value "1"
 
-    # The one already copied is listed after it, and can be ticked to copy
-    # it again, but does not start ticked.
+    # What is already here starts closed, because there is something new to
+    # look at first; opening its title shows the rows.
+    And "Brand new page" "table_row" should be visible
+    And "Existing week page" "table_row" should not be visible
+    When I click on "Already on this course" "text"
+    Then "Existing week page" "table_row" should be visible
+
+    # The one already copied can be ticked to copy it again, but does not
+    # start ticked.
     And "Existing week page" "table_row" should exist
     And I should see "Already synced - if ticked, the copy here is replaced" in the "Existing week page" "table_row"
     And the "Existing week page" "checkbox" should be enabled

@@ -334,13 +334,26 @@ if (!$confirm) {
             return $out;
         };
 
+        // The clickable title of a collapsible group, with how many rows it holds.
+        $summary = static fn(string $title, int $count): string => html_writer::tag(
+            'summary',
+            $title . ' ' . html_writer::tag('span', (string) $count, ['class' => 'badge bg-secondary ms-1']),
+            ['class' => 'h5 py-2']
+        );
+
+        // New and changed start open - they are what the page is for. What is
+        // already here starts closed, unless there is nothing else to look at
+        // or it carries the collision warning.
+        $attention = $newrows !== [] || $changedrows !== [];
+
         $rendergroup = static function (
             array $rows,
             string $headingkey,
             string $captionkey,
-            string $before = ''
+            string $before = '',
+            bool $open = true
         ) use (
-            $OUTPUT,
+            $summary,
             $head,
             $renderrows,
             $colgroup,
@@ -350,7 +363,11 @@ if (!$confirm) {
                 return;
             }
 
-            echo $OUTPUT->heading(get_string($headingkey, 'block_coursesync'), 4);
+            // A native <details>: no script, keyboard and screen-reader friendly, and
+            // every checkbox inside is still submitted when it is closed. The
+            // count in the summary says what is inside without opening it.
+            echo html_writer::start_tag('details', ['class' => 'coursesync-group mb-3', 'open' => $open ? 'open' : null]);
+            echo $summary(get_string($headingkey, 'block_coursesync'), count($rows));
             echo $before;
             echo html_writer::tag(
                 'table',
@@ -360,6 +377,7 @@ if (!$confirm) {
                 . html_writer::tag('tbody', $renderrows($rows)),
                 $tableattributes
             );
+            echo html_writer::end_tag('details');
         };
 
         echo html_writer::start_tag('form', [
@@ -417,11 +435,21 @@ if (!$confirm) {
             $alreadyrows,
             'syncgrouppresent',
             'syncchoosecaptionpresent',
-            $alreadyrows === [] ? '' : $collisionwarning
+            $alreadyrows === [] ? '' : $collisionwarning,
+            !$attention || $collisionwarning !== ''
         );
 
         if ($questionrows !== []) {
-            echo $OUTPUT->heading(get_string('syncsectionquestions', 'block_coursesync'), 3);
+            echo html_writer::start_tag('details', [
+                'class' => 'coursesync-group mb-3',
+                'open' => !$attention || ($alreadyrows === [] && $collisionwarning !== '') ? 'open' : null,
+            ]);
+            echo html_writer::tag(
+                'summary',
+                get_string('syncsectionquestions', 'block_coursesync') . ' '
+                    . html_writer::tag('span', (string) count($questionrows), ['class' => 'badge bg-secondary ms-1']),
+                ['class' => 'h4 py-2']
+            );
             echo html_writer::tag(
                 'p',
                 get_string('syncsectionquestionsintro', 'block_coursesync'),
@@ -440,6 +468,7 @@ if (!$confirm) {
                 . html_writer::tag('tbody', $renderrows($questionrows, false)),
                 $tableattributes
             );
+            echo html_writer::end_tag('details');
         }
 
         echo html_writer::tag(

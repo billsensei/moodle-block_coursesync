@@ -4866,3 +4866,34 @@ activity already in a section duplicates it in the sequence (set the sequence di
 were rebuilt because the earlier ones were gone (scratchpad). Not run: section description *files* over the wire (the fixture had
 none), and the opt-in against already-named destination sections on live sites (covered by PHPUnit). The phase itself shipped as
 c9bf752 (v1.29.0-beta); this follow-up only records the extra checks.
+
+## Phase 92 - Collapsible groups on the Choose page (v1.29.1-beta, build 2026110301), 2026-11-03
+
+**Ask.** The Choose page that Check Now opens runs long; scrolling past one group to reach the next was tedious. Make the
+groups collapsible.
+
+**Built (`sync.php` only; no schema, no new strings).** "Ready to copy", "Changed since it was copied", "Already on this
+course" and "Question content" are each a native `<details>` with a `<summary>` carrying the title and a row-count badge. No
+JavaScript, so no grunt rebuild. New and Changed start open. Already-here and Question content start closed, unless there is
+nothing new or changed (then they open so the page is not a row of shut blocks) or the collision warning belongs to them
+(a warning must not be hidden). Checkboxes inside a closed `<details>` are still submitted, and `choose.js` Select all / none
+uses `querySelectorAll`, so it reaches them too. Left for later: collapsing the per-course-section rows inside a table (needs
+one table per section) and Expand all / Collapse all buttons (needs `choose.js` and a grunt build).
+
+**What broke, and why it was predicted.** Only JavaScript Behat scenarios care whether a row is visible. Two asserted on rows
+that are now in a closed group: `sync_choose_page.feature` (the already-here row) and `quiz_sync.feature` ("Questions in a
+quiz"). The first full 5.1 run failed exactly the quiz one (the choose-page one was fixed before it ran); both now click the
+group title first, and the choose-page scenario also asserts the row is *not* visible before the click and visible after, so
+the collapsing itself is tested. Non-JS scenarios were unaffected: the browser kit ignores visibility, so a field in a closed
+block can still be set.
+
+**Result.** Behat `@block_coursesync`: 52 scenarios, 1221 steps, all passed on 5.0, 5.1, 5.2 and 5.3 (5.1 in the CI install,
+the others on web-d/e/f). phplint, phpcs, phpdoc and validate clean. Not run: PHPUnit (no PHP logic under test changed; the
+page is rendered only), grunt/gherkinlint (CI runs them), and a look at the page in a real browser.
+
+**Traps.**
+- `pkill -f "php -S 127.0.0.1:8001"` (and `pgrep -f` piped to kill) matches the shell running that very command, because the
+  pattern is in its command line, so the call dies with exit 144 and the rest of the line never runs. Write the pattern as
+  `[p]hp -S ...`.
+- `admin/cli/upgrade.php` in `ci/moodle` says "Config table does not contain the version"; the CI install only has the Behat and
+  PHPUnit schemas, and `behat/cli/init.php` is what upgrades the test site. Not an error for this purpose.

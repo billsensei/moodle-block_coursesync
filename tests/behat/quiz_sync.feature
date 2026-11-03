@@ -89,7 +89,10 @@ Feature: Syncing quiz questions
     When I am on the "DEST" "block_coursesync > Sync" page
     And I set the field "Unit quiz" to ""
     Then I should see "Question content"
-    And I should see "Questions in a quiz"
+    # Closed while there is something new to copy; opening it shows the rows.
+    And I should not see "Questions in a quiz"
+    When I click on "Question content" "text"
+    Then I should see "Questions in a quiz"
     And I set the field "Questions in Unit quiz" to "1"
     And I press "Copy the ticked activities"
     Then I should see "Questions copied"
