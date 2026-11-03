@@ -469,6 +469,58 @@ final class submission_pull_test extends advanced_testcase {
     }
 
     /**
+     * A draft here that holds no work at all is still in the way: it is not an
+     * opened-but-empty row ("new"/"reopened"), so it is not reused.
+     */
+    public function test_an_empty_draft_here_is_kept(): void {
+        global $DB;
+
+        $this->hand_in('from the other site');
+        $draftid = $DB->insert_record('assign_submission', (object) [
+            'assignment' => $this->here->id, 'userid' => $this->sam->id, 'timecreated' => time(), 'timemodified' => time(),
+            'timestarted' => time(), 'status' => 'draft', 'groupid' => 0, 'attemptnumber' => 0, 'latest' => 1,
+        ]);
+
+        $entry = $this->only_entry($this->pull());
+
+        $this->assertSame(grade_pull_result::CONFLICT, $entry->outcome);
+        $this->assertSame('subreasonexists', $entry->reason);
+        $this->assertSame('draft', $this->row()->status);
+        $this->assertEquals($draftid, $this->row()->id);
+        $this->assertSame(1, $DB->count_records('assign_submission', ['assignment' => $this->here->id]));
+        $this->assertNull($this->text_here());
+        $this->assertSame(0, $DB->count_records('block_coursesync_submission'));
+    }
+
+    /**
+     * A copy Course Sync wrote that has since gone back to a draft is not
+     * replaced when the source changes, and is not flagged while it does not.
+     */
+    public function test_a_pulled_copy_that_became_a_draft_is_kept(): void {
+        global $DB;
+
+        $this->hand_in('first');
+        $this->pull();
+        $id = $this->row()->id;
+
+        // The assignment is reopened for editing here: the copy is a draft now.
+        $DB->set_field('assign_submission', 'status', 'draft', ['id' => $id]);
+
+        // Nothing new on the source: nothing to bring, nothing to flag.
+        $this->assertSame(grade_pull_result::SAME, $this->only_entry($this->pull())->outcome);
+
+        // The source changes: the draft is somebody's, so it stays.
+        $this->hand_in('second');
+        $entry = $this->only_entry($this->pull());
+
+        $this->assertSame(grade_pull_result::CONFLICT, $entry->outcome);
+        $this->assertSame('subreasonchanged', $entry->reason);
+        $this->assertSame('first', $this->text_here());
+        $this->assertSame('draft', $this->row()->status);
+        $this->assertEquals($id, $this->row()->id);
+    }
+
+    /**
      * Identical work already here is nothing to do, and is not a conflict.
      */
     public function test_identical_work_here_is_the_same(): void {

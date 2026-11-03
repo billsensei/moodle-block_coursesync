@@ -4897,3 +4897,37 @@ page is rendered only), grunt/gherkinlint (CI runs them), and a look at the page
   `[p]hp -S ...`.
 - `admin/cli/upgrade.php` in `ci/moodle` says "Config table does not contain the version"; the CI install only has the Behat and
   PHPUnit schemas, and `behat/cli/init.php` is what upgrades the test site. Not an error for this purpose.
+
+## Phase 93 - Tests for a draft on the destination (no code change; still v1.29.1-beta, build 2026110301), 2026-11-03
+
+**Ask.** The user asked what a submission pull does when the student's copy here is a draft or a reopened attempt. Reading
+`submission_pull::classify()` answered it, but two cases had no test: a draft that holds no work, and a copy Course Sync wrote
+that has since gone back to `draft`. Both were added to `tests/submission_pull_test.php` after `test_a_draft_here_is_kept`.
+
+**What the code does (confirmed, nothing changed).** `local_submission()` counts `draft` the same as `submitted`, so a draft is
+always "work in the way" and never an ADD. With no ledger row for it, the result is SAME if the content is identical, otherwise
+CONFLICT `subreasonexists`. With a ledger row for that very submission, an unchanged source is SAME and a changed source is
+CONFLICT `subreasonchanged`, because UPDATE needs status `submitted` and `latest = 1`. On the source side,
+`submissions::latest_submitted()` filters on `status = 'submitted'`, so a newer draft or reopened attempt does not hide an
+earlier submitted one. `empty_submission()` reuses only `new`/`reopened` rows at attempt 0, never a draft.
+
+**Tests added.**
+- `test_an_empty_draft_here_is_kept`: a content-less `draft` row inserted for the student; the pull gives CONFLICT
+  `subreasonexists`, the row stays the only one, no text, no ledger row.
+- `test_a_pulled_copy_that_became_a_draft_is_kept`: pull, set the copy's status to `draft`; next pull SAME (source unchanged),
+  then after the source changes CONFLICT `subreasonchanged`, text and status untouched.
+
+**Result.** `submission_pull_test.php`: 49 tests, 260 assertions, OK, on the 5.1 CI install and then on web-d (5.0, PHP 8.2),
+web-e (5.2, PHP 8.3) and web-f (5.3, PHP 8.3): the same 49 tests / 260 assertions, OK, each after `phpunit/cli/init.php`.
+Mutation check: removing
+`|| $local->status !== submissions::STATUS_SUBMITTED` from `classify()` made the second test fail (49 tests, 1 failure), so it
+depends on that guard. Not mutation-checked: the empty-draft test (it only exercises the "not written by Course Sync" branch).
+Not run: phpcs on the test file, and the full 618-test suite on any version (only this file was run). Not committed or pushed. No version bump, so CHANGES.md and changelog.md are unchanged.
+
+**Traps.**
+- After the first `rsync` into `ci/moodle`, PHPUnit said "initialised for different version" because the CI install's code had
+  moved; `php public/admin/tool/phpunit/cli/init.php` fixes it (takes under a second). `admin/cli/upgrade.php` again said
+  "Config table does not contain the version" - see Phase 92, harmless here.
+- The Docker sites were stopped (`Exited`) at the start; `docker compose -p coursesync up -d db-d db-e db-f web-d web-e web-f`
+  in `env/` brings up what 5.0/5.2/5.3 need, then run phpunit with `docker exec coursesync-web-X-1` (5.0 has no `public/`).
+- The mutation was made in the `ci/moodle` copy and restored from a backup; confirm with `diff -q` against the source tree.
