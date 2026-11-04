@@ -811,7 +811,7 @@ release and the grade-sync skip.
 
 ## Every attempt of assignments
 
-Added after v1.29.1-beta (LEARNFROMME phases 97-102; not yet released). Designed in
+Added in v1.30.0-beta (LEARNFROMME phases 97-102). Designed in
 [DESIGN_ASSIGN_ATTEMPTS.md](DESIGN_ASSIGN_ATTEMPTS.md), which has the reasoning,
 the rules and what was decided against; this is the map. Off unless both
 `allowattemptsexport` (source) and `allowattemptspull` (destination) are on, on

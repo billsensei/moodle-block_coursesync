@@ -1,8 +1,10 @@
 # Design draft: importing every attempt and its mark
 
-Status: **proposed, not built** (drafted 2026-11-03 against v1.29.1-beta, build 2026110301).
-Nothing here is decided. Each choice has a recommendation; "Open questions" at the end
-need an answer before building.
+Status: **built in v1.30.0-beta (2026-11-04)**; drafted 2026-11-03 against v1.29.1-beta, build 2026110301.
+The text below is the design as drafted. The "Built in Phase N" sections say where the build
+differs from it, and the phasing table records what was done. Every open question at the end
+was settled by taking its recommendation (questions 3, 5 and 6 at the start of Phase 1; 2, 4 and 7
+as the phases were built), so none is open.
 
 ## Goal
 
@@ -309,8 +311,8 @@ left; the new guard only covers students whose attempts were pulled.
 - **History.** When `everyattempt` is set each activity's record is marked `every`, and the history page words the
   counts as "Submission attempts pulled" / "Mark attempts pulled". Still counts only: no students, no attempts listed.
 - **Not done:** a warning on the marks page for `maxattempts` (marks are written onto attempts that already exist, so
-  the limit is not what constrains them); a per-assignment choice (the choice is for the whole pull); a release
-  number in the docs, which say "a release that has this feature" until one is chosen.
+  the limit is not what constrains them); a per-assignment choice (the choice is for the whole pull). The docs gave
+  no release number until the version was chosen (v1.30.0-beta).
 
 ## Privacy and lifecycle
 

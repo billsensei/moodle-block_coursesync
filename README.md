@@ -20,7 +20,10 @@ latest handed-in attempt, as online text and uploaded files - into copied
 assignments, never replacing work that is already there. Since v1.22.0 **marks
 sync** (off by default, with its own switches and permissions) brings the marks
 and written comments teachers gave on those assignments, as real assignment
-grades, never replacing a mark a teacher gave here.
+grades, never replacing a mark a teacher gave here. Since v1.30.0 both can also
+bring **every attempt** a student handed in, each kept as the same attempt, with
+the mark each was given (off by default, with its own switches; the latest
+attempt alone is still the default).
 
 ## How it fits together
 
@@ -37,7 +40,7 @@ The service contains thirteen functions, all read-only:
 
 | Function | Returns |
 | --- | --- |
-| `block_coursesync_ping` | Site name, Moodle release, installed plugin version |
+| `block_coursesync_ping` | Site name, Moodle release, installed plugin version, and the optional features the site offers |
 | `block_coursesync_get_course` | A course resolved from an id or shortname, with its activity count |
 | `block_coursesync_get_modified_activities` | Activity metadata for changes after a given time: course module id, type, name, ID number, modification time |
 | `block_coursesync_get_sections` | The course's ordinary sections - number, name (empty if nobody named it), visibility, description, the activities in each in order, and the files the description uses - so the destination can put activities in matching sections and match them |
@@ -45,10 +48,10 @@ The service contains thirteen functions, all read-only:
 | `block_coursesync_get_activity` | Everything needed to rebuild one activity: the common envelope, type-specific settings, and a list of its files |
 | `block_coursesync_get_activity_file` | One chunk of one file belonging to an activity, base64 encoded |
 | `block_coursesync_get_quiz_attempts` | Students' finished quiz attempts - times and per-question marks, not answers - with each quiz's outline. Same gates as `get_grades` |
-| `block_coursesync_get_submissions` | Describes students' latest handed-in assignment work (online text, and each file's name, size and SHA-1), by username. Off unless the site allows it and the account holds `block/coursesync:exportsubmissions` |
-| `block_coursesync_get_submission_file` | One chunk of one file from a student's handed-in work. Refuses unless the file is in that student's own latest submitted attempt. Same gates as `get_submissions` |
-| `block_coursesync_get_marks` | Describes teachers' marks and written comments on assignments (the number, the comment, each embedded file's name, size and SHA-1), by student username. Off unless the site allows it and the account holds `block/coursesync:exportmarks` |
-| `block_coursesync_get_mark_file` | One chunk of one file embedded in a comment on a student's mark. Refuses unless that mark would be described. Same gates as `get_marks` |
+| `block_coursesync_get_submissions` | Describes students' latest handed-in assignment work (online text, and each file's name, size and SHA-1), by username - or every attempt handed in, when asked and the site shares them. Off unless the site allows it and the account holds `block/coursesync:exportsubmissions` |
+| `block_coursesync_get_submission_file` | One chunk of one file from a student's handed-in work. Refuses unless the file is in that student's own latest submitted attempt (or the attempt named, where the site shares every attempt). Same gates as `get_submissions` |
+| `block_coursesync_get_marks` | Describes teachers' marks and written comments on assignments (the number, the comment, each embedded file's name, size and SHA-1), by student username - for the latest attempt, or every attempt when asked and the site shares them. Off unless the site allows it and the account holds `block/coursesync:exportmarks` |
+| `block_coursesync_get_mark_file` | One chunk of one file embedded in a comment on a student's mark. Refuses unless that mark would be described (for the attempt named, where the site shares every attempt). Same gates as `get_marks` |
 | `block_coursesync_get_grades` | Students' gradebook grades and feedback for chosen activities, by username. Off unless the site allows it and the account holds `block/coursesync:exportgrades` |
 
 The same code runs at both ends; which role a site plays depends only on how it

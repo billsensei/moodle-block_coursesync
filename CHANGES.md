@@ -3,7 +3,7 @@
 What is new or changed in the current version of Course Sync (`block_coursesync`)
 only. The full running history is in [changelog.md](changelog.md).
 
-## Unreleased (build 2026110401, v1.30.0-beta, 2026-11-04)
+## v1.30.0-beta (build 2026110401, 2026-11-04)
 
 ### Added
 

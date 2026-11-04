@@ -77,7 +77,7 @@ things worth checking before teachers touch it.
 
 **If the pilot includes every attempt of assignments** (optional, needs the two lists above)
 
-- [ ] Both sites are on a release that has this feature: the destination refuses
+- [ ] Both sites are on v1.30.0-beta or later: the destination refuses
       a source that does not offer it
 - [ ] Source: **Let other sites read every attempt of assignment submissions and
       marks from this site** ticked

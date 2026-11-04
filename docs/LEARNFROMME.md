@@ -5455,3 +5455,23 @@ which pages raise the limits, the test counts (764 PHPUnit, 57 Behat, on 5.0-5.3
 "PostgreSQL (17.11 on the main test site)", because the version of the Docker sites' databases was never looked at.
 
 **Not done.** The notes do not say the feature has been tried between two real sites, because it has not; the notes say so.
+
+## Phase 104 - Version bump to v1.30.0-beta (build 2026110401), 2026-11-04
+
+**Ask.** After the release notes (Phase 103), "show me the bump commit's files and message", with v1.30.0-beta confirmed as the number.
+
+**Done.** `version.php`: `$plugin->release` is `v1.30.0-beta`; the build, 2026110401, had been bumped in Phase 99 with the schema change, so it
+does not move. The "Unreleased" headings in `CHANGES.md` and `changelog.md` became `## v1.30.0-beta (build 2026110401, 2026-11-04)`.
+Everything that said "a release that has this feature" or "not yet released" now names the version: INSTALL, PILOT_CHECKLIST, SECURITY,
+DEVELOPER. The design note's status line said **"proposed, not built"** - it had said so since Phase 98 - and now says it was built in
+v1.30.0-beta and that every open question was settled by its recommendation. The README, which still described submissions and marks as
+"the latest handed-in attempt" only, gained a sentence on every attempt and the five function rows that changed (`ping`, `get_submissions`,
+`get_submission_file`, `get_marks`, `get_mark_file`).
+
+**How the places were found.** `grep` for `v1.29.1`, "release that has", "not yet released" and "Unreleased" outside the history files
+(LEARNFROMME and the older changelog entries keep their old versions on purpose: they are what was true then). The README and the design
+note's status line were not on the list I started with; the README was found by reading it, the status line by reading the first lines of
+the design note.
+
+**Not done.** No tag, no push, no GitHub release; the commit message says so. The date in the heading is the commit date and may need
+changing if the tag is made on another day.

@@ -206,7 +206,7 @@ attempt. Each direction has its own switch in the same settings page, under
 | Source | **Let other sites read every attempt of assignment submissions and marks from this site** | The sync account needs the permissions for submissions and/or marks it already has; there is no extra permission. Drafts and attempts that were reopened but not handed in are never shared. |
 | Destination | **Let teachers pull every attempt of assignment submissions into this site** | Teachers already pulling submissions or marks see a box on those pages. |
 
-**Both sites must run a release that has this**: the
+**Both sites must run v1.30.0-beta or later**: the
 destination asks the source whether it offers it, and refuses - rather than
 quietly pulling less - if it does not. The upgrade adds an attempt number to the
 records of what was pulled; it fills it in from the work and marks already

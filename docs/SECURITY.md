@@ -431,7 +431,7 @@ student whose mark a marks pull wrote.
 
 ## Every attempt of assignments
 
-Added after v1.29.1-beta, not yet released. A student's earlier attempts are more history than the latest attempt, so
+Added in v1.30.0-beta. A student's earlier attempts are more history than the latest attempt, so
 they have **their own switch on each site**, on top of the submissions and marks
 decisions above (which still apply, and are checked first):
 

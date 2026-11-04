@@ -8,7 +8,7 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
-## Unreleased (build 2026110401, v1.30.0-beta, 2026-11-04)
+## v1.30.0-beta (build 2026110401, 2026-11-04)
 
 ### Added
 
