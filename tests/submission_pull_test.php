@@ -296,6 +296,9 @@ final class submission_pull_test extends advanced_testcase {
         $ledger = $DB->get_record('block_coursesync_submission', ['assignid' => $this->here->id, 'userid' => $this->sam->id]);
         $this->assertEquals($row->id, $ledger->submissionid);
         $this->assertEquals($this->there->cmid, $ledger->remotecmid);
+        // The record says which attempt here it is: the first, which is where a pull always writes.
+        $this->assertSame((int) $row->attemptnumber, (int) $ledger->attemptnumber);
+        $this->assertSame(0, (int) $ledger->attemptnumber);
         $this->assertSame(40, strlen($ledger->fingerprint));
         $this->assertSame(40, strlen($ledger->localfingerprint));
 

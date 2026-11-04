@@ -1051,4 +1051,35 @@ final class marks_pull_test extends advanced_testcase {
         );
         $this->assertEquals(20, $this->grade_here()->grade);
     }
+
+    /**
+     * The record says which attempt here the mark was written to - the
+     * student's latest, which is not always the first - so that the record for
+     * each attempt can later be told apart.
+     */
+    public function test_the_record_says_which_attempt_the_mark_went_to(): void {
+        global $DB;
+
+        $this->submit($this->sam, $this->here, 'first go');
+        $this->reopen($this->here, $this->sam);
+        $this->mark_there(60, 'Fine');
+
+        $this->only_entry($this->pull());
+
+        $attempts = ['assignment' => $this->here->id, 'userid' => $this->sam->id];
+        $this->assertSame(2, $DB->count_records('assign_submission', $attempts));
+        $by = ['assignid' => $this->here->id, 'userid' => $this->sam->id];
+        $ledger = $DB->get_record('block_coursesync_mark', $by, '*', MUST_EXIST);
+
+        $this->assertSame(1, (int) $this->grade_here()->attemptnumber);
+        $this->assertSame(1, (int) $ledger->attemptnumber);
+        $this->assertSame((int) $this->grade_here()->id, (int) $ledger->gradeid);
+
+        // Pulled again and changed on the source: the same record, not a second.
+        $this->mark_there(80, 'Better');
+        $this->pull();
+
+        $this->assertSame(1, $DB->count_records('block_coursesync_mark', ['assignid' => $this->here->id]));
+        $this->assertSame(1, (int) $DB->get_field('block_coursesync_mark', 'attemptnumber', ['id' => $ledger->id]));
+    }
 }

@@ -134,6 +134,7 @@ class provider implements
             'userid' => 'privacy:metadata:submission:userid',
             'assignid' => 'privacy:metadata:submission:assignid',
             'submissionid' => 'privacy:metadata:submission:submissionid',
+            'attemptnumber' => 'privacy:metadata:submission:attemptnumber',
             'remotecmid' => 'privacy:metadata:submission:remotecmid',
             'remoteattempt' => 'privacy:metadata:submission:remoteattempt',
             'fingerprint' => 'privacy:metadata:submission:fingerprint',
@@ -146,6 +147,7 @@ class provider implements
             'userid' => 'privacy:metadata:mark:userid',
             'assignid' => 'privacy:metadata:mark:assignid',
             'gradeid' => 'privacy:metadata:mark:gradeid',
+            'attemptnumber' => 'privacy:metadata:mark:attemptnumber',
             'remotecmid' => 'privacy:metadata:mark:remotecmid',
             'remoteattempt' => 'privacy:metadata:mark:remoteattempt',
             'fingerprint' => 'privacy:metadata:mark:fingerprint',
@@ -428,6 +430,7 @@ class provider implements
             $submissions[] = [
                 'assignment' => $row->assignname !== null ? format_string($row->assignname, true, ['context' => $context]) : '',
                 'submissionid' => (int) $row->submissionid,
+                'attempt' => (int) $row->attemptnumber,
                 'timeimported' => transform::datetime($row->timeimported),
                 'timechangedonothersite' => $row->remotetime ? transform::datetime($row->remotetime) : '',
                 'remoteactivity' => (int) $row->remotecmid,
@@ -474,6 +477,7 @@ class provider implements
             $marks[] = [
                 'assignment' => $row->assignname !== null ? format_string($row->assignname, true, ['context' => $context]) : '',
                 'gradeid' => (int) $row->gradeid,
+                'attempt' => (int) $row->attemptnumber,
                 'timeimported' => transform::datetime($row->timeimported),
                 'timechangedonothersite' => $row->remotetime ? transform::datetime($row->remotetime) : '',
                 'remoteactivity' => (int) $row->remotecmid,

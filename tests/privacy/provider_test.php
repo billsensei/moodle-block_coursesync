@@ -513,6 +513,7 @@ final class provider_test extends provider_testcase {
                 'fields' => [
                     'assignid' => 'assignment',
                     'submissionid' => 'submissionid',
+                    'attemptnumber' => 'attempt',
                     'remotecmid' => 'remoteactivity',
                     'remoteattempt' => 'remoteattempt',
                     'fingerprint' => 'fingerprint',
@@ -526,6 +527,7 @@ final class provider_test extends provider_testcase {
                 'fields' => [
                     'assignid' => 'assignment',
                     'gradeid' => 'gradeid',
+                    'attemptnumber' => 'attempt',
                     'remotecmid' => 'remoteactivity',
                     'remoteattempt' => 'remoteattempt',
                     'fingerprint' => 'fingerprint',

@@ -254,6 +254,7 @@ class submission_writer {
             'userid' => $student->id,
             'assignid' => $assignid,
             'submissionid' => $row->id,
+            'attemptnumber' => (int) $row->attemptnumber,
             'remotecmid' => $remotecmid,
             'remoteattempt' => $submission->attemptnumber,
             'fingerprint' => $submission->fingerprint,

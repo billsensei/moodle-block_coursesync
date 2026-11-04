@@ -171,16 +171,21 @@ assignment.
 ## Ledgers
 
 `block_coursesync_submission` and `block_coursesync_mark` both gain `attemptnumber` and
-change their unique key from (assignid, userid) to (assignid, userid, attemptnumber). The
-upgrade step must backfill `attemptnumber` from the existing `remoteattempt` where the
-ledger row's local `assign_submission` row exists. **Existing rows stay valid**: a ledger
-row written by today's code is an attempt-0 row, so it is filled with local attempt number 0
-(the attempt it was actually written to), whatever `remoteattempt` says. That distinction
-needs a test with a row whose `remoteattempt` is 2.
+change their unique key from (assignid, userid) to (assignid, userid, attemptnumber).
 
-Changing a unique index on a populated table is the riskiest part of the upgrade. The step
-should create the new index first, then drop the old one, and have an upgrade test on both
-databases the CI uses.
+**Built in Phase 2 (changed from the first draft).** The upgrade backfills each existing row from
+the row it points at here (`assign_submission.attemptnumber` or `assign_grades.attemptnumber`),
+not from `remoteattempt` and not always 0, and leaves it 0 if that row has since gone. The first
+draft said 0; that is right for submissions (a pull always writes attempt 0) but not for marks,
+which are written to the student's *latest* attempt here, so a mark written when the student
+already had a second attempt here belongs to attempt 1. Existing rows stay valid either way.
+The step adds the column, fills it, adds the new unique key and only then drops the old one, and
+every part checks first, so it can be run again from any point a stopped upgrade left it.
+The writers record the attempt they wrote to. The lookups by (assignid, userid) are unchanged in
+Phase 2 because there is still one row per pair; Phases 3 and 4 add the attempt to them. The
+privacy provider declares and exports the new field.
+
+Tried on PostgreSQL 17 (Moodle 5.0 to 5.3) and MariaDB 10.11 (5.1).
 
 ## Per-attempt rule
 
@@ -226,7 +231,7 @@ Submissions and marks written here are mod_assign's own rows, deleted by its own
 | --- | --- |
 | 0 | **Done (Phase 97):** the `untilpass` side effect was real; fixed and tested on 5.0 to 5.3 |
 | 1 | **Done (Phase 98):** `allattempts` on both source functions, the file functions' `attemptnumber`, the source-side switch `allowattemptsexport` (moved up from Phase 5: the data must be gated the moment it can be asked for), the `ping` feature word, source tests |
-| 2 | Ledger columns and the index swap, with the upgrade step and its tests |
+| 2 | **Done (Phase 99):** ledger column `attemptnumber` and the index swap, with the upgrade step and its tests; build 2026110401 |
 | 3 | Submissions: per-attempt classify/write, the `latest` rule, conflict handling |
 | 4 | Marks: per-attempt classify/write, the marking-workflow reason |
 | 5 | The pull-side switch, preview grouping, history counts, privacy, docs |

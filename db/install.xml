@@ -119,6 +119,7 @@
         <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The student whose submission it is."/>
         <FIELD NAME="assignid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The assignment here."/>
         <FIELD NAME="submissionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The submission here."/>
+        <FIELD NAME="attemptnumber" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Which attempt here the submission is (assign_submission.attemptnumber), the part of the key that tells a student's attempts apart."/>
         <FIELD NAME="remotecmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Course module id of the assignment on the source site."/>
         <FIELD NAME="remoteattempt" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Which attempt on the source this was."/>
         <FIELD NAME="fingerprint" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="SHA-1 standing for the content the source held when it was brought."/>
@@ -130,7 +131,7 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="assignid-userid" UNIQUE="true" FIELDS="assignid, userid"/>
+        <INDEX NAME="assignid-userid-attemptnumber" UNIQUE="true" FIELDS="assignid, userid, attemptnumber"/>
         <INDEX NAME="submissionid" UNIQUE="false" FIELDS="submissionid"/>
         <INDEX NAME="blockinstanceid" UNIQUE="false" FIELDS="blockinstanceid"/>
         <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
@@ -145,6 +146,7 @@
         <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The student whose mark it is."/>
         <FIELD NAME="assignid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The assignment here."/>
         <FIELD NAME="gradeid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The assign_grades row here."/>
+        <FIELD NAME="attemptnumber" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Which attempt here the grade is (assign_grades.attemptnumber), the part of the key that tells a student's attempts apart."/>
         <FIELD NAME="remotecmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Course module id of the assignment on the source site."/>
         <FIELD NAME="remoteattempt" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Which attempt on the source the mark was for."/>
         <FIELD NAME="fingerprint" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="SHA-1 standing for the mark the source held when it was brought."/>
@@ -156,7 +158,7 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="assignid-userid" UNIQUE="true" FIELDS="assignid, userid"/>
+        <INDEX NAME="assignid-userid-attemptnumber" UNIQUE="true" FIELDS="assignid, userid, attemptnumber"/>
         <INDEX NAME="gradeid" UNIQUE="false" FIELDS="gradeid"/>
         <INDEX NAME="blockinstanceid" UNIQUE="false" FIELDS="blockinstanceid"/>
         <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>

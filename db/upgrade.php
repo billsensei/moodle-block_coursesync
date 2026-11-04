@@ -305,5 +305,58 @@ function xmldb_block_coursesync_upgrade($oldversion) {
         upgrade_block_savepoint(true, 2026110101, 'coursesync');
     }
 
+    if ($oldversion < 2026110401) {
+        // A pull can now bring a student's earlier attempts across, so the
+        // record of what was brought is kept for each attempt, not for each
+        // student. Written to be run again if it stopped half way: every
+        // part checks first.
+        foreach (
+            [
+                'block_coursesync_submission' => ['submissionid', 'assign_submission'],
+                'block_coursesync_mark' => ['gradeid', 'assign_grades'],
+            ] as $tablename => [$rowfield, $localtable]
+        ) {
+            $table = new xmldb_table($tablename);
+            $field = new xmldb_field('attemptnumber', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', $rowfield);
+
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+
+            // Every existing row is for the attempt it was actually written
+            // to here - the number on the submission or grade it points at -
+            // whatever attempt the other site called it (remoteattempt). A
+            // row whose submission or grade has since gone stays at 0.
+            $rows = $DB->get_recordset_sql(
+                "SELECT l.id, t.attemptnumber
+                   FROM {{$tablename}} l
+                   JOIN {{$localtable}} t ON t.id = l.{$rowfield}
+                  WHERE t.attemptnumber <> l.attemptnumber"
+            );
+
+            foreach ($rows as $row) {
+                $DB->set_field($tablename, 'attemptnumber', $row->attemptnumber, ['id' => $row->id]);
+            }
+
+            $rows->close();
+
+            // The new key first and the old one after, so the table is never
+            // left without a unique key if this stops between the two.
+            $new = new xmldb_index('assignid-userid-attemptnumber', XMLDB_INDEX_UNIQUE, ['assignid', 'userid', 'attemptnumber']);
+
+            if (!$dbman->index_exists($table, $new)) {
+                $dbman->add_index($table, $new);
+            }
+
+            $old = new xmldb_index('assignid-userid', XMLDB_INDEX_UNIQUE, ['assignid', 'userid']);
+
+            if ($dbman->index_exists($table, $old)) {
+                $dbman->drop_index($table, $old);
+            }
+        }
+
+        upgrade_block_savepoint(true, 2026110401, 'coursesync');
+    }
+
     return true;
 }

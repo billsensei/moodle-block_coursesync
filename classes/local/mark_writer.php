@@ -400,6 +400,7 @@ class mark_writer {
             'userid' => $student->id,
             'assignid' => $assignid,
             'gradeid' => $saved->id,
+            'attemptnumber' => (int) $saved->attemptnumber,
             'remotecmid' => $remotecmid,
             'remoteattempt' => $mark->attemptnumber,
             'fingerprint' => $mark->fingerprint,

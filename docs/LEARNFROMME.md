@@ -5167,3 +5167,67 @@ admin settings page (one new heading and checkbox); run it before a release.
 **Not done.** The destination does not send `allattempts` or read `attempts[]` (Phases 3 and 4). No ledger change (Phase 2). The pull
 switch, the preview and the privacy provider are Phase 5. The `PAIRS_PER_CALL` batch size still counts students, not attempts (noted
 in the design as needing a test once the destination asks for every attempt).
+
+## Phase 99 - Per-attempt marks, phase 2: the ledgers become per attempt (build 2026110401; release still v1.29.1-beta), 2026-11-04
+
+**Ask.** "Start phase 2" of `docs/DESIGN_ASSIGN_ATTEMPTS.md`: both pull ledgers get an `attemptnumber` and their unique key changes from
+(assignid, userid) to (assignid, userid, attemptnumber). The design called this the riskiest step: a unique key changed on tables
+that already hold rows, with an upgrade nobody can take back.
+
+**Built.**
+- `db/install.xml`: `attemptnumber` (int 10, not null, default 0) on `block_coursesync_submission` and `block_coursesync_mark`; the
+  unique index is now `assignid-userid-attemptnumber`. `db/upgrade.php` step 2026110401, `version.php` build 2026110401 (the release
+  string is unchanged: nothing is released).
+- The step, for each table: add the column if it is not there; fill it from the submission or grade row the ledger row points at (a
+  `JOIN` that only touches rows that differ); add the new unique key if it is not there; drop the old one if it is there. The new key
+  goes in before the old one comes out, so the table never has no unique key if it stops between them, and every part checks first, so
+  it can be run again.
+- `submission_writer` and `mark_writer` record `attemptnumber` of the row they wrote. The lookups by (assignid, userid) are left alone:
+  until Phase 3 there is one row per pair, and changing them now would only risk a mark ledger row at attempt 1 being missed.
+- Privacy provider: declares the field (two language strings) and exports it as `attempt`; the drift test lists it.
+
+**Changed from the design.** The note said existing rows would be backfilled with 0. That is only right for submissions. A mark is
+written to the student's latest attempt here (`local_grade()`), so a mark written when the student already had a second attempt here
+is for attempt 1; 0 would have put the record on the wrong attempt and Phase 4 would have treated the real attempt-1 mark as having no
+record. So the backfill reads the number from the row the ledger row points at, and leaves 0 only where that row has gone. The note
+is corrected.
+
+**Tests (first upgrade tests in the plugin).** `tests/upgrade_test.php` (5). The DDL cannot run inside a rolled-back test, so it uses
+`preventResetByRollback()`, rebuilds the old shape (drops the column and the new key, adds the old key), inserts legacy rows, and runs
+the real `xmldb_block_coursesync_upgrade()`. Rows: a submission record whose other-site attempt is 2 but which is attempt 0 here with a
+newer attempt present; a mark record written to attempt 1; and records whose submission/grade are gone. They check: the numbers above; the key is for each attempt
+(a second attempt records, the same attempt twice is refused with `dml_write_exception`, the old key is gone); running the step twice
+changes nothing; finishing from "column added, rows not filled, old key still there", and with both keys in place; and that the
+result matches what `install.xml` makes (`check_database_schema()`, plus the index definitions read from `install.xml` itself,
+because that check does not look at keys). Also: a pulled mark records the attempt it went to (a destination with two attempts) and is
+not duplicated on a second pull; the submission test checks the record says attempt 0.
+
+**Mutation checks (10, all caught).** Backfill from `remoteattempt`; backfill skipped; old key kept; new key not unique; no guard on
+the column, on the new key, on the old key; the mark writer not recording the attempt; the privacy export and the privacy metadata
+each missing the field. **Not caught, by nature:** the submission writer not recording the attempt, because a pull always writes
+attempt 0 and 0 is the column's default; it has no observable effect until Phase 3 writes other attempts.
+
+**Result.** phplint, phpcs (`--max-warnings 0`), phpdoc, validate, savepoints exit 0 (11 upgrade blocks). PHPUnit, full suite: 707
+tests, 3413 assertions, 1 skipped, identical on 5.0, 5.1, 5.2 and 5.3 (701 before plus 6). The schema-related tests (upgrade, privacy,
+marks pull, submission pull, every attempt: 125 tests) also pass on **MariaDB 10.11** (Moodle 5.1), run by pointing the CI install's
+`config.php` at a throwaway `mariadb:10.11` container and putting the config back; the unique key came out as
+(assignid, userid, attemptnumber). The CI matrix has MariaDB rows, so this was worth doing before a push. **Behat not run**: no page
+changed.
+
+**Traps.**
+- `upgrade_block_savepoint()` refuses to run when the stored version already equals its target ("Cannot downgrade ... from X to X").
+  A test that calls the step again must `set_config('version', <old>, 'block_coursesync')` first.
+- `xmldb_structure` has no `loadXMLFile()`; use `xmldb_file::loadXMLStructure()` then `getStructure()`. And `check_database_schema()`
+  does not look at indexes.
+- **A mutation can silently hit the wrong place.** The mutation "remove the field guard" survived, and a `throw` put in the same place
+  did not fail any test, which was the clue: the text I matched also appears in an earlier upgrade step, and `str.replace(a, b, 1)`
+  changed the first one. Re-aimed at the last occurrence, it was caught (every test errored with "Field attemptnumber already
+  exists"). Check that a mutation's pattern is unique, or aim it deliberately.
+- The test's own tear-down has to delete the ledger rows before it restores the shape: rows a test added for "a second attempt" point
+  at the same submission, and the step (correctly) would put them back on one attempt and collide.
+- In an `UPDATE` through `set_field()` in a loop the new key can collide in a half-filled state; filling before adding the key avoids
+  it, which is why the order is column, fill, new key, old key.
+
+**Not done.** Nothing reads more than one record per student and assignment yet (Phases 3 and 4). `CHANGES.md` and `changelog.md` are
+not updated (no release); the Phase 97 fix and this schema change both need notes when a version is cut. The lookups by
+(assignid, userid) in `submission_pull` and `marks_pull` are the first thing Phase 3 changes.
