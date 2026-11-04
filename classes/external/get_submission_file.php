@@ -138,11 +138,8 @@ class get_submission_file extends external_api {
         }
 
         // Only a student the gradebook lists, only their latest handed-in work.
-        $students = gradebook::only(gradebook::gradable_users($course->id, true), $username);
-        $student = reset($students);
-        $submission = $student && $student->username === $username
-            ? submissions::latest_submitted((int) $assign->id, (int) $student->id)
-            : null;
+        $student = gradebook::student((int) $course->id, $username);
+        $submission = $student ? submissions::latest_submitted((int) $assign->id, (int) $student->id) : null;
 
         if (!$submission) {
             throw new \moodle_exception('errorfilenotallowed', 'block_coursesync');

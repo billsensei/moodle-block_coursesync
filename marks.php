@@ -27,6 +27,7 @@ require_once(__DIR__ . '/../../config.php');
 
 use block_coursesync\connection;
 use block_coursesync\grade_pull_result;
+use block_coursesync\local\long_run;
 use block_coursesync\marks_pull;
 use block_coursesync\submission_pull;
 use core\output\html_writer;
@@ -91,6 +92,7 @@ if ($confirm) {
         die;
     }
 
+    long_run::begin();
     $result = marks_pull::run($instanceid, $course->id, null, $chosen);
 } else {
     // Following a link writes nothing: this asks the other site, shows what

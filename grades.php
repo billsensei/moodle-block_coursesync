@@ -29,6 +29,7 @@ require_once($CFG->libdir . '/gradelib.php');
 use block_coursesync\connection;
 use block_coursesync\grade_pull;
 use block_coursesync\grade_pull_result;
+use block_coursesync\local\long_run;
 use core\output\html_writer;
 
 $instanceid = required_param('instanceid', PARAM_INT);
@@ -80,6 +81,7 @@ if (!connection::is_mapped($record)) {
 
 if ($confirm) {
     require_sesskey();
+    long_run::begin();
     $result = grade_pull::run($instanceid, $course->id);
 } else {
     // Following a link writes nothing: this asks the other site, shows what

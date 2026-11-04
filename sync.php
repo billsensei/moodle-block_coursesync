@@ -27,6 +27,7 @@ require_once(__DIR__ . '/../../config.php');
 use block_coursesync\activity;
 use block_coursesync\connection;
 use block_coursesync\local\handler\handler_registry;
+use block_coursesync\local\long_run;
 use block_coursesync\sync_result;
 use block_coursesync\syncer;
 use core\output\html_writer;
@@ -511,6 +512,7 @@ require_sesskey();
 
 // Only what was ticked. An empty selection is a decision, not a request to copy
 // everything, so it is passed through as the empty set rather than as null.
+long_run::begin();
 $result = syncer::run($instanceid, $course->id, true, null, $chosen, $questionsonly, (bool) $updatesections);
 
 if (!$result->success) {

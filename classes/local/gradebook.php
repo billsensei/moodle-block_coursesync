@@ -60,6 +60,29 @@ class gradebook {
     }
 
     /**
+     * One student, if the gradebook would list them.
+     *
+     * For a request about a single person, such as one chunk of one file. The
+     * same students as gradable_users($courseid, true), found by asking the
+     * database for that one username rather than building the whole list, and
+     * without recalculating the gradebook: what is served is a stored file,
+     * not a total, and a file is fetched in many pieces.
+     *
+     * @param int $courseid
+     * @param string $username exactly as stored
+     * @return \stdClass|null the user, or null if not a student of the course
+     */
+    public static function student(int $courseid, string $username): ?\stdClass {
+        if ($username === '' || clean_param($username, PARAM_USERNAME) !== $username) {
+            return null;
+        }
+
+        $users = self::all_gradable_users($courseid, $username);
+
+        return $users ? reset($users) : null;
+    }
+
+    /**
      * Only the students a destination asked for.
      *
      * The list is one username per line, in a single parameter rather than an
@@ -96,15 +119,24 @@ class gradebook {
      * or above, not deleted.
      *
      * @param int $courseid
+     * @param string|null $username only this one, or null for every student
      * @return \stdClass[] user id => user
      */
-    protected static function all_gradable_users(int $courseid): array {
+    protected static function all_gradable_users(int $courseid, ?string $username = null): array {
         global $CFG, $DB;
 
         $context = \context_course::instance($courseid);
         [$ctxsql, $ctxparams] = $DB->get_in_or_equal($context->get_parent_context_ids(true), SQL_PARAMS_NAMED, 'ctx');
         [$rolesql, $roleparams] = $DB->get_in_or_equal(explode(',', $CFG->gradebookroles), SQL_PARAMS_NAMED, 'grbr');
         [$enrolledsql, $enrolledparams] = get_enrolled_sql($context, '', 0, true);
+
+        $onlyone = '';
+        $oneparams = [];
+
+        if ($username !== null) {
+            $onlyone = 'AND u.username = :gbusername';
+            $oneparams = ['gbusername' => $username];
+        }
 
         return $DB->get_records_sql(
             "SELECT u.*
@@ -116,9 +148,9 @@ class gradebook {
                          WHERE ra.roleid {$rolesql}
                            AND ra.contextid {$ctxsql}
                     ) rainner ON rainner.userid = u.id
-              WHERE u.deleted = 0
+              WHERE u.deleted = 0 {$onlyone}
            ORDER BY u.id ASC",
-            array_merge($enrolledparams, $roleparams, $ctxparams)
+            array_merge($enrolledparams, $roleparams, $ctxparams, $oneparams)
         );
     }
 }

@@ -131,9 +131,8 @@ class get_mark_file extends external_api {
         }
 
         // Only a student the gradebook lists, only the mark that would be described.
-        $students = gradebook::only(gradebook::gradable_users($course->id, true), $username);
-        $student = reset($students);
-        $grade = $student && $student->username === $username ? marks::mark_for($assign, (int) $student->id) : null;
+        $student = gradebook::student((int) $course->id, $username);
+        $grade = $student ? marks::mark_for($assign, (int) $student->id) : null;
 
         if (!$grade) {
             throw new \moodle_exception('errorfilenotallowed', 'block_coursesync');

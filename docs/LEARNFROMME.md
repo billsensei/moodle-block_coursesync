@@ -4971,3 +4971,53 @@ line (class files, no side effects, CI phpcs passes), so it was not rated. No dy
   Behat run ending; check `pgrep -f "[v]endor/bin/behat"` instead.
 - Selenium allows one session, so 5.0/5.2/5.3 ran one at a time after 5.1. Docker sites and Selenium were stopped afterwards;
   `coursesync-ci-db` was left running.
+
+## Phase 95 - Performance review: long runs and file chunks (no version bump; still v1.29.1-beta, build 2026110301), 2026-11-03
+
+**Ask.** The user ran `/moodle-dev:moodle-performance` on the whole plugin (option 1: review everything), then asked for finding 2
+fixed first, then finding 1, and for findings 3 and 4 to be recalled afterwards.
+
+**Review result: 0 HIGH, 3 MEDIUM, 1 LOW.** Read from the code and greps only: no profiling, no `EXPLAIN`, nothing timed. Checked and fine:
+no unbounded `get_records` (all scoped to one instance or activity; run history limited to 50/200), every lookup column indexed,
+the block renders with about 3 cheap queries and no remote call, files stream to disk in chunks (max 2048) and are SHA-1 checked,
+`syncer::run` holds a `\core\lock`. The plugin has no MUC definitions and no tasks; none were judged necessary.
+
+**Fix 2 (MEDIUM): a long run on the request path.** `sync.php`, `grades.php`, `submissions.php` and `marks.php` ran the work in the
+web request with no time limit, memory raise or session release, though a run may carry 512 MB in 512 KB pieces. New
+`classes/local/long_run.php`, `long_run::begin()`: `core_php_time_limit::raise()`, `raise_memory_limit(MEMORY_EXTRA)`,
+`\core\session\manager::write_close()`. Called once on each confirm branch, after `require_sesskey()`, just before the run, so
+previews are untouched. Nothing after it may change the session: those pages use `$OUTPUT->notification()` and no `redirect()` with a
+message, which was checked first. Test: `tests/local/long_run_test.php`. Core's time limit does nothing in a CLI script, so the test
+reads core's unit test record (`core_php_time_limit::get_and_clear_unit_test_data()`) and checks `[0]`, and checks the memory limit
+rose from just above current use to at least 512M. Removing either call makes it fail.
+
+**Fix 1 (MEDIUM): every file chunk rebuilt the student list.** `get_submission_file` and `get_mark_file` called
+`gradebook::gradable_users(..., true)` (regrade if needed, then an enrolment and role join over the course) on each 512 KB piece, to
+find one student. New `gradebook::student(int $courseid, string $username)`: the same students, asked for by username in the query
+(`all_gradable_users()` gained an optional `$username`), no regrade, and it returns null for a name that changes when cleaned
+(`SAM`, `sam\nsue`), a teacher, a suspended enrolment, a student of another course. Both functions use it. Tests:
+`tests/local/gradebook_test.php` (same answer as the whole list; does not clear the needs-regrade flag, while `gradable_users()`
+does). Mutations caught: dropping the username filter, and putting `student()` back on the whole list.
+
+**Result.** phplint, phpcs, phpdoc, validate and savepoints exit 0 (CI install, 5.1). PHPUnit, full suite: 675 tests, 3249
+assertions, 1 skipped, identical on 5.0, 5.1, 5.2 and 5.3. Behat `@block_coursesync`: 52 scenarios, 1221 steps, all passed on all
+four. Not run: a timing measurement of either fix (chunk requests per file, or a run past the web server's time limit), and
+nothing was committed or pushed.
+
+**Open - findings 3 and 4, deliberately not done (the user asked to be reminded).**
+- Finding 3 (MEDIUM): `get_submissions` / `get_marks` answer every student for every assignment in one call, about 4 queries a
+  student, under `remote_client::TIMEOUT` = 20 s for every call. A big course could time out or return a very large body. Whether
+  the destination already sends `usernames` in batches was not traced. Fix idea: batch from the destination and/or a longer
+  timeout for these two calls, and batch the per-student queries per assignment.
+- Finding 4 (LOW): `submission_pull::pull_submission()` reads the ledger row, the local submission and the local content separately for
+  every student (`submission_pull.php:378`). Fix idea: preload the ledger rows per assignment. `marks_pull` was not checked for the
+  same pattern.
+
+**Traps.**
+- `ini_set('memory_limit', '128M')` fails (and the full suite reports it) when the run already uses more than that. Pick a value
+  just above `memory_get_peak_usage(true)`.
+- `grade_needs_regrade_final_grades()` returns a truthy value that is not `true` (`'1'`), so use `assertNotEmpty`/`assertEmpty`.
+- `\core\session\manager::write_close()` cannot be seen from PHPUnit. If a page changed the session afterwards, developer
+  debugging reports it ("defined READ_ONLY_SESSION but the following SESSION attributes were changed" and a shutdown check);
+  Behat passed and the PHP server log had no such line, but it was not confirmed that Behat runs with developer debugging on.
+- Docker sites, the Selenium containers and the PHP server on port 8001 were stopped afterwards; `coursesync-ci-db` is still up.
