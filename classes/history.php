@@ -155,7 +155,9 @@ class history {
 
         foreach ($kinds as $kind) {
             foreach ($result->by_activity($kind) as $activity) {
-                $activities[] = ['kind' => $kind] + $activity;
+                // Said once for the activity: when every attempt was pulled the
+                // counts are of attempts, and the history must not read them as students.
+                $activities[] = ['kind' => $kind] + $activity + ($result->everyattempt ? ['every' => true] : []);
             }
         }
 

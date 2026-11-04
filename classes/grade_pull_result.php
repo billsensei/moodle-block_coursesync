@@ -82,6 +82,15 @@ class grade_pull_result {
     /** @var string[] Things to tell the teacher about the pull as a whole, as language string identifiers. */
     public array $notes = [];
 
+    /** @var bool True when every attempt each student handed in was asked for, so the counts are of attempts. */
+    public bool $everyattempt = false;
+
+    /**
+     * @var \stdClass[] Things worth knowing that do not stop anything: key (a language string
+     *      identifier) and a (its placeholders). Not outcomes, so they are not counted.
+     */
+    public array $warnings = [];
+
     /**
      * @var \stdClass[] kind (KIND_GRADE or KIND_ATTEMPT), cmid (local; 0 for a
      *      manual grade item, which has remoteitemid instead), activity,
@@ -115,6 +124,17 @@ class grade_pull_result {
      */
     public function add(\stdClass $entry): void {
         $this->entries[] = $entry;
+    }
+
+    /**
+     * Say something about the pull that is not an outcome.
+     *
+     * @param string $key a language string identifier in block_coursesync
+     * @param \stdClass $a its placeholders
+     * @return void
+     */
+    public function warn(string $key, \stdClass $a): void {
+        $this->warnings[] = (object) ['key' => $key, 'a' => $a];
     }
 
     /**

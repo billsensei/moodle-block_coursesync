@@ -220,4 +220,53 @@ final class history_test extends advanced_testcase {
         $this->assertSame([], history::get_runs(self::INSTANCE));
         $this->assertFalse(history::was_pulled_here(self::INSTANCE, 11, 101));
     }
+
+    /**
+     * A pull of every attempt says so in its record, so the history does not
+     * read its counts - of attempts - as students; and keeps counts only.
+     */
+    public function test_a_pull_of_every_attempt_says_so_in_its_record(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+
+        foreach ([false, true] as $every) {
+            $result = new grade_pull_result();
+            $result->everyattempt = $every;
+            $result->add((object) [
+                'kind' => grade_pull_result::KIND_SUBMISSION, 'cmid' => 7, 'activity' => 'Essay', 'itemnumber' => 0,
+                'gradeitemid' => 0, 'userid' => 3, 'username' => 'sam', 'outcome' => grade_pull_result::ADD,
+                'reason' => null, 'grade' => null, 'localgrade' => null, 'attempt' => 1, 'files' => 0,
+            ]);
+
+            $id = history::record_grade_pull(self::INSTANCE, 2, 9, time(), $result, history::KIND_SUBMISSIONS);
+            $row = $DB->get_record('block_coursesync_run', ['id' => $id], '*', MUST_EXIST);
+            $activities = json_decode($row->pulled, true);
+
+            $this->assertSame(1, (int) $row->pulledcount);
+            $this->assertCount(1, $activities);
+            $this->assertSame($every, !empty($activities[0]['every']));
+            // Counts only: not who, and not which attempt.
+            $this->assertStringNotContainsString('"sam"', $row->pulled);
+            $this->assertStringNotContainsString('attempt', $row->pulled);
+        }
+    }
+
+    /**
+     * Warnings are things to say about a pull, not outcomes: they are not
+     * counted, and a pull has none to begin with.
+     */
+    public function test_warnings_are_not_outcomes(): void {
+        $result = new grade_pull_result();
+
+        $this->assertSame([], $result->warnings);
+        $this->assertFalse($result->everyattempt);
+
+        $result->warn('submissionswarnmaxattempts', (object) ['activity' => 'Essay', 'attempts' => 3, 'allowed' => 2]);
+
+        $this->assertCount(1, $result->warnings);
+        $this->assertSame('submissionswarnmaxattempts', $result->warnings[0]->key);
+        $this->assertSame(0, $result->changes());
+        $this->assertSame(array_fill_keys(grade_pull_result::OUTCOMES, 0), $result->counts());
+    }
 }

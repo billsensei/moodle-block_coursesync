@@ -51,6 +51,56 @@ class attempts {
     }
 
     /**
+     * The small form on a pull page that chooses between the latest attempt
+     * and every attempt, shown only where this site lets teachers pull them.
+     *
+     * A form of its own, sent by GET: choosing writes nothing, it only asks
+     * for another preview. The button that writes is on the preview itself.
+     *
+     * @param \moodle_url $pageurl the pull page (instanceid and courseid are carried on)
+     * @param bool $checked whether every attempt is what the page is showing
+     * @return string HTML, empty where the teacher cannot pull attempts here
+     */
+    public static function choice_form(\moodle_url $pageurl, bool $checked): string {
+        if (!get_config('block_coursesync', 'allowattemptspull')) {
+            return '';
+        }
+
+        $hidden = '';
+
+        foreach ($pageurl->params() as $name => $value) {
+            $hidden .= \html_writer::empty_tag('input', ['type' => 'hidden', 'name' => $name, 'value' => $value]);
+        }
+
+        $box = \html_writer::empty_tag('input', [
+            'type' => 'checkbox',
+            'name' => 'allattempts',
+            'id' => 'coursesync-allattempts',
+            'value' => 1,
+            'class' => 'form-check-input',
+        ] + ($checked ? ['checked' => 'checked'] : []));
+        $label = \html_writer::label(get_string('pullattemptsoption', 'block_coursesync'), 'coursesync-allattempts', false, [
+            'class' => 'form-check-label',
+        ]);
+        $button = \html_writer::empty_tag('input', [
+            'type' => 'submit',
+            'value' => get_string('pullattemptsupdate', 'block_coursesync'),
+            'class' => 'btn btn-secondary btn-sm ms-3',
+        ]);
+
+        return \html_writer::tag(
+            'form',
+            $hidden . \html_writer::div($box . $label . $button, 'form-check d-flex align-items-center'),
+            [
+                'method' => 'get',
+                'action' => $pageurl->out_omit_querystring(),
+                'class' => 'mb-3',
+                'id' => 'coursesync-attempts-choice',
+            ]
+        );
+    }
+
+    /**
      * Refuse unless this site shares every attempt.
      *
      * Called by every source-side path that names an attempt, after the

@@ -383,7 +383,9 @@ final class marks_attempts_pull_test extends advanced_testcase {
         $this->assertSame([], $this->grades_here());
         $this->assertSame([], $this->ledger());
 
-        $this->assertSame([0 => 'add', 1 => 'add', 2 => 'add'], $this->outcomes($this->pull_all()));
+        $result = $this->pull_all();
+        $this->assertTrue($result->everyattempt);
+        $this->assertSame([0 => 'add', 1 => 'add', 2 => 'add'], $this->outcomes($result));
 
         $this->assertSame([
             0 => [40.0, 'Try again', ['first.txt=FIRST']],

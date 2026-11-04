@@ -714,4 +714,39 @@ final class submission_attempts_pull_test extends advanced_testcase {
 
         $this->assertNotContains('block_coursesync_ping', array_column($this->calls, 'wsfunction'));
     }
+
+    /**
+     * An assignment that allows fewer attempts than the other site has says so
+     * in the preview and in the pull, writes every attempt all the same, and
+     * says nothing where the limit is enough or there is none.
+     */
+    public function test_too_few_attempts_allowed_here_is_a_warning_not_a_stop(): void {
+        global $DB;
+
+        $this->three_goes();
+        $DB->set_field('assign', 'maxattempts', 2, ['id' => $this->here->id]);
+
+        foreach ([$this->preview_all(), $this->pull_all()] as $result) {
+            $this->assertCount(1, $result->warnings);
+            $this->assertSame('submissionswarnmaxattempts', $result->warnings[0]->key);
+            $this->assertSame('Essay', $result->warnings[0]->a->activity);
+            $this->assertSame(3, $result->warnings[0]->a->attempts);
+            $this->assertSame(2, $result->warnings[0]->a->allowed);
+            $this->assertTrue($result->everyattempt);
+        }
+
+        $this->assertSame(['first', 'second', 'third'], array_column($this->attempts_here(), 'text'));
+
+        // Enough, or no limit: nothing to say.
+        foreach ([3, 5, -1] as $allowed) {
+            $DB->set_field('assign', 'maxattempts', $allowed, ['id' => $this->here->id]);
+            $this->assertSame([], $this->pull_all()->warnings, (string) $allowed);
+        }
+
+        // And a pull of the latest alone is not about attempts.
+        $DB->set_field('assign', 'maxattempts', 1, ['id' => $this->here->id]);
+        $latest = $this->pull_latest();
+        $this->assertSame([], $latest->warnings);
+        $this->assertFalse($latest->everyattempt);
+    }
 }

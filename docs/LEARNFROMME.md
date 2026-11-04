@@ -5370,3 +5370,62 @@ records once - the per-student queries of the parked Finding 4 are not made bett
 reopens an assignment, a latest-only marks pull still reports a mark it pulled as "removed here" (as v1.22.0 did): not about this
 feature, left. **With Phases 3 and 4 both built, the feature is complete in code but reachable only from code**; Phase 5 adds the pages. It
 should not be released before Phase 5, and a release needs `CHANGES.md` and `changelog.md` to say so, along with the Phase 97 fix.
+
+## Phase 102 - Per-attempt marks, phase 5: the pages, the history and the docs (build 2026110401; release still v1.29.1-beta), 2026-11-04
+
+**Ask.** "Start phase 5" of `docs/DESIGN_ASSIGN_ATTEMPTS.md`: make the all-attempts pull reachable. After Phases 3 and 4 it worked only from code.
+
+**Built.**
+- **The choice.** `submissions.php` and `marks.php` take `allattempts` (`PARAM_BOOL`). A small GET form above the preview, **Include every
+  attempt each student handed in, not only the latest** and **Update the preview** (`attempts::choice_form()`), asks for another preview and
+  writes nothing; it is offered only where `allowattemptspull` is on. The confirmation carries the choice as a hidden field next to the
+  sesskey. The engine still checks the switch, so a value forced into the URL meets `errorattemptspulloff`. When the source cannot, the error
+  has a link, **Preview the latest attempts instead**.
+- **The preview.** A student's entries are sorted together, by assignment, student, then attempt. The counts are labelled as attempts. The
+  marks tables gain an **Attempt** column in this mode only. The "done" messages say "attempts" too.
+- **A warning is not an outcome.** `grade_pull_result::$warnings` (and `warn()`) carry notes that stop nothing and are not counted. The one
+  use: an assignment here that allows fewer attempts than the source has (`submissionswarnmaxattempts`), shown in the preview and after the
+  pull, with every attempt written all the same. That settles the design's open question 4 as "write anyway and warn". It is computed in the
+  engine, once per assignment.
+- **History.** `grade_pull_result::$everyattempt`; `history::record_grade_pull()` marks each activity `every`; the history page then words the
+  counts "Submission attempts pulled" / "Mark attempts pulled". Counts only: the test checks neither a username nor the word "attempt" is in
+  the stored record.
+- **Docs.** TEACHER_GUIDE (two new subsections and the history paragraph), INSTALL, REMOTE_SETUP (step 11), PILOT_CHECKLIST, DEVELOPER (a map
+  of the feature) and SECURITY (the gates, the hostile-source rules). They say "a release that has this feature": no version number is
+  chosen, and the first version of the docs said "v1.30.0" until I noticed nobody had picked it and took it out. **At release the wording
+  needs the real number, and `CHANGES.md` and `changelog.md` need notes** for the Phase 97 fix, the Phase 99 schema change and this feature.
+- **Behat steps.** `Course Sync attempts (sharing|pulling) is switched on`; `"user" has handed in a further attempt "text" to "A" of "C"`
+  (rows as `add_attempt()` makes them, then the data generator's `create_submission`); `the synced "A" in course "C" allows N attempts`;
+  `"user" has N attempts in the synced ..., the last of them the latest`; `"user" has a mark of N for attempt M in the synced ...`.
+
+**Tests.** `tests/behat/assignment_attempts_pull.feature` (5 scenarios): pulling every attempt of a submission (the default preview shows only
+attempt 2, the choice shows 1 and 2, previewing writes nothing, the pull says "Submission attempts pulled: 2", the history says the same as
+attempts, a latest-only preview then leaves the student alone with its reason); the mark of every attempt (the latest-only marks preview skips
+with its reason, the Attempt column, each mark on its own attempt); a source that cannot share (the error and the way back); the warning; and
+the choice not offered where this site has not allowed it. PHPUnit: the history record, warnings not being outcomes, `attempts::choice_form()`
+(offered only where allowed, GET, carries the page's parameters), the warning from a real pull (3 attempts against a limit of 2, 3, 5 and
+-1), `everyattempt` on both pulls.
+
+**Mutation checks.** PHPUnit side: covered by the earlier phases' lists plus the tests above. Behat side, 10 breakages of the UI code, run
+against the feature: the confirmation form dropping `allattempts` (submissions and marks separately), the choice always offered, warnings not
+shown, the history not saying attempts, no way back to the latest, the marks page without its Attempt column (cells and header
+separately), the page ignoring the choice, the counts note missing. **One survived: the marks table's Attempt *header***, because the
+scenario only looked at the cells; a header check was added and the mutation caught.
+
+**Result.** Static checks (phplint, phpcs `--max-warnings 0`, phpdoc, validate, savepoints) exit 0. PHPUnit, 5.1: 764 tests, 3769 assertions,
+1 skipped (759 before plus 5). Behat, 5.1: 57 scenarios (52 plus 5), 1412 steps, passed. **5.0, 5.2 and 5.3** (Docker sites, one at a time because Selenium allows one
+session): PHPUnit 764 tests, 3769 assertions, 1 skipped, and Behat 57 scenarios, 1412 steps, passed on each - identical to 5.1.
+
+**Traps.**
+- `pkill -f "php -S 127.0.0.1:8001"` run from a shell whose own command line contains that text kills the shell (exit 144) before anything
+  after it runs. Use `pkill -f "[p]hp -S ..."`.
+- Behat step docblocks cannot be wrapped, and phpcs has a 132-character limit on them. Use positional groups `([^"]*)` rather than
+  `(?P<name>[^"]*)` where the pattern is long; named groups bind by name to the method's parameters, positional ones by order.
+- A moodle_url's `params()` plus `out_omit_querystring()` is how a GET form carries a page's own parameters; `html_writer` escapes the
+  values, which come from `required_param(PARAM_INT)` anyway.
+- A scenario step like `"//table[...]/td[3]" should not exist` is a weak way to assert "this column is absent": the unchanged table has a
+  third column too. Assert the header text instead, or the reason the table is not there.
+
+**Not done.** No per-assignment choice (the choice is for the whole pull). No warning on the marks page for the attempt limit (a mark is written
+onto an attempt that exists already, so the limit is not what constrains it). Not tried against a real pair of sites; the batch size is
+unmeasured. Not pushed, tagged or released; no version bump.

@@ -477,6 +477,132 @@ class behat_block_coursesync extends behat_base {
     }
 
     /**
+     * Switch on one direction of sharing or pulling every attempt of assignments.
+     *
+     * Sharing is the switch on the source; it also needs the submissions or
+     * marks permission, which the steps for those give. Pulling is the switch
+     * on the destination.
+     *
+     * @Given /^Course Sync attempts (?P<direction>sharing|pulling) is switched on$/
+     * @param string $direction
+     */
+    public function course_sync_attempts_direction_is_switched_on(string $direction) {
+        set_config($direction === 'pulling' ? 'allowattemptspull' : 'allowattemptsexport', 1, 'block_coursesync');
+    }
+
+    /**
+     * A teacher gives a student another go, and the student hands in more work.
+     *
+     * Found by name in the one course, so it works on the original even though
+     * the copy has the same name on this site. The assignment must allow more
+     * attempts and be set to reopen by hand.
+     *
+     * @Given /^"([^"]*)" has handed in a further attempt "([^"]*)" to "([^"]*)" of "([^"]*)"$/
+     * @param string $user
+     * @param string $text
+     * @param string $name
+     * @param string $course
+     */
+    public function user_has_handed_in_a_further_attempt(string $user, string $text, string $name, string $course) {
+        global $CFG, $DB;
+
+        require_once($CFG->dirroot . '/mod/assign/locallib.php');
+
+        $courseid = $this->get_course_id($course);
+        $assigninstance = $DB->get_record('assign', ['course' => $courseid, 'name' => $name], '*', MUST_EXIST);
+        $cm = get_coursemodule_from_instance('assign', $assigninstance->id, $courseid, false, MUST_EXIST);
+        $userid = $DB->get_field('user', 'id', ['username' => $user], MUST_EXIST);
+
+        // What add_attempt() makes, which is protected: a new attempt that has not been handed in.
+        $by = ['assignment' => $assigninstance->id, 'userid' => $userid, 'groupid' => 0];
+        $next = 1 + (int) $DB->get_field_sql(
+            'SELECT MAX(attemptnumber)
+               FROM {assign_submission}
+              WHERE assignment = :assignment AND userid = :userid AND groupid = 0',
+            $by
+        );
+        $DB->set_field('assign_submission', 'latest', 0, ['assignment' => $assigninstance->id, 'userid' => $userid]);
+        $DB->insert_record('assign_submission', (object) ($by + [
+            'timecreated' => time(), 'timemodified' => time(), 'timestarted' => time(),
+            'status' => 'reopened', 'attemptnumber' => $next, 'latest' => 1,
+        ]));
+
+        testing_util::get_data_generator()->get_plugin_generator('mod_assign')->create_submission([
+            'cmid' => $cm->id,
+            'userid' => $userid,
+            'onlinetext' => $text,
+        ]);
+    }
+
+    /**
+     * Limit how many attempts the synced copy of an assignment allows.
+     *
+     * @Given /^the synced "(?P<name>[^"]*)" in course "(?P<course>[^"]*)" allows (?P<allowed>\d+) attempts?$/
+     * @param string $name
+     * @param string $course
+     * @param string $allowed
+     */
+    public function the_synced_assignment_allows_attempts(string $name, string $course, string $allowed) {
+        global $DB;
+
+        $cm = $this->synced_cm($name, $course);
+        $DB->set_field('assign', 'maxattempts', (int) $allowed, ['id' => $cm->instance]);
+    }
+
+    /**
+     * Check how a student's attempts stand in the synced copy of an assignment.
+     *
+     * @Then /^"([^"]*)" has (\d+) attempts? in the synced "([^"]*)" in course "([^"]*)", the last of them the latest$/
+     * @param string $user
+     * @param string $count
+     * @param string $name
+     * @param string $course
+     */
+    public function user_has_attempts_in_the_synced_assignment(string $user, string $count, string $name, string $course) {
+        global $DB;
+
+        $cm = $this->synced_cm($name, $course);
+        $userid = $DB->get_field('user', 'id', ['username' => $user], MUST_EXIST);
+        $by = ['assignment' => $cm->instance, 'userid' => $userid];
+        $rows = $DB->get_records('assign_submission', $by, 'attemptnumber ASC');
+
+        if (count($rows) !== (int) $count) {
+            throw new \Exception($user . ' has ' . count($rows) . ' attempts, not ' . $count);
+        }
+
+        $latest = array_keys(array_filter($rows, static fn($row) => (int) $row->latest === 1));
+
+        if ($latest !== [array_key_last($rows)]) {
+            throw new \Exception('Exactly the last attempt should be the latest.');
+        }
+    }
+
+    /**
+     * Check the mark a student has for one attempt of the synced copy of an assignment.
+     *
+     * @Then /^"([^"]*)" has a mark of ([\d.]+) for attempt (\d+) in the synced "([^"]*)" in course "([^"]*)"$/
+     * @param string $user
+     * @param string $grade
+     * @param string $attempt
+     * @param string $name
+     * @param string $course
+     */
+    public function user_has_a_mark_for_an_attempt(string $user, string $grade, string $attempt, string $name, string $course) {
+        global $DB;
+
+        $cm = $this->synced_cm($name, $course);
+        $userid = $DB->get_field('user', 'id', ['username' => $user], MUST_EXIST);
+        // Attempts are shown from 1; they are stored from 0.
+        $row = $DB->get_record('assign_grades', [
+            'assignment' => $cm->instance, 'userid' => $userid, 'attemptnumber' => (int) $attempt - 1,
+        ]);
+
+        if (!$row || abs((float) $row->grade - (float) $grade) > 0.00001) {
+            throw new \Exception($user . ' has no mark of ' . $grade . ' for attempt ' . $attempt);
+        }
+    }
+
+    /**
      * Turn a question into one of a type this site does not have installed.
      *
      * Every core question type is supported, so the only question a sync

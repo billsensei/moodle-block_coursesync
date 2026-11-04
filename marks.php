@@ -27,6 +27,7 @@ require_once(__DIR__ . '/../../config.php');
 
 use block_coursesync\connection;
 use block_coursesync\grade_pull_result;
+use block_coursesync\local\attempts;
 use block_coursesync\local\long_run;
 use block_coursesync\marks_pull;
 use block_coursesync\submission_pull;
@@ -38,6 +39,9 @@ $confirm = optional_param('confirm', 0, PARAM_BOOL);
 // The assignments ticked on the preview, as the other site knows them. An empty
 // selection is a decision, not a request for everything.
 $chosen = array_values(array_filter(optional_param_array('chosen', [], PARAM_INT)));
+// Every attempt each student handed in, not only the latest. Asked for on the preview and carried to the
+// confirmation; the pull itself checks that this site allows it.
+$allattempts = (bool) optional_param('allattempts', 0, PARAM_BOOL);
 
 $course = get_course($courseid);
 require_login($course);
@@ -93,15 +97,22 @@ if ($confirm) {
     }
 
     long_run::begin();
-    $result = marks_pull::run($instanceid, $course->id, null, $chosen);
+    $result = marks_pull::run($instanceid, $course->id, null, $chosen, $allattempts);
 } else {
     // Following a link writes nothing: this asks the other site, shows what
     // a pull would do, and the button below (with a sesskey) does it.
-    $result = marks_pull::preview($instanceid, $course->id);
+    $result = marks_pull::preview($instanceid, $course->id, null, null, $allattempts);
 }
 
 if (!$result->success) {
     echo $OUTPUT->notification(get_string($result->errorkey, 'block_coursesync'), 'error', false);
+
+    if ($allattempts) {
+        echo html_writer::link($pageurl, get_string('pullattemptslatestinstead', 'block_coursesync'), [
+            'class' => 'btn btn-secondary me-2',
+        ]);
+    }
+
     echo $backtocourse;
     echo $OUTPUT->footer();
     die;
@@ -111,9 +122,14 @@ $counts = $result->counts(grade_pull_result::KIND_MARK);
 $towrite = $result->changes();
 
 if ($result->preview) {
-    echo html_writer::tag('p', get_string('marksintro', 'block_coursesync', s($record->remotecoursename)));
+    echo html_writer::tag('p', get_string(
+        $allattempts ? 'marksintroattempts' : 'marksintro',
+        'block_coursesync',
+        s($record->remotecoursename)
+    ));
+    echo attempts::choice_form($pageurl, $allattempts);
 } else {
-    echo $OUTPUT->notification(get_string('marksdone', 'block_coursesync', (object) [
+    echo $OUTPUT->notification(get_string($allattempts ? 'marksdoneattempts' : 'marksdone', 'block_coursesync', (object) [
         'written' => $counts[grade_pull_result::ADD] + $counts[grade_pull_result::UPDATE],
         'added' => $counts[grade_pull_result::ADD],
         'updated' => $counts[grade_pull_result::UPDATE],
@@ -122,6 +138,17 @@ if ($result->preview) {
     if ($counts[grade_pull_result::CONFLICT] > 0) {
         echo $OUTPUT->notification(get_string('marksconflictsleft', 'block_coursesync'), 'warning', false);
     }
+}
+
+// Things worth knowing that do not stop the pull.
+foreach ($result->warnings as $warning) {
+    $a = clone $warning->a;
+    $a->activity = format_string($a->activity, true, ['context' => $coursecontext]);
+    echo $OUTPUT->notification(get_string($warning->key, 'block_coursesync', $a), 'warning', false);
+}
+
+if ($allattempts && $result->entries !== []) {
+    echo html_writer::tag('p', get_string('pullattemptscounts', 'block_coursesync'), ['class' => 'text-muted']);
 }
 
 if ($result->entries === []) {
@@ -159,6 +186,10 @@ if ($choosing) {
     echo html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl->out(false)]);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
+
+    if ($allattempts) {
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'allattempts', 'value' => 1]);
+    }
 }
 
 foreach ($result->by_activity(grade_pull_result::KIND_MARK) as $activity) {
@@ -219,10 +250,23 @@ $studentname = static function (stdClass $entry) use ($users): string {
 };
 
 // The students (or assignments) with one outcome or more, under their heading.
-$render = static function (array $entries, string $headingkey, string $id) use ($OUTPUT, $studentname, $coursecontext): void {
+$render = static function (
+    array $entries,
+    string $headingkey,
+    string $id
+) use (
+    $OUTPUT,
+    $studentname,
+    $coursecontext,
+    $allattempts
+): void {
     if ($entries === []) {
         return;
     }
+
+    // A student's attempts together, oldest first, under their assignment.
+    usort($entries, static fn(stdClass $a, stdClass $b): int => [$a->activity, $studentname($a), (int) $a->attempt]
+        <=> [$b->activity, $studentname($b), (int) $b->attempt]);
 
     $rows = '';
 
@@ -237,19 +281,18 @@ $render = static function (array $entries, string $headingkey, string $id) use (
             'tr',
             html_writer::tag('td', s($studentname($entry)))
             . html_writer::tag('td', format_string($entry->activity, true, ['context' => $coursecontext]))
+            . ($allattempts ? html_writer::tag('td', $entry->userid ? (int) $entry->attempt + 1 : '-') : '')
             . html_writer::tag('td', $entry->grade !== null ? format_float($entry->grade, 2) : '-')
             . html_writer::tag('td', $entry->localgrade !== null ? format_float($entry->localgrade, 2) : '-')
             . html_writer::tag('td', $reason)
         );
     }
 
-    $columns = [
-        'gradescolstudent',
-        'submissionscolassignment',
+    $columns = array_merge(['gradescolstudent', 'submissionscolassignment'], $allattempts ? ['submissionscolattempt'] : [], [
         'gradescolthere',
         'gradescolhere',
         'gradescolreason',
-    ];
+    ]);
     $head = html_writer::tag('tr', implode('', array_map(
         static fn(string $key): string => html_writer::tag('th', get_string($key, 'block_coursesync'), ['scope' => 'col']),
         $columns

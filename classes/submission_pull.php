@@ -241,6 +241,7 @@ class submission_pull {
         }
 
         $result = new grade_pull_result();
+        $result->everyattempt = $allattempts;
         $copies = self::local_copies($courseid);
 
         // Only what the teacher chose. This can only narrow the pull: an id
@@ -327,6 +328,10 @@ class submission_pull {
                 continue;
             }
 
+            if ($allattempts) {
+                self::warn_if_too_many_attempts($result, $cm, $item, $students);
+            }
+
             foreach ($item->submissions as $submission) {
                 $student = $students[$submission->username] ?? null;
 
@@ -347,6 +352,48 @@ class submission_pull {
         }
 
         return $result;
+    }
+
+    /**
+     * Say so when the other site has more attempts for a student than this
+     * assignment allows.
+     *
+     * Not a reason to hold anything back: the attempts are history, and the
+     * limit is about giving a student another go. It does mean no teacher here
+     * can add one for those students, which is worth knowing before writing.
+     *
+     * @param grade_pull_result $result
+     * @param \cm_info $cm the copy here
+     * @param \stdClass $item what the source said about the assignment
+     * @param \stdClass[] $students the students in reach, by username
+     * @return void
+     */
+    protected static function warn_if_too_many_attempts(
+        grade_pull_result $result,
+        \cm_info $cm,
+        \stdClass $item,
+        array $students
+    ): void {
+        global $DB;
+
+        $most = 0;
+
+        foreach ($item->submissions as $submission) {
+            if (isset($students[$submission->username]) && $submission->attempts) {
+                $most = max($most, (int) end($submission->attempts)->attemptnumber + 1);
+            }
+        }
+
+        // Minus one is "as many as you like" (ASSIGN_UNLIMITED_ATTEMPTS).
+        $allowed = (int) $DB->get_field('assign', 'maxattempts', ['id' => $cm->instance], MUST_EXIST);
+
+        if ($allowed !== -1 && $most > $allowed) {
+            $result->warn('submissionswarnmaxattempts', (object) [
+                'activity' => $cm->name,
+                'attempts' => $most,
+                'allowed' => $allowed,
+            ]);
+        }
     }
 
     /**

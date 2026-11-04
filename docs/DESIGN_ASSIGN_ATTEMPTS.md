@@ -293,6 +293,25 @@ latest-only marks pull still reports a mark it pulled before as "removed here" (
 attempt, the latest has no grade). That is how v1.22.0 behaved and it is not about this feature, so it is
 left; the new guard only covers students whose attempts were pulled.
 
+## Built in Phase 5 (the pages)
+
+- **The choice.** `submissions.php` and `marks.php` take `allattempts` (`PARAM_BOOL`). A small GET form above the
+  preview, **Include every attempt each student handed in, not only the latest** with **Update the preview**,
+  asks for another preview and writes nothing; it is offered only where `allowattemptspull` is on
+  (`attempts::choice_form()`). The confirmation carries the choice as a hidden field. The engine still checks the
+  switch, so a value forced into the URL meets `errorattemptspulloff`.
+- **If the source cannot.** The error is shown with a link, **Preview the latest attempts instead**.
+- **The preview.** Entries are sorted by assignment, student, attempt, so a student's attempts sit together and
+  oldest first; the counts are labelled as attempts. The marks tables gain an **Attempt** column in this mode only.
+- **Warnings are not outcomes.** `grade_pull_result::$warnings` carries notes that stop nothing; the one use is an
+  assignment here that allows fewer attempts than the source has (`submissionswarnmaxattempts`), shown in the preview
+  and after the pull, with all the attempts written. Open question 4 is therefore settled as "write anyway and warn".
+- **History.** When `everyattempt` is set each activity's record is marked `every`, and the history page words the
+  counts as "Submission attempts pulled" / "Mark attempts pulled". Still counts only: no students, no attempts listed.
+- **Not done:** a warning on the marks page for `maxattempts` (marks are written onto attempts that already exist, so
+  the limit is not what constrains them); a per-assignment choice (the choice is for the whole pull); a release
+  number in the docs, which say "a release that has this feature" until one is chosen.
+
 ## Privacy and lifecycle
 
 No new table, so no new declaration, but the two ledger tables gain a column that the
@@ -322,7 +341,7 @@ Submissions and marks written here are mod_assign's own rows, deleted by its own
 | 2 | **Done (Phase 99):** ledger column `attemptnumber` and the index swap, with the upgrade step and its tests; build 2026110401 |
 | 3 | **Done (Phase 100):** submissions: per-attempt classify/write, the `latest` rule, conflict handling, the engine's pull-side switch and the ping gate. Reachable from code only; no page offers it yet |
 | 4 | **Done (Phase 101):** marks: per-attempt classify/write, the marking-workflow reason, the pairing rule and the guards. Reachable from code only |
-| 5 | The pages' checkbox, preview grouping, history counts, docs (the pull-side switch itself moved to Phase 3) |
+| 5 | **Done (Phase 102):** the pages' checkbox, the preview in attempt order, history counts, the too-few-attempts warning, docs and Behat (the pull-side switch itself moved to Phase 3) |
 | 6 | Behat (a reopened assignment end to end), then 5.0, 5.1, 5.2 and 5.3, then a real pair of sites |
 
 Each phase is logged in `LEARNFROMME.md` before it is called done.

@@ -212,10 +212,13 @@ if ($runs === []) {
             ]);
         }
 
+        // A pull of every attempt says so in its record, and its counts are of attempts, not students.
+        $every = $isgrades && array_filter($run->pulled, static fn($row) => is_array($row) && !empty($row['every'])) !== [];
+
         $summary .= html_writer::tag('strong', userdate($run->timestarted));
         $summary .= ' — ' . get_string(match (true) {
-            $issubmissions => 'historysubmissioncounts',
-            $ismarks => 'historymarkcounts',
+            $issubmissions => $every ? 'historysubmissioncountsevery' : 'historysubmissioncounts',
+            $ismarks => $every ? 'historymarkcountsevery' : 'historymarkcounts',
             $isgrades => 'historygradecounts',
             default => 'historycounts',
         }, 'block_coursesync', (object) [

@@ -217,6 +217,7 @@ class marks_pull {
         }
 
         $result = new grade_pull_result();
+        $result->everyattempt = $allattempts;
         $copies = submission_pull::local_copies($courseid);
 
         // Only what the teacher chose. This can only narrow the pull: an id
