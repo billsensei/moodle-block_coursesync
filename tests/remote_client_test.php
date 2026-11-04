@@ -602,7 +602,8 @@ final class remote_client_test extends advanced_testcase {
             foreach ($params['cmids'] as $cmid) {
                 $rows = array_map(
                     static fn($name) => $params['wsfunction'] === 'block_coursesync_get_submissions'
-                        ? ['username' => $name, 'fingerprint' => 'abc', 'files' => [], 'onlinetext' => 'text']
+                        ? ['username' => $name, 'fingerprint' => 'abc', 'files' => [], 'onlinetext' => 'text',
+                            'attempts' => [['attemptnumber' => 0, 'fingerprint' => 'abc', 'files' => [], 'onlinetext' => 'text']]]
                         : ['username' => $name, 'fingerprint' => 'abc', 'files' => [], 'grade' => 5],
                     $names
                 );
@@ -643,6 +644,35 @@ final class remote_client_test extends advanced_testcase {
                 $this->assertSame($students, array_column($item->$field, 'username'), $function);
             }
         }
+    }
+
+    /**
+     * Asking for every attempt uses smaller groups of students, and says so to
+     * the source - which a request for the latest alone never does.
+     */
+    public function test_every_attempt_uses_smaller_groups_and_says_so(): void {
+        $this->resetAfterTest();
+
+        $students = array_map(static fn($n) => 'student' . $n, range(1, 250));
+        $url = 'https://source.example.edu';
+        $token = str_repeat('a', 32);
+
+        $calls = [];
+        $latest = remote_client::get_submissions($url, $token, 42, [7], $this->counting_source($calls), $students);
+        $this->assertTrue($latest->success);
+        $this->assertSame([250], array_map(static fn($c) => count(explode("\n", $c['usernames'])), $calls));
+        $this->assertArrayNotHasKey('allattempts', $calls[0]);
+
+        $calls = [];
+        $every = remote_client::get_submissions($url, $token, 42, [7], $this->counting_source($calls), $students, true);
+        $this->assertTrue($every->success);
+        $this->assertSame(
+            [remote_client::ATTEMPT_PAIRS_PER_CALL, remote_client::ATTEMPT_PAIRS_PER_CALL, 50],
+            array_map(static fn($c) => count(explode("\n", $c['usernames'])), $calls)
+        );
+        $this->assertSame(['1', '1', '1'], array_column($calls, 'allattempts'));
+        $this->assertSame($students, array_column($every->items[0]->submissions, 'username'));
+        $this->assertCount(1, $every->items[0]->submissions[0]->attempts);
     }
 
     /**

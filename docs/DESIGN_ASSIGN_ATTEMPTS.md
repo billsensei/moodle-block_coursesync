@@ -143,7 +143,8 @@ an older source would refuse a call that names `allattempts`. The destination mu
 it unless the source says it understands it. **Built in Phase 1 (changed from the first
 draft):** `ping` returns `features`, a list of words, and a source that can describe every
 attempt *and* has its switch on says `attempts1`. The destination asks only if `ping_result::offers('attempts1')`,
-and falls back to latest-only (with a preview note) otherwise. A feature word was chosen over
+and otherwise refuses with an error (changed in Phase 3 from "falls back to latest-only": see
+"Built in Phase 3" below). A feature word was chosen over
 comparing `pluginversion` with a build number because it needs no version bump (an unreleased
 build can never become a gate target), and the number in the word (`attempts1`) is the
 shape of `attempts[]`: it changes if that shape does. `grade_pull` already pings at the
@@ -205,6 +206,47 @@ ledger row and fingerprints:
 The preview groups by assignment, then student, then attempt. The sync history keeps
 **counts per assignment, never which students**, as now; it gains a count of attempts.
 
+## Built in Phase 3 (submissions, destination side)
+
+Entry point: `submission_pull::preview/run(..., $only, bool $allattempts = false)`. Nothing in the
+pages passes `true` yet (Phase 5).
+
+- **Gates, in the engine.** `check_allowed(course, true)` also needs `allowattemptspull` (moved up from
+  Phase 5, for the reason the export switch moved up in Phase 1: the engine is where rights are checked).
+  Then a ping: if it fails, its error is passed on; if the source does not offer `attempts1` the pull
+  **refuses** with `errorattemptssourceunable`. The first draft said "fall back to latest-only". A silent
+  fallback gives less than was asked for, and it would also run into the mixing guard below.
+- **Same number, one record each.** Source attempt *n* is written as attempt *n*, with a record for
+  (assignment, student, *n*). A student's records and rows are read once, not once per attempt.
+- **One latest.** After each attempt is written (same transaction) the student's highest-numbered row
+  here gets `latest = 1` and every other row 0 - including when the highest is work here that did not
+  come from the other site. The old "no longer the latest means someone reopened it" rule applies only
+  to a latest-only pull; with every attempt an earlier attempt is not the latest.
+- **Where the histories part.** The highest submitted/draft row here that no record points at, and that
+  is not exactly the other site's attempt of that number, is the limit: attempts at or below it go through
+  the ordinary rules, attempts above it are left (`subreasonreopenedhere`). An identical row does not
+  count (it is the same work, whoever put it there). Rows that were only opened (`new`/`reopened`) hold
+  no work and are used by the attempt of their number. *Not handled:* a limit at *m* when the source has
+  no attempt *m* but has some above it; they are left too.
+- **No holes.** A failed transfer, a file that fails its check, a file too big or a type this assignment
+  does not take, or the run's byte budget, holds back that student's later attempts
+  (`subreasonearlierskipped`); the next pull carries on. "Same" and "kept because changed here" do not.
+- **The two ways of pulling.** A latest-only pull writes the newest as attempt 0. So it leaves any student
+  who has a record above attempt 0 alone (`subreasonattemptsdone`), or it would overwrite the real attempt 0.
+  The other way mends itself: an every-attempt pull updates an untouched latest-only copy back to the
+  attempt it really was (the record's `remoteattempt` differs from its attempt number) and adds the rest.
+- **On the wire.** `allattempts` and `attemptnumber` are sent only in every-attempt mode (an old source
+  refuses unknown parameters). `attempts[]` is required for every student when asked for, must be
+  strictly ascending with no repeated number, at most 100 long, and each attempt is cleaned like the
+  latest. Calls carry at most `ATTEMPT_PAIRS_PER_CALL` = 100 student-assignment pairs - an estimate, a
+  quarter of the latest-only figure, not a measurement.
+
+**For Phase 4 (found while building this).** A marks pull writes to the student's *latest* attempt here
+and looks for the mark there. Once an every-attempt submission pull has added a later attempt, a
+latest-only marks pull no longer finds the mark it pulled before (it is on attempt 0) and reports it as
+"removed here", so changes to it stop coming. Nothing is damaged, but Phase 3 must not be released
+without Phase 4.
+
 ## Privacy and lifecycle
 
 No new table, so no new declaration, but the two ledger tables gain a column that the
@@ -232,9 +274,9 @@ Submissions and marks written here are mod_assign's own rows, deleted by its own
 | 0 | **Done (Phase 97):** the `untilpass` side effect was real; fixed and tested on 5.0 to 5.3 |
 | 1 | **Done (Phase 98):** `allattempts` on both source functions, the file functions' `attemptnumber`, the source-side switch `allowattemptsexport` (moved up from Phase 5: the data must be gated the moment it can be asked for), the `ping` feature word, source tests |
 | 2 | **Done (Phase 99):** ledger column `attemptnumber` and the index swap, with the upgrade step and its tests; build 2026110401 |
-| 3 | Submissions: per-attempt classify/write, the `latest` rule, conflict handling |
+| 3 | **Done (Phase 100):** submissions: per-attempt classify/write, the `latest` rule, conflict handling, the engine's pull-side switch and the ping gate. Reachable from code only; no page offers it yet |
 | 4 | Marks: per-attempt classify/write, the marking-workflow reason |
-| 5 | The pull-side switch, preview grouping, history counts, privacy, docs |
+| 5 | The pages' checkbox, preview grouping, history counts, docs (the pull-side switch itself moved to Phase 3) |
 | 6 | Behat (a reopened assignment end to end), then 5.0, 5.1, 5.2 and 5.3, then a real pair of sites |
 
 Each phase is logged in `LEARNFROMME.md` before it is called done.

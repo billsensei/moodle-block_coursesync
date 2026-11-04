@@ -82,6 +82,13 @@ if ($ADMIN->fulltree) {
         0
     ));
 
+    $settings->add(new admin_setting_configcheckbox(
+        'block_coursesync/allowattemptspull',
+        get_string('allowattemptspull', 'block_coursesync'),
+        get_string('allowattemptspull_desc', 'block_coursesync'),
+        0
+    ));
+
     $settings->add(new admin_setting_heading(
         'block_coursesync/marksheading',
         get_string('settingsmarks', 'block_coursesync'),

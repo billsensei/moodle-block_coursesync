@@ -34,6 +34,9 @@ class submissions_result {
     /** @var string[] The reasons a source may give for not describing an assignment. */
     public const REASONS = ['team', 'notassign', 'noplugins'];
 
+    /** @var int Most attempts one student may have in an answer; a longer history is not believed. */
+    public const MAX_ATTEMPTS = 100;
+
     /** @var bool Whether the remote site answered. */
     public readonly bool $success;
 
@@ -45,7 +48,9 @@ class submissions_result {
      *      submissions (\stdClass[]: username, attemptnumber, timecreated,
      *      timemodified, onlinetext (string|null), onlineformat, fingerprint,
      *      files (array[]: area, filepath, filename, filesize, contenthash,
-     *      timemodified)).
+     *      timemodified), and attempts: null unless every attempt was asked for,
+     *      then each attempt handed in, oldest first, in the same shape
+     *      with the username added)).
      */
     public readonly array $items;
 
@@ -87,9 +92,10 @@ class submissions_result {
      * response, cleaning every value on the way in.
      *
      * @param mixed $data
+     * @param bool $allattempts every attempt was asked for, so every student must come with them
      * @return self failure('errorbadresponse') if it is not the expected shape
      */
-    public static function from_response($data): self {
+    public static function from_response($data, bool $allattempts = false): self {
         if (!is_array($data) || !is_array($data['items'] ?? null)) {
             return self::failure('errorbadresponse');
         }
@@ -104,7 +110,7 @@ class submissions_result {
             $submissionrows = [];
 
             foreach ($row['submissions'] as $submission) {
-                $clean = self::clean_submission($submission);
+                $clean = self::clean_submission($submission, $allattempts);
 
                 if ($clean === null) {
                     return self::failure('errorbadresponse');
@@ -182,11 +188,63 @@ class submissions_result {
      * One student's submission, cleaned.
      *
      * @param mixed $submission
+     * @param bool $allattempts every attempt was asked for
      * @return \stdClass|null null if it is not the expected shape
      */
-    protected static function clean_submission($submission): ?\stdClass {
+    protected static function clean_submission($submission, bool $allattempts = false): ?\stdClass {
+        $attempt = self::clean_attempt($submission);
+
+        if ($attempt === null || !isset($submission['username'])) {
+            return null;
+        }
+
+        $attempt->username = clean_param((string) $submission['username'], PARAM_USERNAME);
+        $attempt->attempts = null;
+
+        if (!$allattempts) {
+            return $attempt;
+        }
+
+        // Asked for, so required: a student without the list is not described
+        // as having one attempt, which would be believed to be all of them.
+        $list = $submission['attempts'] ?? null;
+
+        if (!is_array($list) || !$list || count($list) > self::MAX_ATTEMPTS) {
+            return null;
+        }
+
+        $attempts = [];
+        $previous = -1;
+
+        foreach ($list as $row) {
+            $one = self::clean_attempt($row);
+
+            // Each attempt as clean as the latest, one number once, and in
+            // order: two rows for one attempt would be written as two.
+            if ($one === null || $one->attemptnumber <= $previous) {
+                return null;
+            }
+
+            $previous = $one->attemptnumber;
+            $one->username = $attempt->username;
+            $attempts[] = $one;
+        }
+
+        $attempt->attempts = $attempts;
+
+        return $attempt;
+    }
+
+    /**
+     * One attempt's description, cleaned: what is the same at the top of a
+     * student's entry and in each of their attempts.
+     *
+     * @param mixed $submission
+     * @return \stdClass|null null if it is not the expected shape (no username: the caller adds it)
+     */
+    protected static function clean_attempt($submission): ?\stdClass {
         if (
-            !is_array($submission) || !isset($submission['username'], $submission['fingerprint'])
+            !is_array($submission) || !isset($submission['fingerprint'])
                 || !is_array($submission['files'] ?? null)
         ) {
             return null;
@@ -222,7 +280,6 @@ class submissions_result {
         }
 
         return (object) [
-            'username' => clean_param((string) $submission['username'], PARAM_USERNAME),
             'attemptnumber' => max(0, (int) ($submission['attemptnumber'] ?? 0)),
             'timecreated' => max(0, (int) ($submission['timecreated'] ?? 0)),
             'timemodified' => max(0, (int) ($submission['timemodified'] ?? 0)),

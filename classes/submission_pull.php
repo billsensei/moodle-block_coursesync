@@ -16,6 +16,7 @@
 
 namespace block_coursesync;
 
+use block_coursesync\local\attempts;
 use block_coursesync\local\submission_writer;
 use block_coursesync\local\submissions;
 use core\http_client;
@@ -26,6 +27,15 @@ use core\http_client;
  * What counts is each student's latest submitted attempt at an assignment that
  * Course Sync copied or linked: online text and uploaded files, nothing else.
  * It is previewed first, and written only when the teacher confirms.
+ *
+ * Or, when every attempt is asked for (and both sites have agreed to share
+ * them), each attempt a student handed in, kept here as the same attempt
+ * number with a record of its own. The two ways must not be mixed for one
+ * student: a latest-only pull writes whatever is newest as attempt 0, which
+ * would overwrite the real attempt 0 of a student whose attempts were pulled,
+ * so such a student is left alone by a latest-only pull. The other way round
+ * mends itself: pulling every attempt puts a latest-only copy back to the
+ * attempt it really was, if nobody has touched it.
  *
  * The one rule is the project's usual one: nobody's work is overwritten. A
  * submission goes in only where the student has nothing here, or where an
@@ -47,6 +57,12 @@ class submission_pull {
     /** @var int Most file bytes one pull brings; the rest wait for the next pull. */
     public const RUN_BYTES = 536870912;
 
+    /** @var string[] Why a pull was never allowed to begin, which is not a pull that happened. */
+    protected const NOT_ALLOWED = ['errornosubmissionpullpermission', 'errorsubmissionpulloff', 'errorattemptspulloff'];
+
+    /** @var string[] The reasons after which a student's later attempts wait, so their history has no gap. */
+    protected const STOPS = ['subreasonrunlimit', 'subreasoncorrupt', 'subreasonfailed', 'subreasontransfer'];
+
     /** @var string[] What a person needs in an assignment itself to have work written into it. */
     public const MODULE_CAPABILITIES = ['mod/assign:grade', 'mod/assign:editothersubmission'];
 
@@ -57,15 +73,17 @@ class submission_pull {
      * @param int $courseid the destination course
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
+     * @param bool $allattempts every attempt each student handed in, not only the latest
      * @return grade_pull_result
      */
     public static function preview(
         int $blockinstanceid,
         int $courseid,
         ?http_client $client = null,
-        ?array $only = null
+        ?array $only = null,
+        bool $allattempts = false
     ): grade_pull_result {
-        $result = self::pull($blockinstanceid, $courseid, false, $client, $only);
+        $result = self::pull($blockinstanceid, $courseid, false, $client, $only, $allattempts);
         $result->preview = true;
 
         return $result;
@@ -82,13 +100,15 @@ class submission_pull {
      * @param int $courseid the destination course
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
+     * @param bool $allattempts every attempt each student handed in, not only the latest
      * @return grade_pull_result
      */
     public static function run(
         int $blockinstanceid,
         int $courseid,
         ?http_client $client = null,
-        ?array $only = null
+        ?array $only = null,
+        bool $allattempts = false
     ): grade_pull_result {
         global $USER;
 
@@ -100,7 +120,7 @@ class submission_pull {
             $result = grade_pull_result::failure('errorsyncinprogress');
         } else {
             try {
-                $result = self::pull($blockinstanceid, $courseid, true, $client, $only);
+                $result = self::pull($blockinstanceid, $courseid, true, $client, $only, $allattempts);
             } finally {
                 $lock->release();
             }
@@ -108,7 +128,7 @@ class submission_pull {
 
         // Written down whatever happened - but not when pulling was never
         // allowed to begin: that is not a pull that happened.
-        if (!in_array($result->errorkey, ['errornosubmissionpullpermission', 'errorsubmissionpulloff'], true)) {
+        if (!in_array($result->errorkey, self::NOT_ALLOWED, true)) {
             history::record_grade_pull(
                 $blockinstanceid,
                 $courseid,
@@ -130,11 +150,16 @@ class submission_pull {
      * shows other people's work from the other site.
      *
      * @param int $courseid
+     * @param bool $allattempts every attempt is being asked for, which has a switch of its own
      * @return string|null language string identifier, or null if allowed
      */
-    public static function check_allowed(int $courseid): ?string {
+    public static function check_allowed(int $courseid, bool $allattempts = false): ?string {
         if (!get_config('block_coursesync', 'allowsubmissionpull')) {
             return 'errorsubmissionpulloff';
+        }
+
+        if ($allattempts && !get_config('block_coursesync', 'allowattemptspull')) {
+            return 'errorattemptspulloff';
         }
 
         $context = \context_course::instance($courseid);
@@ -186,6 +211,7 @@ class submission_pull {
      * @param bool $write false for a preview
      * @param http_client|null $client
      * @param int[]|null $only remote course module ids to cover; null means every copied assignment
+     * @param bool $allattempts every attempt each student handed in, not only the latest
      * @return grade_pull_result
      */
     protected static function pull(
@@ -193,9 +219,10 @@ class submission_pull {
         int $courseid,
         bool $write,
         ?http_client $client,
-        ?array $only = null
+        ?array $only = null,
+        bool $allattempts = false
     ): grade_pull_result {
-        $notallowed = self::check_allowed($courseid);
+        $notallowed = self::check_allowed($courseid, $allattempts);
 
         if ($notallowed !== null) {
             return grade_pull_result::failure($notallowed);
@@ -243,13 +270,30 @@ class submission_pull {
             return $result;
         }
 
+        // Every attempt is asked for only of a source that says it can give
+        // them: one that does not would refuse the question, and falling back
+        // to the latest would not be what was asked for. It is the same for a
+        // source that has not switched sharing them on.
+        if ($allattempts) {
+            $ping = remote_client::ping($record->remoteurl, $token, $client);
+
+            if (!$ping->success) {
+                return grade_pull_result::failure($ping->errorkey);
+            }
+
+            if (!$ping->offers(attempts::FEATURE)) {
+                return grade_pull_result::failure('errorattemptssourceunable');
+            }
+        }
+
         $found = remote_client::get_submissions(
             $record->remoteurl,
             $token,
             (int) $record->remotecourseid,
             array_keys($copies),
             $client,
-            array_map('strval', array_keys($students))
+            array_map('strval', array_keys($students)),
+            $allattempts
         );
 
         if (!$found->success) {
@@ -271,6 +315,7 @@ class submission_pull {
             'record' => $record,
             'token' => $token,
             'client' => $client,
+            'allattempts' => $allattempts,
         ];
 
         foreach ($copies as $remotecmid => $cm) {
@@ -287,7 +332,15 @@ class submission_pull {
 
                 // Not a student here, or out of this teacher's reach: not
                 // previewed, not written, not mentioned.
-                if ($student) {
+                if (!$student) {
+                    continue;
+                }
+
+                if ($allattempts) {
+                    foreach (self::pull_attempts($run, $cm, $remotecmid, $submission, $student) as $entry) {
+                        $result->add($entry);
+                    }
+                } else {
                     $result->add(self::pull_submission($run, $cm, $remotecmid, $submission, $student));
                 }
             }
@@ -367,6 +420,21 @@ class submission_pull {
         $entry->attempt = $submission->attemptnumber;
         $entry->files = count($submission->files);
 
+        // A student whose attempts were pulled one by one is not touched by a
+        // pull of the latest alone: it writes the newest as attempt 0, over the
+        // real attempt 0.
+        $pulledbefore = $DB->record_exists_select(
+            'block_coursesync_submission',
+            'assignid = :assignid AND userid = :userid AND attemptnumber > 0',
+            ['assignid' => $assignid, 'userid' => $student->id]
+        );
+
+        if ($pulledbefore) {
+            $entry->reason = 'subreasonattemptsdone';
+
+            return $entry;
+        }
+
         $problem = self::content_problem($run->course, $assignid, $submission);
 
         if ($problem !== null) {
@@ -375,13 +443,190 @@ class submission_pull {
             return $entry;
         }
 
-        $ledger = $DB->get_record('block_coursesync_submission', ['assignid' => $assignid, 'userid' => $student->id]);
+        $ledger = $DB->get_record(
+            'block_coursesync_submission',
+            ['assignid' => $assignid, 'userid' => $student->id, 'attemptnumber' => 0]
+        );
         $local = self::local_submission($assignid, (int) $student->id);
         [$outcome, $reason] = self::classify($submission, $ledger, $local, $context);
         $entry->outcome = $outcome;
         $entry->reason = $reason;
 
-        if (!in_array($outcome, [grade_pull_result::ADD, grade_pull_result::UPDATE], true)) {
+        return self::write_one($run, $cm, $remotecmid, $submission, $student, $ledger, $local, $entry);
+    }
+
+    /**
+     * Every attempt one student handed in, each decided on its own and written
+     * as the same attempt number here, oldest first.
+     *
+     * Their records and the rows they have here are read once, not for each
+     * attempt. An attempt that cannot be brought - a failed transfer, the limit
+     * for file data - holds back the student's later ones: a history here with
+     * a hole in it, and the latest attempt above the hole, is worse than a
+     * short one. An attempt that is the same, or kept because of a change made
+     * here, does not.
+     *
+     * Work here that did not come from the other site marks where the two
+     * histories part: attempts above the highest such row are left, not mixed
+     * in below or above it.
+     *
+     * @param \stdClass $run what the whole pull shares (see pull_submission)
+     * @param \cm_info $cm the copy here
+     * @param int $remotecmid
+     * @param \stdClass $submission what the source described, with its attempts
+     * @param \stdClass $student the student here
+     * @return \stdClass[] one entry for each attempt, for the result
+     */
+    protected static function pull_attempts(
+        \stdClass $run,
+        \cm_info $cm,
+        int $remotecmid,
+        \stdClass $submission,
+        \stdClass $student
+    ): array {
+        global $DB;
+
+        $assignid = (int) $cm->instance;
+        $context = \context_module::instance($cm->id);
+        $by = ['assignid' => $assignid, 'userid' => $student->id];
+        $ledgers = [];
+
+        foreach ($DB->get_records('block_coursesync_submission', $by) as $record) {
+            $ledgers[(int) $record->attemptnumber] = $record;
+        }
+
+        $locals = [];
+
+        foreach (
+            $DB->get_records(
+                'assign_submission',
+                ['assignment' => $assignid, 'userid' => $student->id, 'groupid' => 0],
+                'attemptnumber ASC'
+            ) as $row
+        ) {
+            $locals[(int) $row->attemptnumber] = $row;
+        }
+
+        $written = array_flip(array_map(static fn($record) => (int) $record->submissionid, $ledgers));
+        $barrier = self::barrier($locals, $written, $submission->attempts, $context);
+        $entries = [];
+        $stopped = false;
+
+        foreach ($submission->attempts as $attempt) {
+            $number = (int) $attempt->attemptnumber;
+            $entry = self::entry($cm, $student, grade_pull_result::SKIPPED, null);
+            $entry->attempt = $number;
+            $entry->files = count($attempt->files);
+            $entries[] = $entry;
+
+            if ($stopped) {
+                $entry->reason = 'subreasonearlierskipped';
+                continue;
+            }
+
+            if ($barrier !== null && $number > $barrier) {
+                $entry->reason = 'subreasonreopenedhere';
+                continue;
+            }
+
+            $problem = self::content_problem($run->course, $assignid, $attempt);
+
+            if ($problem !== null) {
+                $entry->reason = $problem;
+                $stopped = true;
+                continue;
+            }
+
+            // A row that was only opened holds no work and is not in the way:
+            // writing the attempt uses it.
+            $local = $locals[$number] ?? null;
+
+            if ($local && !in_array($local->status, [submissions::STATUS_SUBMITTED, 'draft'], true)) {
+                $local = null;
+            }
+
+            $ledger = $ledgers[$number] ?? false;
+            [$outcome, $reason] = self::classify($attempt, $ledger, $local, $context, true);
+            $entry->outcome = $outcome;
+            $entry->reason = $reason;
+            self::write_one($run, $cm, $remotecmid, $attempt, $student, $ledger, $local, $entry);
+
+            if ($entry->outcome === grade_pull_result::SKIPPED && in_array($entry->reason, self::STOPS, true)) {
+                $stopped = true;
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * The highest attempt number here that holds work the other site did not
+     * give: a student's own, or a teacher's, or an empty draft.
+     *
+     * A row that is exactly the other site's attempt of that number does not
+     * count: it is the same work, whoever put it there.
+     *
+     * @param \stdClass[] $locals the student's rows here, by attempt number
+     * @param int[] $written submission ids that a record says a pull wrote, as keys
+     * @param \stdClass[] $attempts what the source described
+     * @param \context_module $context
+     * @return int|null null if there is none
+     */
+    protected static function barrier(array $locals, array $written, array $attempts, \context_module $context): ?int {
+        $theirs = [];
+
+        foreach ($attempts as $attempt) {
+            $theirs[(int) $attempt->attemptnumber] = $attempt;
+        }
+
+        $barrier = null;
+
+        foreach ($locals as $number => $row) {
+            if (isset($written[(int) $row->id]) || !in_array($row->status, [submissions::STATUS_SUBMITTED, 'draft'], true)) {
+                continue;
+            }
+
+            $source = $theirs[$number] ?? null;
+
+            if (
+                $source
+                && self::fingerprint_here($context, $row)
+                    === submissions::fingerprint($source->onlinetext, $source->onlineformat, $source->files)
+            ) {
+                continue;
+            }
+
+            $barrier = max($barrier ?? $number, $number);
+        }
+
+        return $barrier;
+    }
+
+    /**
+     * Bring one attempt across if it is to be: within the run's budget, in a
+     * preview not at all, and everything fetched before anything here changes.
+     *
+     * @param \stdClass $run what the whole pull shares
+     * @param \cm_info $cm the copy here
+     * @param int $remotecmid
+     * @param \stdClass $submission what the source described (one attempt)
+     * @param \stdClass $student
+     * @param \stdClass|false $ledger the record of an earlier pull, if any
+     * @param \stdClass|null $local the submission here that is in the way, if any
+     * @param \stdClass $entry the entry for the result, with the outcome that classify() gave; changed here
+     * @return \stdClass the same entry
+     */
+    protected static function write_one(
+        \stdClass $run,
+        \cm_info $cm,
+        int $remotecmid,
+        \stdClass $submission,
+        \stdClass $student,
+        $ledger,
+        ?\stdClass $local,
+        \stdClass $entry
+    ): \stdClass {
+        if (!in_array($entry->outcome, [grade_pull_result::ADD, grade_pull_result::UPDATE], true)) {
             return $entry;
         }
 
@@ -404,7 +649,14 @@ class submission_pull {
         try {
             // Everything is fetched before anything here changes, so a
             // transfer that fails leaves the student exactly as they were.
-            $paths = submission_writer::fetch_files($run->record, $run->token, $remotecmid, $submission, $run->client);
+            $paths = submission_writer::fetch_files(
+                $run->record,
+                $run->token,
+                $remotecmid,
+                $submission,
+                $run->client,
+                $run->allattempts
+            );
 
             try {
                 submission_writer::write(
@@ -416,7 +668,8 @@ class submission_pull {
                     $remotecmid,
                     $ledger,
                     $local,
-                    $paths
+                    $paths,
+                    $run->allattempts
                 );
             } finally {
                 foreach ($paths as $path) {
@@ -512,9 +765,16 @@ class submission_pull {
      * @param \stdClass|false $ledger the record of an earlier pull, if any
      * @param \stdClass|null $local the submission here that is in the way, if any
      * @param \context_module $context
+     * @param bool $everyattempt the attempt is one of several and is not expected to be the latest here
      * @return array [outcome, reason (language string identifier or null)]
      */
-    protected static function classify(\stdClass $submission, $ledger, ?\stdClass $local, \context_module $context): array {
+    protected static function classify(
+        \stdClass $submission,
+        $ledger,
+        ?\stdClass $local,
+        \context_module $context,
+        bool $everyattempt = false
+    ): array {
         if (!$local) {
             // Nothing here. If an earlier pull wrote it and it has gone, a
             // person removed it: it is not brought back.
@@ -547,11 +807,13 @@ class submission_pull {
         // pull wrote, it can be replaced; if anyone has touched it, it stays.
         // A copy that is no longer the latest attempt has been touched: a
         // teacher reopened the assignment for another go, and replacing it
-        // would leave this and the new attempt both marked as the latest.
+        // would leave this and the new attempt both marked as the latest. Not
+        // so with every attempt: an earlier attempt is not the latest, and
+        // which row is, is settled when each is written.
         if (
             $here !== $ledger->localfingerprint
             || $local->status !== submissions::STATUS_SUBMITTED
-            || (int) $local->latest !== 1
+            || (!$everyattempt && (int) $local->latest !== 1)
         ) {
             return [grade_pull_result::CONFLICT, 'subreasonchanged'];
         }

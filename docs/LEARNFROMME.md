@@ -5231,3 +5231,69 @@ changed.
 **Not done.** Nothing reads more than one record per student and assignment yet (Phases 3 and 4). `CHANGES.md` and `changelog.md` are
 not updated (no release); the Phase 97 fix and this schema change both need notes when a version is cut. The lookups by
 (assignid, userid) in `submission_pull` and `marks_pull` are the first thing Phase 3 changes.
+
+## Phase 100 - Per-attempt marks, phase 3: pulling every attempt of a submission (build 2026110401; release still v1.29.1-beta), 2026-11-04
+
+**Ask.** "Start phase 3" of `docs/DESIGN_ASSIGN_ATTEMPTS.md`: the destination side for submissions - per-attempt classify and write,
+the `latest` rule, conflict handling. An advisor review before coding made ten points; all are in the build.
+
+**Built.** `submission_pull::preview/run(..., bool $allattempts = false)`; nothing in a page passes `true` yet (Phase 5).
+- **Gates in the engine.** `check_allowed(course, true)` needs a new switch `allowattemptspull` (moved up from Phase 5, same reason as
+  the export switch in Phase 98). Then a ping: its own error if it fails, `errorattemptssourceunable` if the source does not offer
+  `attempts1`. **Changed from the design:** it refuses rather than falling back to latest-only, because a fallback gives less than was
+  asked for and would run into the mixing guard.
+- **Each attempt as the same attempt.** Source attempt *n* is written as attempt *n* with a record of its own. The student's records and
+  rows are read once. `submission_writer::write(..., $allattempts)` writes the source's number, reuses an empty `new`/`reopened` row of
+  that number (any such row: the first version reused it only when marked latest, and a row with `latest = 0` made a second row for
+  the same attempt and hit the unique key), and afterwards in the same transaction gives `latest = 1` to the student's highest row and 0
+  to the rest (`keep_one_latest()`).
+- **Where the histories part.** The highest submitted/draft row here that no record points at, and that is not exactly the other
+  site's attempt of that number, is the limit; attempts above it are left (`subreasonreopenedhere`).
+- **No holes.** A failed transfer, a bad checksum, a file too big, a content type the assignment does not take, or the run's byte
+  budget holds back the student's later attempts (`subreasonearlierskipped`).
+- **The two ways of pulling.** A latest-only pull skips a student with a record above attempt 0 (`subreasonattemptsdone`), because it
+  writes the newest as attempt 0 and would overwrite the real one. The latest-only path is otherwise as it was (one lookup now says
+  attempt 0), and the existing 41 submission-pull tests pass unchanged. An every-attempt pull mends an untouched latest-only copy.
+- **Wire.** `remote_client::get_submissions(..., $allattempts)` and `get_submission_file(..., $attemptnumber)` send the new
+  parameters only when asked (an old source refuses unknown ones); calls hold at most `ATTEMPT_PAIRS_PER_CALL` = 100 pairs (an
+  estimate, not a measurement). `submissions_result::from_response($data, $allattempts)` requires `attempts[]` for every student when
+  asked, strictly ascending with no repeats, at most 100, each cleaned like the latest.
+
+**Tests.** `tests/submission_attempts_pull_test.php` (19), `tests/submissions_result_test.php` (5), one in `remote_client_test`; the fake
+source in `tests/local/source_on_this_site.php` now passes `allattempts` and `attemptnumber` through. They cover: three attempts
+arriving as 0, 1, 2 with their own text and files, one record each and exactly one latest (rows counted first); a preview writing
+nothing; files asked for by attempt; a second pull all "same"; one changed attempt updating only itself; a later attempt added and
+becoming the latest; an attempt changed here kept while the others go on; work of its own at attempt 0 (the rest wait); work of its own
+at attempt 1 (attempt 0 still comes, attempt 2 waits); identical work here not stopping later attempts; opened rows used; the mixing
+guard both ways, including mending a latest-only copy whose record says `remoteattempt` 2; a failed transfer and a file too big each
+holding back later attempts and the next pull carrying on; the two switches and the ping failing; a latest-only pull sending neither new
+parameter and not pinging; smaller call groups; and the strict parsing of `attempts[]`.
+
+**Mutation checks (21, all caught).** The guard removed, and too wide; the latest rule still applied; no limit found; identical work
+counted as a limit; a failed transfer and a content problem not holding back; opened rows treated as work; the source not required to
+offer it, and no ping; the pull switch unchecked; `keep_one_latest()` not called; the number not kept; an opened row reused only at 0;
+the file not asked for by attempt; `allattempts` and `attemptnumber` always sent; the same group size; the list not required; a repeat
+believed; an endless history believed. Each pattern was checked to match exactly once (the Phase 99 lesson).
+
+**Result.** phplint, phpcs (`--max-warnings 0`), phpdoc, validate, savepoints exit 0. PHPUnit, full suite: 732 tests, 3559 assertions,
+1 skipped, identical on 5.0, 5.1, 5.2 and 5.3 (707 before plus 25). **Behat not run**: no page changed.
+
+**A trace for Phase 4.** With a scratch test (not kept): a mark pulled while the student had one attempt here, then a second attempt
+added here as an every-attempt submission pull does, then a marks pull again - the second pull reports `skipped / markreasondeleted`
+(the grade row is still there at attempt 0; `local_grade()` reads the latest attempt, now the new one, and finds none). Nothing is
+damaged, but changes to that mark stop coming. **Phase 3 must not be released without Phase 4.**
+
+**Traps.**
+- A test that counted database reads to prove "not a query per attempt" measured the wrong thing: in these tests the "source" is the
+  same database, so the source's own reads were counted too. It was removed rather than kept; the one-read-per-student rule is by
+  construction (two `get_records` before the loop), not tested.
+- `+` on arrays keeps the left side: `$this->student(...) + ['attempts' => []]` did not empty the list, so a refusal test was passing
+  for no reason until it failed the other way. Use `array_merge()` to override.
+- phpcs: `if (<multi-line call>) {` is refused ("first expression must be on the line after the opening parenthesis"); assign the
+  result first. A new language string must also be in alphabetical order by the whole key: `errorattemptsourceoutdated` sorts before
+  `errorattemptspulloff` (after `errorattempts`, `o` is before `p`).
+
+**Not done.** Nothing on the marks side (Phase 4). No page, preview grouping or history count (Phase 5): a preview lists one entry per
+attempt, and the history counts entries. `maxattempts` lower than the number of attempts is written anyway, with no warning yet. Not
+tried against a real pair of sites; the batch size is unmeasured. A limit at *m* when the source has no attempt *m* but some above it
+leaves those attempts (noted in the design).

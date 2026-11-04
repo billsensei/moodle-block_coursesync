@@ -44,6 +44,7 @@ class submission_writer {
      * @param int $remotecmid
      * @param \stdClass $submission
      * @param http_client|null $client
+     * @param bool $allattempts name the attempt when asking for each file (only of a source known to understand it)
      * @return string[] temporary path for each file, in the same order as the submission's files
      * @throws \moodle_exception if any file cannot be fetched or fails its check
      */
@@ -52,7 +53,8 @@ class submission_writer {
         string $token,
         int $remotecmid,
         \stdClass $submission,
-        ?http_client $client
+        ?http_client $client,
+        bool $allattempts = false
     ): array {
         $paths = [];
 
@@ -69,7 +71,8 @@ class submission_writer {
                         $file['filename'],
                         $offset,
                         file_sync::CHUNK,
-                        $client
+                        $client,
+                        $allattempts ? (int) $submission->attemptnumber : null
                     ),
                     $file['contenthash'],
                     (int) $file['filesize']
@@ -98,6 +101,8 @@ class submission_writer {
      * @param \stdClass|false $ledger the record of an earlier pull, if any
      * @param \stdClass|null $local the submission here being updated, if any
      * @param string[] $paths the fetched files, in the submission's order
+     * @param bool $allattempts write it as the attempt the source calls it, and keep one latest attempt;
+     *      false writes the one attempt a latest-only pull brings, as attempt 0
      * @return void
      */
     public static function write(
@@ -109,7 +114,8 @@ class submission_writer {
         int $remotecmid,
         $ledger,
         ?\stdClass $local,
-        array $paths
+        array $paths,
+        bool $allattempts = false
     ): void {
         global $DB;
 
@@ -119,7 +125,7 @@ class submission_writer {
         $created = null;
 
         try {
-            $row = self::save_row($submission, $student, $local, $assignid);
+            $row = self::save_row($submission, $student, $local, $assignid, $allattempts);
 
             // Nothing here held work before, so on failure there is nothing to keep.
             $created = $local ? null : (int) $row->id;
@@ -127,6 +133,10 @@ class submission_writer {
             self::save_files($context, $row, $submission, $student, $paths);
             self::write_plugin_rows($assignid, $row->id, $submission);
             self::save_record($context, $row, $submission, $student, $course, $assignid, $blockinstanceid, $remotecmid, $ledger);
+
+            if ($allattempts) {
+                self::keep_one_latest($assignid, (int) $student->id);
+            }
 
             $transaction->allow_commit();
         } catch (\Throwable $e) {
@@ -156,20 +166,35 @@ class submission_writer {
      * @param \stdClass $student
      * @param \stdClass|null $local the submission here being updated, if any
      * @param int $assignid
+     * @param bool $allattempts the attempt keeps the source's number, and which is the latest is settled afterwards
      * @return \stdClass the saved row
      */
-    protected static function save_row(\stdClass $submission, \stdClass $student, ?\stdClass $local, int $assignid): \stdClass {
+    protected static function save_row(
+        \stdClass $submission,
+        \stdClass $student,
+        ?\stdClass $local,
+        int $assignid,
+        bool $allattempts = false
+    ): \stdClass {
         global $DB;
 
-        $row = $local ?: self::empty_submission($assignid, (int) $student->id);
+        $attempt = $allattempts ? (int) $submission->attemptnumber : 0;
+        $row = $local ?: self::empty_submission($assignid, (int) $student->id, $attempt);
         $row->timecreated = $submission->timecreated ?: time();
         $row->timemodified = $submission->timemodified ?: time();
         $row->timestarted = $row->timecreated;
         $row->status = submissions::STATUS_SUBMITTED;
-        $row->latest = 1;
+
+        // Alone, the one attempt is the latest. With every attempt, which row
+        // is the latest depends on the others, and is settled once it is saved.
+        if (!$allattempts) {
+            $row->latest = 1;
+        } else if (empty($row->id)) {
+            $row->latest = 0;
+        }
 
         if (empty($row->id)) {
-            $row->attemptnumber = 0;
+            $row->attemptnumber = $attempt;
             $row->groupid = 0;
             $row->id = $DB->insert_record('assign_submission', $row);
         } else {
@@ -276,26 +301,63 @@ class submission_writer {
      *
      * @param int $assignid
      * @param int $userid
+     * @param int $attempt the attempt number being written: 0 for a latest-only pull
      * @return \stdClass
      */
-    protected static function empty_submission(int $assignid, int $userid): \stdClass {
+    protected static function empty_submission(int $assignid, int $userid, int $attempt = 0): \stdClass {
         global $DB;
 
         // A student who only opened the assignment has a "new" (or "reopened")
         // row that holds no work: use it rather than leave two latest rows.
+        // For the attempt being written, and no other - a second row for the
+        // same attempt is not possible, so it is always this one or none.
         $rows = $DB->get_records('assign_submission', [
             'assignment' => $assignid,
             'userid' => $userid,
             'groupid' => 0,
-            'latest' => 1,
+            'attemptnumber' => $attempt,
         ]);
         $existing = $rows ? reset($rows) : null;
 
-        if ($existing && in_array($existing->status, ['new', 'reopened'], true) && (int) $existing->attemptnumber === 0) {
+        if ($existing && in_array($existing->status, ['new', 'reopened'], true)) {
             return $existing;
         }
 
         return (object) ['assignment' => $assignid, 'userid' => $userid];
+    }
+
+    /**
+     * Mark the student's highest-numbered attempt as the latest and no other.
+     *
+     * mod_assign keeps one latest attempt per student, and reads the student's
+     * submission, grade and gradebook entry from it. After attempts are written
+     * oldest first this puts the flag where it belongs - also when the student
+     * has a higher attempt here that did not come from the other site.
+     *
+     * @param int $assignid
+     * @param int $userid
+     * @return void
+     */
+    protected static function keep_one_latest(int $assignid, int $userid): void {
+        global $DB;
+
+        $rows = $DB->get_records(
+            'assign_submission',
+            ['assignment' => $assignid, 'userid' => $userid, 'groupid' => 0],
+            'attemptnumber DESC',
+            'id, latest'
+        );
+        $first = true;
+
+        foreach ($rows as $row) {
+            $want = $first ? 1 : 0;
+
+            if ((int) $row->latest !== $want) {
+                $DB->set_field('assign_submission', 'latest', $want, ['id' => $row->id]);
+            }
+
+            $first = false;
+        }
     }
 
     /**

@@ -43,6 +43,13 @@ class remote_client {
     public const PAIRS_PER_CALL = 400;
 
     /**
+     * @var int The same budget when every attempt is asked for: a student-assignment
+     * pair may now bring several attempts back, each with its text and file list.
+     * An estimate, a quarter of the above, not a measurement.
+     */
+    public const ATTEMPT_PAIRS_PER_CALL = 100;
+
+    /**
      * Call block_coursesync_ping on the remote site.
      *
      * @param string $baseurl normalised base URL of the remote site
@@ -475,6 +482,8 @@ class remote_client {
      * @param \core\http_client|null $client injected only by tests
      * @param string[] $usernames the only students wanted (never empty: an
      *      empty list means every student to the source)
+     * @param bool $allattempts ask for every attempt each student handed in, not only the latest; only for a
+     *      source whose ping offers it
      * @return submissions_result
      */
     public static function get_submissions(
@@ -483,7 +492,8 @@ class remote_client {
         int $courseid,
         array $cmids,
         ?http_client $client = null,
-        array $usernames = []
+        array $usernames = [],
+        bool $allattempts = false
     ): submissions_result {
         // Refused for its own permission, not the grades one; and a source
         // that answers as Course Sync but lacks the function is from before it.
@@ -494,19 +504,26 @@ class remote_client {
         $answers = [];
 
         // In batches the source accepts; the answers are put back together.
-        $batches = self::student_batches($cmids, $usernames, external\get_submissions::MAX_CMIDS);
+        $batches = self::student_batches(
+            $cmids,
+            $usernames,
+            external\get_submissions::MAX_CMIDS,
+            $allattempts ? self::ATTEMPT_PAIRS_PER_CALL : self::PAIRS_PER_CALL
+        );
 
         foreach ($batches as [$batch, $names]) {
+            // The allattempts parameter goes only when it is wanted: a source
+            // from before it existed refuses a parameter it does not know.
             $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_submissions', [
                 'courseid' => $courseid,
                 'cmids' => $batch,
-            ], $names, $client);
+            ] + ($allattempts ? ['allattempts' => 1] : []), $names, $client);
 
             if ($outcome['errorkey'] !== null) {
                 return submissions_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
             }
 
-            $answer = submissions_result::from_response($outcome['data']);
+            $answer = submissions_result::from_response($outcome['data'], $allattempts);
 
             if (!$answer->success) {
                 return $answer;
@@ -531,6 +548,7 @@ class remote_client {
      * @param int $offset byte to start at
      * @param int $length how many bytes to ask for
      * @param \core\http_client|null $client injected only by tests
+     * @param int|null $attemptnumber the attempt the file is in; null for the latest, and then nothing is sent
      * @return file_chunk
      */
     public static function get_submission_file(
@@ -543,8 +561,10 @@ class remote_client {
         string $filename,
         int $offset,
         int $length,
-        ?http_client $client = null
+        ?http_client $client = null,
+        ?int $attemptnumber = null
     ): file_chunk {
+        // The attempt goes only when one is named, for the same reason.
         $outcome = self::call($baseurl, $token, 'block_coursesync_get_submission_file', [
             'cmid' => $cmid,
             'username' => $username,
@@ -553,7 +573,7 @@ class remote_client {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
-        ], $client);
+        ] + ($attemptnumber === null ? [] : ['attemptnumber' => $attemptnumber]), $client);
 
         if ($outcome['errorkey'] !== null) {
             return file_chunk::failure($outcome['errorkey']);
@@ -751,9 +771,15 @@ class remote_client {
      * @param string[] $usernames the only students wanted; none means every
      *      student, which cannot be counted and goes in one call per batch
      * @param int $maxcmids most activities one call may name
+     * @param int $pairs most student-assignment pairs one call may name
      * @return array[] each [int[] cmids, string[] usernames]
      */
-    protected static function student_batches(array $cmids, array $usernames, int $maxcmids): array {
+    protected static function student_batches(
+        array $cmids,
+        array $usernames,
+        int $maxcmids,
+        int $pairs = self::PAIRS_PER_CALL
+    ): array {
         $usernames = array_values(array_map('strval', $usernames));
         $batches = [];
 
@@ -763,7 +789,7 @@ class remote_client {
                 continue;
             }
 
-            $size = max(1, intdiv(self::PAIRS_PER_CALL, count($batch)));
+            $size = max(1, intdiv($pairs, count($batch)));
 
             foreach (array_chunk($usernames, $size) as $names) {
                 $batches[] = [$batch, $names];
