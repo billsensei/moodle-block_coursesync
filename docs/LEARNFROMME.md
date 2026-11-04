@@ -5021,3 +5021,41 @@ nothing was committed or pushed.
   debugging reports it ("defined READ_ONLY_SESSION but the following SESSION attributes were changed" and a shutdown check);
   Behat passed and the PHP server log had no such line, but it was not confirmed that Behat runs with developer debugging on.
 - Docker sites, the Selenium containers and the PHP server on port 8001 were stopped afterwards; `coursesync-ci-db` is still up.
+
+## Phase 96 - Finding 3: students in groups for submissions and marks (no version bump; still v1.29.1-beta, build 2026110301), 2026-11-03
+
+**Ask.** "Start on Finding 3 and keep Finding 4 on the back burner" (Phase 95 review).
+
+**What I had wrong in the review, and what was true.** The review said one call carried every student for every assignment. The
+destination already sent only the students the teacher can reach, and already cut the assignments into batches of
+`MAX_CMIDS` = 100 (and merged the answers). What was left: a batch of 100 assignments still named every student, so 100 assignments
+and 500 students was 50,000 student-assignment pairs in one request under `remote_client::TIMEOUT` = 20 s. The source cost per pair
+is about 4 queries plus the text and file list in one JSON body.
+
+**Built (destination only; the source functions are unchanged).** `remote_client::student_batches()` cuts a request into
+`[cmids, usernames]` calls: the assignments by `MAX_CMIDS` as before, then each batch's students into groups of
+`intdiv(PAIRS_PER_CALL, count(cmids))`, at least 1. `PAIRS_PER_CALL` = 400 (public constant). With no student list (never sent by
+a current destination) it is one call per assignment batch, as before. `get_submissions()` and `get_marks()` use it.
+**Trap that mattered:** a split by student returns the same assignment in several answers, and `submissions_result::merge()` /
+`marks_result::merge()` only appended items, so `submission_pull`/`marks_pull` (which key by cmid) would have kept the last
+batch's students and silently dropped the rest. Both merges now combine items by cmid in first-seen order, add students in order,
+and keep a student once if a source answers for them twice.
+
+**Tests (`tests/remote_client_test.php`, +4).** 450 students and 2 assignments: calls of 200, 200, 50, two whole items, every
+student once in order, for submissions and for marks. 100 assignments and 9 students: 3 calls of 4, 4, 1, each at most
+`PAIRS_PER_CALL` pairs. No student list: one call, no `usernames`. A source that adds a student it was not asked about: held once.
+Mutations caught: the old append merge (submissions, then marks separately), no dedupe, `PAIRS_PER_CALL` very large.
+
+**Result.** phplint, phpcs, phpdoc, validate, savepoints exit 0 (5.1). PHPUnit, full suite: 679 tests, 3279 assertions, 1 skipped,
+identical on 5.0, 5.1, 5.2, 5.3. Behat `@block_coursesync`: 52 scenarios, 1221 steps, all passed on all four. Not done: a real
+pull of a large course (the Behat and PHPUnit courses have a handful of students, so they run one call per assignment batch); the
+budget of 400 pairs is a judgement from the query count, not a measurement; `get_grades` and `get_quiz_attempts` have the same
+shape and were not touched. Not committed or pushed. Together with Phases 93-95 the working tree now has uncommitted work.
+
+**Still open: Finding 4** (LOW) - `submission_pull::pull_submission()` does one ledger query (and local lookups) per student;
+preload per assignment. Whether `marks_pull` does the same was not checked. The user asked to leave it for now.
+
+**Traps.**
+- A mock source for batching tests has to answer for the usernames in the request and the cmids in the request, or the merge looks
+  right while testing nothing; the shared `counting_source()` helper in `remote_client_test.php` does that.
+- Docker sites, Selenium containers and the port 8001 PHP server were stopped afterwards; `coursesync-ci-db` is still up.

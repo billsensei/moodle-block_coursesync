@@ -136,17 +136,37 @@ class marks_result {
     /**
      * Several successful answers, for batches of one request, as one.
      *
+     * An assignment answered in several batches, for different students,
+     * becomes one item holding all of them; a student held already is not
+     * added again.
+     *
      * @param self[] $answers
      * @return self
      */
     public static function merge(array $answers): self {
         $items = [];
+        $seen = [];
 
         foreach ($answers as $answer) {
-            $items = array_merge($items, $answer->items);
+            foreach ($answer->items as $item) {
+                if (!isset($items[$item->cmid])) {
+                    $items[$item->cmid] = $item;
+                    $seen[$item->cmid] = array_column($item->marks, 'username', 'username');
+                    continue;
+                }
+
+                // The same assignment answered again, for other students. A
+                // student already held is not added twice.
+                foreach ($item->marks as $row) {
+                    if (!isset($seen[$item->cmid][$row->username])) {
+                        $seen[$item->cmid][$row->username] = $row->username;
+                        $items[$item->cmid]->marks[] = $row;
+                    }
+                }
+            }
         }
 
-        return self::success($items);
+        return self::success(array_values($items));
     }
 
     /**

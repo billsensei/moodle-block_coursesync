@@ -544,4 +544,148 @@ final class remote_client_test extends advanced_testcase {
         $this->assertSame($wanted, array_column($attempts->quizzes, 'cmid'));
         $this->assertSame([500, 1, 500, 1], array_map(static fn($call) => count($call['cmids']), $calls));
     }
+
+    /**
+     * A source whose answers can be counted: it describes each assignment asked
+     * about with one row per student asked about, and notes every call.
+     *
+     * @param array $calls filled with the parameters of every call
+     * @param bool $everyone also answer with students that were not asked for
+     * @return http_client
+     */
+    protected function counting_source(array &$calls, bool $everyone = false): http_client {
+        return new http_client(['mock' => function (\Psr\Http\Message\RequestInterface $request) use (&$calls, $everyone) {
+            parse_str((string) $request->getBody(), $params);
+            $calls[] = $params;
+            $names = isset($params['usernames']) ? explode("\n", $params['usernames']) : ['everyone'];
+
+            if ($everyone) {
+                $names = array_merge(['sam'], $names);
+            }
+
+            $items = [];
+
+            foreach ($params['cmids'] as $cmid) {
+                $rows = array_map(
+                    static fn($name) => $params['wsfunction'] === 'block_coursesync_get_submissions'
+                        ? ['username' => $name, 'fingerprint' => 'abc', 'files' => [], 'onlinetext' => 'text']
+                        : ['username' => $name, 'fingerprint' => 'abc', 'files' => [], 'grade' => 5],
+                    $names
+                );
+
+                $items[] = $params['wsfunction'] === 'block_coursesync_get_submissions'
+                    ? ['cmid' => (int) $cmid, 'reason' => '', 'plugins' => ['onlinetext'], 'submissions' => $rows]
+                    : ['cmid' => (int) $cmid, 'reason' => '', 'grademax' => 10, 'marks' => $rows];
+            }
+
+            return \GuzzleHttp\Promise\Create::promiseFor(new Response(200, [], json_encode(['items' => $items])));
+        }]);
+    }
+
+    /**
+     * A big class is asked about in groups of students, so no call has more
+     * to answer than it can in good time, and each assignment comes back
+     * whole: every student, once, in the order asked.
+     */
+    public function test_many_students_are_asked_for_in_batches(): void {
+        $this->resetAfterTest();
+
+        $students = array_map(static fn($n) => 'student' . $n, range(1, 450));
+        $url = 'https://source.example.edu';
+        $token = str_repeat('a', 32);
+
+        foreach (['submissions' => 'get_submissions', 'marks' => 'get_marks'] as $field => $function) {
+            $calls = [];
+            $answer = remote_client::$function($url, $token, 42, [7, 8], $this->counting_source($calls), $students);
+
+            $this->assertTrue($answer->success, $function);
+
+            // Two assignments of 450 students is 900 pairs: groups of 200.
+            $this->assertSame([200, 200, 50], array_map(static fn($c) => count(explode("\n", $c['usernames'])), $calls));
+            $this->assertCount(3, $calls);
+            $this->assertSame([7, 8], array_column($answer->items, 'cmid'));
+
+            foreach ($answer->items as $item) {
+                $this->assertSame($students, array_column($item->$field, 'username'), $function);
+            }
+        }
+    }
+
+    /**
+     * Many assignments cut the groups of students smaller, still within the
+     * most one call is asked for.
+     */
+    public function test_many_assignments_make_smaller_groups_of_students(): void {
+        $this->resetAfterTest();
+
+        $cmids = range(1, \block_coursesync\external\get_submissions::MAX_CMIDS);
+        $students = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+        $calls = [];
+
+        $answer = remote_client::get_submissions(
+            'https://source.example.edu',
+            str_repeat('a', 32),
+            42,
+            $cmids,
+            $this->counting_source($calls),
+            $students
+        );
+
+        $this->assertTrue($answer->success);
+        // 100 assignments: 4 students a call, so 3 calls.
+        $this->assertSame([4, 4, 1], array_map(static fn($c) => count(explode("\n", $c['usernames'])), $calls));
+        $this->assertSame(
+            [100, 100, 100],
+            array_map(static fn($c) => count($c['cmids']), $calls)
+        );
+        $this->assertCount(100, $answer->items);
+        $this->assertSame($students, array_column($answer->items[99]->submissions, 'username'));
+
+        foreach ($calls as $call) {
+            $pairs = count($call['cmids']) * count(explode("\n", $call['usernames']));
+            $this->assertLessThanOrEqual(remote_client::PAIRS_PER_CALL, $pairs);
+        }
+    }
+
+    /**
+     * With no list of students there is nothing to count: one call, and no list.
+     */
+    public function test_with_no_list_of_students_there_is_one_call(): void {
+        $this->resetAfterTest();
+
+        $calls = [];
+        $source = $this->counting_source($calls);
+        $answer = remote_client::get_marks('https://source.example.edu', str_repeat('a', 32), 42, [7], $source);
+
+        $this->assertTrue($answer->success);
+        $this->assertCount(1, $calls);
+        $this->assertArrayNotHasKey('usernames', $calls[0]);
+    }
+
+    /**
+     * A student the source answers for again, whatever it was asked, is held
+     * once: nothing is added twice to what the pull then writes.
+     */
+    public function test_a_student_answered_twice_is_kept_once(): void {
+        $this->resetAfterTest();
+
+        $students = array_map(static fn($n) => 'student' . $n, range(1, 450));
+        $calls = [];
+
+        $answer = remote_client::get_submissions(
+            'https://source.example.edu',
+            str_repeat('a', 32),
+            42,
+            [7, 8],
+            $this->counting_source($calls, true),
+            $students
+        );
+
+        $this->assertTrue($answer->success);
+        $this->assertCount(2, $answer->items);
+
+        foreach ($answer->items as $item) {
+            $this->assertSame(array_merge(['sam'], $students), array_column($item->submissions, 'username'));
+        }
+    }
 }

@@ -36,6 +36,13 @@ class remote_client {
     public const TIMEOUT = 20;
 
     /**
+     * Most assignment-and-student pairs one submissions or marks call asks
+     * for. On the source each pair costs a handful of queries and its text
+     * and file list go into one response, all within TIMEOUT.
+     */
+    public const PAIRS_PER_CALL = 400;
+
+    /**
      * Call block_coursesync_ping on the remote site.
      *
      * @param string $baseurl normalised base URL of the remote site
@@ -464,11 +471,13 @@ class remote_client {
         $answers = [];
 
         // In batches the source accepts; the answers are put back together.
-        foreach (array_chunk(array_values(array_map('intval', $cmids)), external\get_submissions::MAX_CMIDS) as $batch) {
+        $batches = self::student_batches($cmids, $usernames, external\get_submissions::MAX_CMIDS);
+
+        foreach ($batches as [$batch, $names]) {
             $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_submissions', [
                 'courseid' => $courseid,
                 'cmids' => $batch,
-            ], $usernames, $client);
+            ], $names, $client);
 
             if ($outcome['errorkey'] !== null) {
                 return submissions_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
@@ -559,11 +568,13 @@ class remote_client {
         ];
         $answers = [];
 
-        foreach (array_chunk(array_values(array_map('intval', $cmids)), external\get_marks::MAX_CMIDS) as $batch) {
+        $batches = self::student_batches($cmids, $usernames, external\get_marks::MAX_CMIDS);
+
+        foreach ($batches as [$batch, $names]) {
             $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_marks', [
                 'courseid' => $courseid,
                 'cmids' => $batch,
-            ], $usernames, $client);
+            ], $names, $client);
 
             if ($outcome['errorkey'] !== null) {
                 return marks_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
@@ -700,6 +711,43 @@ class remote_client {
             (int) ($data['filesize'] ?? 0),
             (string) ($data['contenthash'] ?? '')
         );
+    }
+
+    /**
+     * How to split a request about assignments and students into calls the
+     * source can answer in good time.
+     *
+     * The work a source does is about one fixed cost per assignment and
+     * student, and every call has the same short time to answer in, so the
+     * activities are cut into batches the source accepts and each batch's
+     * students into groups small enough that assignments times students stays
+     * within PAIRS_PER_CALL. The same student turns up in several calls, once
+     * for each batch of activities.
+     *
+     * @param int[] $cmids course module ids on the source
+     * @param string[] $usernames the only students wanted; none means every
+     *      student, which cannot be counted and goes in one call per batch
+     * @param int $maxcmids most activities one call may name
+     * @return array[] each [int[] cmids, string[] usernames]
+     */
+    protected static function student_batches(array $cmids, array $usernames, int $maxcmids): array {
+        $usernames = array_values(array_map('strval', $usernames));
+        $batches = [];
+
+        foreach (array_chunk(array_values(array_map('intval', $cmids)), $maxcmids) as $batch) {
+            if (!$usernames) {
+                $batches[] = [$batch, []];
+                continue;
+            }
+
+            $size = max(1, intdiv(self::PAIRS_PER_CALL, count($batch)));
+
+            foreach (array_chunk($usernames, $size) as $names) {
+                $batches[] = [$batch, $names];
+            }
+        }
+
+        return $batches;
     }
 
     /**
