@@ -55,7 +55,7 @@ only. The full running history is in [changelog.md](changelog.md).
 - **Large courses are asked about in groups.** A submissions or marks pull of many students sends them to the source in
   groups of at most 400 student-and-assignment pairs per call (100 when every attempt is asked for), instead of naming
   every student in one request. The answers are put back together per assignment, so no student is dropped. The group
-  size is an estimate from the number of queries, not a measurement on a large course.
+  size was estimated from the number of queries and then measured on test sites (see Upgrade, below).
 - **Serving a file no longer rebuilds the student list for every piece.** `get_submission_file` and `get_mark_file`
   look up the one student named, with the same checks as before.
 
@@ -85,5 +85,16 @@ only. The full running history is in [changelog.md](changelog.md).
 - To use the feature, upgrade **both** sites, then switch it on on both. Nothing needs doing on a source that is not
   asked for it. The built-in "Course Sync" web service already contains the functions; a service built by hand needs
   nothing added.
-- Tested on Moodle 5.0, 5.1, 5.2 and 5.3: PHPUnit 764 tests and Behat 57 scenarios on each. **Not yet tried between two
-  real sites**, and the group size above is unmeasured on a large course.
+- Tested on Moodle 5.0, 5.1, 5.2 and 5.3: PHPUnit 764 tests and Behat 57 scenarios on each.
+- **Tried between separate test sites over HTTPS** (five Moodle installs, 12 pairs: every source against every destination
+  of a different version). Attempts, files, marks, comments, the latest flag and the gradebook arrived as the source had
+  them, and the pages worked in a logged-in session. A pull of 10,000 attempts with 3,400 files was checked the same way.
+  On those small test servers the slowest call that describes attempts took 3.8 seconds when it was asked about 100
+  students with 100 attempts each, the most a source will describe, against the 20-second limit; a call for 100 students
+  with 3 attempts each took 0.16 seconds.
+- **A very large pull is one long request.** Pulling 10,000 attempts and their files took about 3½ minutes through the
+  page. The time limit is raised for it, so PHP does not stop it, but a reverse proxy in front of the site with a shorter
+  timeout would. Each attempt is saved on its own, so a pull that is cut off keeps what it had written and the next pull
+  carries on from there.
+- **Not tried:** a production-sized site, real network delay, a live MariaDB or MySQL pair (those are covered by PHPUnit
+  and CI), a source from before this version, or cutting a long pull off part-way.

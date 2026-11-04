@@ -5475,3 +5475,80 @@ the design note.
 
 **Not done.** No tag, no push, no GitHub release; the commit message says so. The date in the heading is the commit date and may need
 changing if the tag is made on another day.
+
+## Phase 105 - Live trial of v1.30.0-beta between real sites (no code change; v1.30.0-beta is released), 2026-11-04
+
+**Ask.** "Try it on a real pair of sites." The release notes said it had not been. **What "real" means here:** the Docker test sites, which are
+separate Moodle installs with their own databases, talking HTTPS with a certificate checked against a local CA and a real web service token. I
+have no access to the user's pilot sites. No production-sized site, no real network latency.
+
+**1. A real upgrade, on five sites.** Sites A and B were at plugin version 2026110101 (v1.28.0) and D, E, F too. `admin/cli/upgrade.php` ran the
+2026110401 step on all five (Moodle 5.0.11, 5.1.7, 5.2.4, 5.3): clean. Site A held real legacy records (3 submission, 2 mark, all attempt 0, pointing
+at attempt-0 rows): they were kept, `attemptnumber` 0, and the unique key in PostgreSQL is now on (assignid, userid, attemptnumber).
+
+**2. One pair end to end, B (5.1) to A (5.1).** A source built the way a teacher builds one (mark, then "allow another attempt" through
+`update_grade($row, true)` - `process_add_attempt()` is protected and wants a sesskey, so that is the public route the grader form uses), 4 students
+x 3 attempts, files for some, one attempt left unmarked. The destination connected with the real token, copied the assignment with the real
+`syncer::run`, and pulled. Checked against what the source builder made: every attempt's text, file, status, mark, comment, the one latest flag,
+the records and the gradebook. A preview wrote nothing; a second pull found everything "same". The verification was given a wrong expectation (no
+files) to see it fail, and it did.
+
+**3. Scale, the figure that was only an estimate.** Per describing call (100 pairs at most), time on the source over HTTPS:
+
+| Source | Calls | Slowest call | Largest answer |
+| --- | --- | --- | --- |
+| 300 students x 3 attempts, every attempt | 3 | 0.16 s | 109 KB |
+| 300 students, latest only (one call of 300) | 1 | 0.18 s | 81 KB |
+| 100 students x 12 attempts | 1 | 0.48 s | 334 KB |
+| 100 students x 100 attempts (the most the code accepts) | 1 | 3.8 s | 2.5 MB |
+
+About 0.4 ms per attempt, linear, so the worst case the code allows is about 5x under the 20 s limit **on this VM with a warm database**. A normal
+history (a handful of attempts) has a margin of 40x or more. A host several times slower with a very long history could still get near it.
+The whole pull of the 100 x 100 source (10,000 attempts, 3,400 files, 9,975 marks) was verified correct: 156 s for the submissions, 30 s for the marks
+on the command line; 210 s and 37 s through the page. Nearly all of it is the 3,402 one-file calls (0.05 s each).
+
+**4. All 12 pairs of 5.0 / 5.1 / 5.2 / 5.3** (6 students x 3 attempts): the same verification, 12 of 12 passed. Source `ping` reported `attempts1` each time.
+
+**5. The pages, over HTTPS with a logged-in session** (site E, 5.2, source B): 28 checks - the box is offered, the default preview lists 6 students and
+the every-attempt preview 18 rows, the intro and the "counts are of attempts" note, the box stays ticked, the confirmation carries the choice, a
+confirmation **without the sesskey is refused**, the pull message, a repeat pull "Nothing would change", the latest alone leaves the pulled students alone
+and says why (submissions and marks), and the history reads "Submission attempts pulled: 18 ... Mark attempts pulled: 17" with no student names. 28 of 28.
+
+**6. Two things only a real web request can show.** (a) The 10,000-attempt pull took 210 s through the page on a site whose web PHP has no
+`max_execution_time` set (the default 30 s): it finished, so `long_run::begin()` works. (b) While a 19 s pull ran, a second page in the same session
+answered in 0.1 s: the session lock is released. The command-line runs cannot show either (no time limit, no session).
+
+**7. Source switch off.** With the source's every-attempt switch off, both pulls were refused with `errorattemptssourceunable`, no row changed, and the
+latest-only preview still worked; switched back on, they ran.
+
+**8. Cleanup.** The trial's courses and users (300 on three sites) were deleted. Site A went back to exactly its original 3 submission and 2 mark
+records, so deleting a course and a user removes the pull records as designed. No history row for a deleted course was left by the trial (one on site E,
+from 2026-11-01, was already there).
+
+**Traps.**
+- A CLI script that uses the data generator needs `lib/testing/generator/lib.php` and `module_generator.php` as well as `data_generator.php`
+  ("Class testing_module_generator not found").
+- On D, E and F the sync account's role is `syncrole`, not `coursesyncservice` (A and B). I granted the export permissions to the wrong role first, noticed
+  because "users holding it at system level: none", and took them back before granting to the right one.
+- Site F did not allow calls to the other sites' ports (`curlsecurityallowedport`); a destination there could not reach them until it was widened.
+- Passing a Guzzle `on_stats` recorder in an injected `http_client` changes nothing about the request: timeout, TLS verification and the pinned address are
+  per-request options in `remote_client::call()`.
+- `pkill -f` and `pgrep -f` with a pattern that also occurs in your own command line match your own shell.
+
+**Changed on the test sites and left that way:** the plugin is upgraded to 2026110401 on all five; B, D, E, F share every attempt (and D, E, F share
+submissions and marks); A, D, E, F allow pulling every attempt; the export permissions are on `syncrole` on D, E, F; F's allowed ports include the others'.
+
+**What this does not show.** Real latency or a production database; MariaDB or MySQL live (every site here is PostgreSQL 17; MariaDB was covered by
+PHPUnit and CI); a source from before this version (all five run it - the refusal path is the same code as the switch-off case but the "no `features` at
+all" shape is PHPUnit-only); the user's own pilot sites.
+
+**Worth saying in the release notes.** A pull of thousands of attempts is one web request that can run for minutes (3½ minutes for 10,000 attempts here).
+It finished inside Apache's 300 s, but a reverse proxy with a shorter timeout would cut the request. Nothing is lost: each attempt is written in its own
+transaction and the next pull carries on from where it stopped. The sentence "Not yet tried between two real sites" is now out of date.
+
+**Follow-up - release notes updated (same day).** `CHANGES.md` and `changelog.md` for v1.30.0-beta no longer say "not yet tried between two real
+sites" or that the group size is an estimate. They now say what was tried (five installs, 12 pairs, the 10,000-attempt pull, the measured 3.8 s
+worst-case call against the 20 s limit), that a very large pull is one long request that a shorter proxy timeout could cut (and that a cut pull
+keeps what it wrote), and what was **not** tried (a production-sized site, real network delay, live MariaDB/MySQL, a source from before this
+version, and cutting a long pull off part-way - the last is the design's behaviour, each attempt in its own transaction, but I did not kill a
+request to see it). The published GitHub release body and the tag are unchanged: they still carry the earlier wording.
