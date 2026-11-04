@@ -16,6 +16,7 @@
 
 namespace block_coursesync\external;
 
+use block_coursesync\local\attempts;
 use block_coursesync\local\gradebook;
 use block_coursesync\local\submissions;
 use core_external\external_api;
@@ -33,7 +34,10 @@ use core_external\external_value;
  *
  *   - belongs to a student the gradebook lists (never a teacher, never a
  *     suspended enrolment),
- *   - is that student's latest submitted attempt, and
+ *   - is that student's latest submitted attempt - or, when the caller names
+ *     an attempt, that attempt, which also needs the source to share every
+ *     attempt and must have been handed in (never a draft or a reopened
+ *     attempt) - and
  *   - is in a file or online text area of an assignment that is not a team
  *     assignment and has that submission plugin switched on.
  *
@@ -62,6 +66,12 @@ class get_submission_file extends external_api {
             'filename' => new external_value(PARAM_FILE, 'File name.', VALUE_REQUIRED),
             'offset' => new external_value(PARAM_INT, 'Byte to start reading at.', VALUE_DEFAULT, 0),
             'length' => new external_value(PARAM_INT, 'How many bytes to read.', VALUE_DEFAULT, self::MAX_CHUNK),
+            'attemptnumber' => new external_value(
+                PARAM_INT,
+                'The attempt the file is in; -1 for the latest handed in. Naming one needs the source to share every attempt.',
+                VALUE_DEFAULT,
+                -1
+            ),
         ]);
     }
 
@@ -75,6 +85,7 @@ class get_submission_file extends external_api {
      * @param string $filename
      * @param int $offset
      * @param int $length
+     * @param int $attemptnumber -1 for the latest attempt handed in
      * @return array
      */
     public static function execute(
@@ -84,7 +95,8 @@ class get_submission_file extends external_api {
         string $filepath,
         string $filename,
         int $offset = 0,
-        int $length = self::MAX_CHUNK
+        int $length = self::MAX_CHUNK,
+        int $attemptnumber = -1
     ): array {
         global $DB;
 
@@ -96,6 +108,7 @@ class get_submission_file extends external_api {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
+            'attemptnumber' => $attemptnumber,
         ] = self::validate_parameters(self::execute_parameters(), [
             'cmid' => $cmid,
             'username' => $username,
@@ -104,13 +117,15 @@ class get_submission_file extends external_api {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
+            'attemptnumber' => $attemptnumber,
         ]);
 
-        if ($offset < 0 || $length < 1) {
+        if ($offset < 0 || $length < 1 || $attemptnumber < -1) {
             throw new \invalid_parameter_exception('offset must not be negative and length must be positive');
         }
 
         $length = min($length, self::MAX_CHUNK);
+        $named = $attemptnumber >= 0;
 
         // Switch and permissions first, so a site that does not share
         // submissions answers every caller alike. The course is found from the
@@ -123,6 +138,10 @@ class get_submission_file extends external_api {
 
         $course = submissions::require_export((int) $cm->course);
         self::validate_context(\context_course::instance($course->id));
+
+        if ($named) {
+            attempts::require_export();
+        }
 
         $cminfo = get_fast_modinfo($course->id)->get_cm($cm->id);
 
@@ -139,7 +158,13 @@ class get_submission_file extends external_api {
 
         // Only a student the gradebook lists, only their latest handed-in work.
         $student = gradebook::student((int) $course->id, $username);
-        $submission = $student ? submissions::latest_submitted((int) $assign->id, (int) $student->id) : null;
+        $submission = null;
+
+        if ($student) {
+            $submission = $named
+                ? (submissions::submitted_attempts((int) $assign->id, (int) $student->id)[$attemptnumber] ?? null)
+                : submissions::latest_submitted((int) $assign->id, (int) $student->id);
+        }
 
         if (!$submission) {
             throw new \moodle_exception('errorfilenotallowed', 'block_coursesync');

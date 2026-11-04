@@ -16,6 +16,7 @@
 
 namespace block_coursesync\external;
 
+use block_coursesync\local\attempts;
 use block_coursesync\local\gradebook;
 use block_coursesync\local\submissions;
 use core_external\external_api;
@@ -37,8 +38,13 @@ use core_external\external_value;
  * listed, and the bytes come from block_coursesync_get_submission_file.
  *
  * Students are identified by username, only students the gradebook itself
- * would list are reported, and only the latest attempt each has handed in.
- * Team assignments are left out with a reason, never described.
+ * would list are reported, and by default only the latest attempt each has
+ * handed in. With allattempts every attempt handed in is described, oldest
+ * first, in "attempts" - which needs a switch of its own
+ * (block_coursesync | allowattemptsexport). The top level of each student's
+ * entry stays what it always was (the latest attempt carried), so a caller that
+ * does not read "attempts" is not disturbed. Team assignments are left out with
+ * a reason, never described.
  *
  * @package    block_coursesync
  * @copyright  2026 Bill White
@@ -76,6 +82,12 @@ class get_submissions extends external_api {
                 VALUE_DEFAULT,
                 ''
             ),
+            'allattempts' => new external_value(
+                PARAM_BOOL,
+                'Describe every attempt handed in, not only the latest. Needs the source to share earlier attempts.',
+                VALUE_DEFAULT,
+                false
+            ),
         ]);
     }
 
@@ -85,19 +97,22 @@ class get_submissions extends external_api {
      * @param int $courseid
      * @param int[] $cmids
      * @param string $usernames one per line; empty for every student
+     * @param bool $allattempts describe every attempt handed in
      * @return array
      */
-    public static function execute(int $courseid, array $cmids, string $usernames = ''): array {
+    public static function execute(int $courseid, array $cmids, string $usernames = '', bool $allattempts = false): array {
         global $DB;
 
         [
             'courseid' => $courseid,
             'cmids' => $cmids,
             'usernames' => $usernames,
+            'allattempts' => $allattempts,
         ] = self::validate_parameters(self::execute_parameters(), [
             'courseid' => $courseid,
             'cmids' => $cmids,
             'usernames' => $usernames,
+            'allattempts' => $allattempts,
         ]);
 
         if (count($cmids) > self::MAX_CMIDS) {
@@ -107,6 +122,10 @@ class get_submissions extends external_api {
         $course = submissions::require_export($courseid);
         $context = \context_course::instance($course->id);
         self::validate_context($context);
+
+        if ($allattempts) {
+            attempts::require_export();
+        }
 
         $modinfo = get_fast_modinfo($course->id);
         $students = null;
@@ -143,7 +162,7 @@ class get_submissions extends external_api {
             // Worked out once, and only if there is an assignment to answer
             // for: recalculating a gradebook is not free.
             $students ??= gradebook::only(gradebook::gradable_users($course->id, true), $usernames);
-            $items[] = self::item($cm, '', $plugins, self::describe($cm, (int) $assign->id, $plugins, $students));
+            $items[] = self::item($cm, '', $plugins, self::describe($cm, (int) $assign->id, $plugins, $students, $allattempts));
         }
 
         return ['items' => $items];
@@ -174,40 +193,115 @@ class get_submissions extends external_api {
      * @param int $assignid
      * @param string[] $plugins
      * @param \stdClass[] $students user id => user
+     * @param bool $allattempts every attempt handed in, not only the latest
      * @return array[]
      */
-    protected static function describe(\cm_info $cm, int $assignid, array $plugins, array $students): array {
+    protected static function describe(
+        \cm_info $cm,
+        int $assignid,
+        array $plugins,
+        array $students,
+        bool $allattempts = false
+    ): array {
         $context = \context_module::instance($cm->id);
         $described = [];
 
         foreach ($students as $student) {
-            $submission = submissions::latest_submitted($assignid, (int) $student->id);
+            if ($allattempts) {
+                $handedin = submissions::submitted_attempts($assignid, (int) $student->id);
+            } else {
+                $latest = submissions::latest_submitted($assignid, (int) $student->id);
+                $handedin = $latest ? [$latest] : [];
+            }
 
-            if (!$submission) {
+            $entries = [];
+
+            foreach ($handedin as $submission) {
+                $entry = self::attempt($context, $submission, $plugins);
+
+                if ($entry) {
+                    $entries[] = $entry;
+                }
+            }
+
+            if (!$entries) {
                 continue;
             }
 
-            [$text, $format, $files] = submissions::content($context, $submission, $plugins);
+            // The top level is the latest attempt carried, as it always was.
+            $row = ['username' => $student->username] + end($entries);
 
-            // Handed in with nothing in it, or with only plugins that are
-            // not carried: nothing to bring.
-            if ($text === null && !$files) {
-                continue;
+            if ($allattempts) {
+                $row['attempts'] = $entries;
+                $row['historyfingerprint'] = attempts::history_fingerprint($entries);
             }
 
-            $described[] = [
-                'username' => $student->username,
-                'attemptnumber' => (int) $submission->attemptnumber,
-                'timecreated' => (int) $submission->timecreated,
-                'timemodified' => (int) $submission->timemodified,
-                'onlinetext' => $text,
-                'onlineformat' => $format,
-                'files' => $files,
-                'fingerprint' => submissions::fingerprint($text, $format, $files),
-            ];
+            $described[] = $row;
         }
 
         return $described;
+    }
+
+    /**
+     * One attempt, as it is described.
+     *
+     * @param \context_module $context
+     * @param \stdClass $submission the assign_submission row
+     * @param string[] $plugins
+     * @return array|null null if the attempt was handed in with nothing to bring
+     */
+    protected static function attempt(\context_module $context, \stdClass $submission, array $plugins): ?array {
+        [$text, $format, $files] = submissions::content($context, $submission, $plugins);
+
+        // Handed in with nothing in it, or with only plugins that are not
+        // carried: nothing to bring.
+        if ($text === null && !$files) {
+            return null;
+        }
+
+        return [
+            'attemptnumber' => (int) $submission->attemptnumber,
+            'timecreated' => (int) $submission->timecreated,
+            'timemodified' => (int) $submission->timemodified,
+            'onlinetext' => $text,
+            'onlineformat' => $format,
+            'files' => $files,
+            'fingerprint' => submissions::fingerprint($text, $format, $files),
+        ];
+    }
+
+    /**
+     * What describes one attempt: the same fields at the top of a student's
+     * entry (the latest) and in each of "attempts".
+     *
+     * @return external_value[]|external_multiple_structure[]
+     */
+    protected static function attempt_fields(): array {
+        return [
+            'attemptnumber' => new external_value(PARAM_INT, 'Which attempt this is, from 0.'),
+            'timecreated' => new external_value(PARAM_INT, 'When the submission was first made.'),
+            'timemodified' => new external_value(PARAM_INT, 'When it last changed.'),
+            'onlinetext' => new external_value(
+                PARAM_RAW,
+                'Online text, unformatted; null if there is none.',
+                VALUE_REQUIRED,
+                null,
+                NULL_ALLOWED
+            ),
+            'onlineformat' => new external_value(PARAM_INT, 'Format of the online text.'),
+            'files' => new external_multiple_structure(
+                new external_single_structure([
+                    'area' => new external_value(PARAM_ALPHANUMEXT, 'submission_files or submissions_onlinetext.'),
+                    'filepath' => new external_value(PARAM_PATH, 'Path within the area.'),
+                    'filename' => new external_value(PARAM_FILE, 'File name.'),
+                    'filesize' => new external_value(PARAM_INT, 'Size in bytes.'),
+                    'contenthash' => new external_value(PARAM_ALPHANUM, 'SHA-1 of the content.'),
+                    'timemodified' => new external_value(PARAM_INT, 'When the file last changed.'),
+                ]),
+                'The files, in a fixed order.'
+            ),
+            'fingerprint' => new external_value(PARAM_ALPHANUM, 'SHA-1 standing for the whole content.'),
+        ];
     }
 
     /**
@@ -229,32 +323,22 @@ class get_submissions extends external_api {
                         'The carried submission plugins (file, onlinetext) switched on for the assignment.'
                     ),
                     'submissions' => new external_multiple_structure(
-                        new external_single_structure([
-                            'username' => new external_value(PARAM_RAW, 'The student\'s username.'),
-                            'attemptnumber' => new external_value(PARAM_INT, 'Which attempt this is, from 0.'),
-                            'timecreated' => new external_value(PARAM_INT, 'When the submission was first made.'),
-                            'timemodified' => new external_value(PARAM_INT, 'When it last changed.'),
-                            'onlinetext' => new external_value(
-                                PARAM_RAW,
-                                'Online text, unformatted; null if there is none.',
-                                VALUE_REQUIRED,
-                                null,
-                                NULL_ALLOWED
-                            ),
-                            'onlineformat' => new external_value(PARAM_INT, 'Format of the online text.'),
-                            'files' => new external_multiple_structure(
-                                new external_single_structure([
-                                    'area' => new external_value(PARAM_ALPHANUMEXT, 'submission_files or submissions_onlinetext.'),
-                                    'filepath' => new external_value(PARAM_PATH, 'Path within the area.'),
-                                    'filename' => new external_value(PARAM_FILE, 'File name.'),
-                                    'filesize' => new external_value(PARAM_INT, 'Size in bytes.'),
-                                    'contenthash' => new external_value(PARAM_ALPHANUM, 'SHA-1 of the content.'),
-                                    'timemodified' => new external_value(PARAM_INT, 'When the file last changed.'),
-                                ]),
-                                'The files, in a fixed order.'
-                            ),
-                            'fingerprint' => new external_value(PARAM_ALPHANUM, 'SHA-1 standing for the whole content.'),
-                        ]),
+                        new external_single_structure(
+                            ['username' => new external_value(PARAM_RAW, 'The student\'s username.')]
+                            + self::attempt_fields()
+                            + [
+                                'attempts' => new external_multiple_structure(
+                                    new external_single_structure(self::attempt_fields()),
+                                    'Every attempt handed in, oldest first. Only when allattempts was asked for.',
+                                    VALUE_OPTIONAL
+                                ),
+                                'historyfingerprint' => new external_value(
+                                    PARAM_ALPHANUM,
+                                    'SHA-1 standing for all the attempts. Only when allattempts was asked for.',
+                                    VALUE_OPTIONAL
+                                ),
+                            ]
+                        ),
                         'The students\' latest submitted attempts. A student with none is left out.'
                     ),
                 ]),

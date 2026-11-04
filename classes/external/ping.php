@@ -16,8 +16,10 @@
 
 namespace block_coursesync\external;
 
+use block_coursesync\local\attempts;
 use core_external\external_api;
 use core_external\external_function_parameters;
+use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 
@@ -26,7 +28,9 @@ use core_external\external_value;
  *
  * It deliberately exposes nothing about courses or activities: just enough for
  * the caller to confirm the token works and that both ends are running
- * compatible versions of the plugin.
+ * compatible versions of the plugin. It also names the optional features this
+ * site offers (today only whether it shares every assignment attempt), because
+ * a destination has to know before it asks for one.
  *
  * @package    block_coursesync
  * @copyright  2026 Bill White
@@ -75,6 +79,9 @@ class ping extends external_api {
             // anyone holding a token exactly which fixes this site lacks.
             'release' => self::major_release((string) $CFG->release),
             'pluginversion' => (int) ($plugin->versiondb ?? 0),
+            // What this site can do beyond the basics, named so that a
+            // destination can ask for it without comparing build numbers.
+            'features' => attempts::enabled() ? [attempts::FEATURE] : [],
         ];
     }
 
@@ -110,6 +117,11 @@ class ping extends external_api {
             'sitename' => new external_value(PARAM_TEXT, 'Full name of the source site.'),
             'release' => new external_value(PARAM_TEXT, 'Major Moodle version of the source site, e.g. "5.1".'),
             'pluginversion' => new external_value(PARAM_INT, 'block_coursesync version installed on the source site.'),
+            'features' => new external_multiple_structure(
+                new external_value(PARAM_ALPHANUMEXT, 'A feature this site offers, such as attempts1.'),
+                'Optional features this site offers to other sites. A source that predates this does not send it.',
+                VALUE_OPTIONAL
+            ),
         ]);
     }
 }

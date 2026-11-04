@@ -17,6 +17,7 @@
 namespace block_coursesync\external;
 
 use block_coursesync\local\gradebook;
+use block_coursesync\local\attempts;
 use block_coursesync\local\marks;
 use core_external\external_api;
 use core_external\external_function_parameters;
@@ -38,6 +39,15 @@ use core_external\external_value;
  *
  * Students are identified by username and only students the gradebook itself
  * would list are reported. Who graded is never reported.
+ *
+ * By default each student has the one mark for their latest attempt handed in.
+ * With allattempts every attempt's mark is described, oldest first, in
+ * "attempts" - which needs a switch of its own
+ * (block_coursesync | allowattemptsexport). The top level of each student's
+ * entry stays what it always was, so a caller that does not read "attempts" is
+ * not disturbed. Under a marking workflow only the latest attempt's mark is
+ * known to be released, so earlier ones are held back and the assignment says
+ * so in "attemptsreason".
  *
  * @package    block_coursesync
  * @copyright  2026 Bill White
@@ -69,6 +79,12 @@ class get_marks extends external_api {
                 VALUE_DEFAULT,
                 ''
             ),
+            'allattempts' => new external_value(
+                PARAM_BOOL,
+                'Describe the mark of every attempt, not only the latest. Needs the source to share earlier attempts.',
+                VALUE_DEFAULT,
+                false
+            ),
         ]);
     }
 
@@ -78,19 +94,22 @@ class get_marks extends external_api {
      * @param int $courseid
      * @param int[] $cmids
      * @param string $usernames one per line; empty for every student
+     * @param bool $allattempts describe the mark of every attempt
      * @return array
      */
-    public static function execute(int $courseid, array $cmids, string $usernames = ''): array {
+    public static function execute(int $courseid, array $cmids, string $usernames = '', bool $allattempts = false): array {
         global $DB;
 
         [
             'courseid' => $courseid,
             'cmids' => $cmids,
             'usernames' => $usernames,
+            'allattempts' => $allattempts,
         ] = self::validate_parameters(self::execute_parameters(), [
             'courseid' => $courseid,
             'cmids' => $cmids,
             'usernames' => $usernames,
+            'allattempts' => $allattempts,
         ]);
 
         if (count($cmids) > self::MAX_CMIDS) {
@@ -99,6 +118,10 @@ class get_marks extends external_api {
 
         $course = marks::require_export($courseid);
         self::validate_context(\context_course::instance($course->id));
+
+        if ($allattempts) {
+            attempts::require_export();
+        }
 
         $modinfo = get_fast_modinfo($course->id);
         $students = null;
@@ -128,7 +151,8 @@ class get_marks extends external_api {
             }
 
             $students ??= gradebook::only(gradebook::gradable_users($course->id, true), $usernames);
-            $items[] = self::item($cm, '', (float) $assign->grade, self::describe($cm, $assign, $students));
+            $held = $allattempts && $assign->markingworkflow ? attempts::REASON_WORKFLOW : null;
+            $items[] = self::item($cm, '', (float) $assign->grade, self::describe($cm, $assign, $students, $allattempts), $held);
         }
 
         return ['items' => $items];
@@ -141,15 +165,28 @@ class get_marks extends external_api {
      * @param string $reason empty when the marks can be described
      * @param float $grademax what the assignment is out of
      * @param array[] $marks
+     * @param string|null $attemptsreason why earlier attempts' marks are missing, when every attempt was asked for
      * @return array
      */
-    protected static function item(\cm_info $cm, string $reason, float $grademax, array $marks): array {
-        return [
+    protected static function item(
+        \cm_info $cm,
+        string $reason,
+        float $grademax,
+        array $marks,
+        ?string $attemptsreason = null
+    ): array {
+        $item = [
             'cmid' => (int) $cm->id,
             'reason' => $reason,
             'grademax' => $grademax,
             'marks' => $marks,
         ];
+
+        if ($attemptsreason !== null) {
+            $item['attemptsreason'] = $attemptsreason;
+        }
+
+        return $item;
     }
 
     /**
@@ -158,40 +195,114 @@ class get_marks extends external_api {
      * @param \cm_info $cm
      * @param \stdClass $assign
      * @param \stdClass[] $students user id => user
+     * @param bool $allattempts the mark of every attempt, not only the latest
      * @return array[]
      */
-    protected static function describe(\cm_info $cm, \stdClass $assign, array $students): array {
+    protected static function describe(\cm_info $cm, \stdClass $assign, array $students, bool $allattempts = false): array {
         $context = \context_module::instance($cm->id);
         $described = [];
 
         foreach ($students as $student) {
-            $grade = marks::mark_for($assign, (int) $student->id);
+            if ($allattempts) {
+                $grades = marks::marks_for($assign, (int) $student->id);
+            } else {
+                $grade = marks::mark_for($assign, (int) $student->id);
+                $grades = $grade ? [$grade] : [];
+            }
 
-            if (!$grade) {
+            $entries = [];
+
+            foreach ($grades as $grade) {
+                $entry = self::mark($context, $assign, $grade);
+
+                if ($entry) {
+                    $entries[] = $entry;
+                }
+            }
+
+            if (!$entries) {
                 continue;
             }
 
-            $number = marks::is_marked($grade) ? (float) $grade->grade : null;
-            [$text, $format, $files] = marks::comment($context, (int) $grade->id, (int) $assign->id);
+            // The top level is the latest mark carried, as it always was.
+            $row = ['username' => $student->username] + end($entries);
 
-            // A placeholder row: nothing was given, nothing was said.
-            if ($number === null && $text === null) {
-                continue;
+            if ($allattempts) {
+                $row['attempts'] = $entries;
+                $row['historyfingerprint'] = attempts::history_fingerprint($entries);
             }
 
-            $described[] = [
-                'username' => $student->username,
-                'attemptnumber' => (int) $grade->attemptnumber,
-                'timemodified' => (int) $grade->timemodified,
-                'grade' => $number,
-                'comment' => $text,
-                'commentformat' => $format,
-                'files' => $files,
-                'fingerprint' => marks::fingerprint($number, $text, $format, $files),
-            ];
+            $described[] = $row;
         }
 
         return $described;
+    }
+
+    /**
+     * One mark, as it is described.
+     *
+     * @param \context_module $context
+     * @param \stdClass $assign
+     * @param \stdClass $grade the assign_grades row
+     * @return array|null null for a placeholder row: nothing given, nothing said
+     */
+    protected static function mark(\context_module $context, \stdClass $assign, \stdClass $grade): ?array {
+        $number = marks::is_marked($grade) ? (float) $grade->grade : null;
+        [$text, $format, $files] = marks::comment($context, (int) $grade->id, (int) $assign->id);
+
+        if ($number === null && $text === null) {
+            return null;
+        }
+
+        return [
+            'attemptnumber' => (int) $grade->attemptnumber,
+            'timemodified' => (int) $grade->timemodified,
+            'grade' => $number,
+            'comment' => $text,
+            'commentformat' => $format,
+            'files' => $files,
+            'fingerprint' => marks::fingerprint($number, $text, $format, $files),
+        ];
+    }
+
+    /**
+     * What describes one mark: the same fields at the top of a student's entry
+     * (the latest) and in each of "attempts".
+     *
+     * @return external_value[]|external_multiple_structure[]
+     */
+    protected static function mark_fields(): array {
+        return [
+            'attemptnumber' => new external_value(PARAM_INT, 'Which attempt the mark is for, from 0.'),
+            'timemodified' => new external_value(PARAM_INT, 'When the mark last changed.'),
+            'grade' => new external_value(
+                PARAM_FLOAT,
+                'The mark; null if only a comment was given.',
+                VALUE_REQUIRED,
+                null,
+                NULL_ALLOWED
+            ),
+            'comment' => new external_value(
+                PARAM_RAW,
+                'The written comment, unformatted; null if there is none.',
+                VALUE_REQUIRED,
+                null,
+                NULL_ALLOWED
+            ),
+            'commentformat' => new external_value(PARAM_INT, 'Format of the comment.'),
+            'files' => new external_multiple_structure(
+                new external_single_structure([
+                    'area' => new external_value(PARAM_ALPHANUMEXT, 'Always feedback.'),
+                    'filepath' => new external_value(PARAM_PATH, 'Path within the area.'),
+                    'filename' => new external_value(PARAM_FILE, 'File name.'),
+                    'filesize' => new external_value(PARAM_INT, 'Size in bytes.'),
+                    'contenthash' => new external_value(PARAM_ALPHANUM, 'SHA-1 of the content.'),
+                    'timemodified' => new external_value(PARAM_INT, 'When the file last changed.'),
+                ]),
+                'Files embedded in the comment, in a fixed order.'
+            ),
+            'fingerprint' => new external_value(PARAM_ALPHANUM, 'SHA-1 standing for the whole mark.'),
+        ];
     }
 
     /**
@@ -209,39 +320,28 @@ class get_marks extends external_api {
                         'Empty if described; otherwise team, scale, nograde or notassign, and no marks follow.'
                     ),
                     'grademax' => new external_value(PARAM_FLOAT, 'What the assignment is out of; 0 if not graded in points.'),
+                    'attemptsreason' => new external_value(
+                        PARAM_ALPHA,
+                        'Only when allattempts was asked for: workflowhistory if earlier attempts\' marks were held back.',
+                        VALUE_OPTIONAL
+                    ),
                     'marks' => new external_multiple_structure(
-                        new external_single_structure([
-                            'username' => new external_value(PARAM_RAW, 'The student\'s username.'),
-                            'attemptnumber' => new external_value(PARAM_INT, 'Which attempt the mark is for, from 0.'),
-                            'timemodified' => new external_value(PARAM_INT, 'When the mark last changed.'),
-                            'grade' => new external_value(
-                                PARAM_FLOAT,
-                                'The mark; null if only a comment was given.',
-                                VALUE_REQUIRED,
-                                null,
-                                NULL_ALLOWED
-                            ),
-                            'comment' => new external_value(
-                                PARAM_RAW,
-                                'The written comment, unformatted; null if there is none.',
-                                VALUE_REQUIRED,
-                                null,
-                                NULL_ALLOWED
-                            ),
-                            'commentformat' => new external_value(PARAM_INT, 'Format of the comment.'),
-                            'files' => new external_multiple_structure(
-                                new external_single_structure([
-                                    'area' => new external_value(PARAM_ALPHANUMEXT, 'Always feedback.'),
-                                    'filepath' => new external_value(PARAM_PATH, 'Path within the area.'),
-                                    'filename' => new external_value(PARAM_FILE, 'File name.'),
-                                    'filesize' => new external_value(PARAM_INT, 'Size in bytes.'),
-                                    'contenthash' => new external_value(PARAM_ALPHANUM, 'SHA-1 of the content.'),
-                                    'timemodified' => new external_value(PARAM_INT, 'When the file last changed.'),
-                                ]),
-                                'Files embedded in the comment, in a fixed order.'
-                            ),
-                            'fingerprint' => new external_value(PARAM_ALPHANUM, 'SHA-1 standing for the whole mark.'),
-                        ]),
+                        new external_single_structure(
+                            ['username' => new external_value(PARAM_RAW, 'The student\'s username.')]
+                            + self::mark_fields()
+                            + [
+                                'attempts' => new external_multiple_structure(
+                                    new external_single_structure(self::mark_fields()),
+                                    'The mark of every attempt, oldest first. Only when allattempts was asked for.',
+                                    VALUE_OPTIONAL
+                                ),
+                                'historyfingerprint' => new external_value(
+                                    PARAM_ALPHANUM,
+                                    'SHA-1 standing for all the marks. Only when allattempts was asked for.',
+                                    VALUE_OPTIONAL
+                                ),
+                            ]
+                        ),
                         'The students\' marks. A student with none is left out.'
                     ),
                 ]),

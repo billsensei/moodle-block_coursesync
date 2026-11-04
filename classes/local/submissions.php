@@ -105,6 +105,35 @@ class submissions {
     }
 
     /**
+     * Every attempt a student has handed in, oldest first.
+     *
+     * The one place that decides which attempts can travel when all of them
+     * are asked for: the description and the file function both use it, so a
+     * file can be served only for an attempt that was described. A draft, or
+     * an attempt that was reopened and not yet handed in, is never included.
+     *
+     * @param int $assignid
+     * @param int $userid
+     * @return \stdClass[] attempt number => the assign_submission row
+     */
+    public static function submitted_attempts(int $assignid, int $userid): array {
+        global $DB;
+
+        $rows = $DB->get_records(
+            'assign_submission',
+            ['assignment' => $assignid, 'userid' => $userid, 'groupid' => 0, 'status' => self::STATUS_SUBMITTED],
+            'attemptnumber ASC'
+        );
+        $attempts = [];
+
+        foreach ($rows as $row) {
+            $attempts[(int) $row->attemptnumber] = $row;
+        }
+
+        return $attempts;
+    }
+
+    /**
      * Everything a submission holds that is carried: its text and its files.
      *
      * @param \context_module $context the assignment's context

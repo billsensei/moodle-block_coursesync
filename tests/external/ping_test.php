@@ -17,6 +17,7 @@
 namespace block_coursesync\external;
 
 use advanced_testcase;
+use block_coursesync\local\attempts;
 use core_external\external_api;
 use PHPUnit\Framework\Attributes\CoversClass;
 
@@ -46,6 +47,25 @@ final class ping_test extends advanced_testcase {
         $this->assertSame(ping::major_release($CFG->release), $result['release']);
         $this->assertMatchesRegularExpression('/^\d+\.\d+$/', $result['release']);
         $this->assertGreaterThan(0, $result['pluginversion']);
+    }
+
+    /**
+     * The ping says whether this site shares every assignment attempt, and says
+     * nothing while it does not.
+     */
+    public function test_ping_names_the_features_on_offer(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $features = static fn() => external_api::clean_returnvalue(ping::execute_returns(), ping::execute())['features'];
+
+        $this->assertSame([], $features());
+
+        set_config('allowattemptsexport', 1, 'block_coursesync');
+        $this->assertSame([attempts::FEATURE], $features());
+
+        set_config('allowattemptsexport', 0, 'block_coursesync');
+        $this->assertSame([], $features());
     }
 
     /**

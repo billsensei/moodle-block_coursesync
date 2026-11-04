@@ -68,8 +68,31 @@ class remote_client {
         return ping_result::success(
             clean_param((string) ($data['sitename'] ?? ''), PARAM_TEXT),
             clean_param((string) ($data['release'] ?? ''), PARAM_TEXT),
-            clean_param($data['pluginversion'] ?? 0, PARAM_INT)
+            clean_param($data['pluginversion'] ?? 0, PARAM_INT),
+            self::clean_features($data['features'] ?? [])
         );
+    }
+
+    /**
+     * The feature names a ping reported, kept to plain words.
+     *
+     * @param mixed $features what the remote site sent
+     * @return string[]
+     */
+    protected static function clean_features($features): array {
+        if (!is_array($features)) {
+            return [];
+        }
+
+        $clean = [];
+
+        foreach ($features as $feature) {
+            if (is_string($feature) && $feature === clean_param($feature, PARAM_ALPHANUMEXT) && $feature !== '') {
+                $clean[] = $feature;
+            }
+        }
+
+        return array_values(array_unique($clean));
     }
 
     /**

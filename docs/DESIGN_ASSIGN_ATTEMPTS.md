@@ -140,9 +140,23 @@ Both source functions gain one optional parameter, `allattempts` (bool, default 
 
 **Compatibility trap.** Moodle's `validate_parameters()` *rejects* an unknown parameter, so
 an older source would refuse a call that names `allattempts`. The destination must not send
-it unless the source says it understands it. `ping` already returns `pluginversion`; the
-destination compares it with the build that introduces this and falls back to latest-only
-(with a preview note) for anything older. This should be a test, not an assumption.
+it unless the source says it understands it. **Built in Phase 1 (changed from the first
+draft):** `ping` returns `features`, a list of words, and a source that can describe every
+attempt *and* has its switch on says `attempts1`. The destination asks only if `ping_result::offers('attempts1')`,
+and falls back to latest-only (with a preview note) otherwise. A feature word was chosen over
+comparing `pluginversion` with a build number because it needs no version bump (an unreleased
+build can never become a gate target), and the number in the word (`attempts1`) is the
+shape of `attempts[]`: it changes if that shape does. `grade_pull` already pings at the
+start of a pull, so the destination has a place to check; the check itself is Phase 3.
+
+**Built in Phase 1, wire details.** Each student's entry keeps today's fields (the latest
+attempt carried) and gains optional `attempts[]` and `historyfingerprint`, so the entry is not
+flattened to one row per attempt (the merge keeps a username once per assignment, Phase 96, and
+would drop all but the first). A marking workflow makes `get_marks` answer with the latest
+attempt's mark only and say `attemptsreason: workflowhistory` on the assignment. The file
+functions take `attemptnumber` (-1, the default, is exactly the old behaviour); naming one, even
+the latest, needs the attempts switch. A named attempt must be in `submissions::submitted_attempts()`
+(the same helper the description uses), and a named mark file must be listed in that mark's comment.
 
 `get_submission_file` and `get_mark_file` gain an `attemptnumber` parameter (optional,
 default: the latest, as now) and keep their rule: a file is served only for a submission
@@ -211,11 +225,11 @@ Submissions and marks written here are mod_assign's own rows, deleted by its own
 | Phase | Content |
 | --- | --- |
 | 0 | **Done (Phase 97):** the `untilpass` side effect was real; fixed and tested on 5.0 to 5.3 |
-| 1 | `allattempts` on both source functions, the file functions' `attemptnumber`, source tests, and the `ping` version gate |
+| 1 | **Done (Phase 98):** `allattempts` on both source functions, the file functions' `attemptnumber`, the source-side switch `allowattemptsexport` (moved up from Phase 5: the data must be gated the moment it can be asked for), the `ping` feature word, source tests |
 | 2 | Ledger columns and the index swap, with the upgrade step and its tests |
 | 3 | Submissions: per-attempt classify/write, the `latest` rule, conflict handling |
 | 4 | Marks: per-attempt classify/write, the marking-workflow reason |
-| 5 | Switches, preview grouping, history counts, privacy, docs |
+| 5 | The pull-side switch, preview grouping, history counts, privacy, docs |
 | 6 | Behat (a reopened assignment end to end), then 5.0, 5.1, 5.2 and 5.3, then a real pair of sites |
 
 Each phase is logged in `LEARNFROMME.md` before it is called done.
@@ -243,6 +257,10 @@ Larger than the marks sync: the wire change, a unique-index migration, and rewri
 Phase 0 is small and worth doing regardless of whether the rest goes ahead.
 
 ## Open questions (need a decision before building)
+
+Phase 1 was built on 2026-11-04 taking the recommended answer to questions 3, 5 and 6 (the
+marking workflow reason, the opt-in switch, the existing capabilities). They are cheap to change
+at this stage; the others are still open.
 
 1. ~~Phase 0 first?~~ Done, see above.
 2. **Same-number mapping** (recommended), or append after the destination's own attempts?

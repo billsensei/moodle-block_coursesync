@@ -70,6 +70,19 @@ if ($ADMIN->fulltree) {
     ));
 
     $settings->add(new admin_setting_heading(
+        'block_coursesync/attemptsheading',
+        get_string('settingsattempts', 'block_coursesync'),
+        get_string('settingsattempts_desc', 'block_coursesync')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_coursesync/allowattemptsexport',
+        get_string('allowattemptsexport', 'block_coursesync'),
+        get_string('allowattemptsexport_desc', 'block_coursesync'),
+        0
+    ));
+
+    $settings->add(new admin_setting_heading(
         'block_coursesync/marksheading',
         get_string('settingsmarks', 'block_coursesync'),
         get_string('settingsmarks_desc', 'block_coursesync')

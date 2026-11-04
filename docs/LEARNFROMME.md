@@ -5102,3 +5102,68 @@ covered by the 33 PHPUnit tests in `marks_pull_test`; run it before a release.
   is cut (CHANGES.md and changelog.md are not updated yet).
 
 **Next.** The design note's other open questions are still open; nothing else from it is built. Phase 0 is done.
+
+## Phase 98 - Per-attempt marks, phase 1: the source side (no version bump; still v1.29.1-beta, build 2026110301), 2026-11-04
+
+**Ask.** "Start phase 1" of `docs/DESIGN_ASSIGN_ATTEMPTS.md`: `allattempts` on both describing functions, `attemptnumber` on both
+file functions, source tests, the version gate. The user had not answered the note's open questions; I built on the recommended
+answers to 3 (marking workflow), 5 (opt-in switch) and 6 (reuse the capabilities), and said so in the note and the report.
+An advisor review before coding changed four things, below.
+
+**Built (source side only; nothing on the destination reads `attempts[]` yet).**
+- `get_submissions` and `get_marks`: optional `allattempts` (bool, default false). Each student's entry keeps today's fields (the
+  latest attempt carried) and, when asked, gains `attempts[]` (oldest first, each shaped like the entry) and `historyfingerprint`.
+  `get_marks` adds `attemptsreason: workflowhistory` on an assignment under a marking workflow, where only the latest mark is known to
+  be released (the workflow state is per student, not per attempt), so only it is described.
+- `get_submission_file` and `get_mark_file`: optional `attemptnumber` (-1 = the old behaviour, exactly). A named attempt must be one
+  `submissions::submitted_attempts()` returns (the same helper the description uses), never a draft or a reopened attempt; a named mark
+  must be in `marks::marks_for()`, and its file must be listed in that mark's comment.
+- New helpers: `submissions::submitted_attempts()`, `marks::marks_for()`, `local\attempts` (`FEATURE`, `enabled()`, `require_export()`,
+  `history_fingerprint()`). `marks_for()` is `mark_for()` applied per attempt; a test shows the last of one is the other.
+- **A source-side switch, `allowattemptsexport`** (settings page, two language strings, one error string). The design had the switches
+  in Phase 5, but with the parameter live a site that already shares submissions or marks would answer for every attempt. Every path
+  that names an attempt checks it after the submissions or marks checks, so it cannot be a way round those. The destination's pull
+  switch stays in Phase 5.
+- **`ping` returns `features`**, and says `attempts1` only when the switch is on. `ping_result` has `features` and `offers()`;
+  `remote_client::ping()` keeps only plain words from it, so a source that predates it, or sends junk, offers nothing.
+  **Changed from the design:** the note planned to compare `pluginversion` with a build number. A feature word needs no version bump,
+  so an unreleased build can never become a gate target, and the number in the word is the shape of `attempts[]`. `grade_pull` already
+  pings at the start of a pull and has a version threshold of its own (`MANUAL_MIN_VERSION`); the destination's use of the new word is
+  Phase 3.
+
+**What the advisor changed.** (1) The switch moved into this phase. (2) One shared helper per side, so the file functions cannot drift
+from the descriptions. (3) The answer stays nested with today's fields at the top, because the Phase 96 merge keeps a username once per
+assignment and a flat list would drop every attempt after the first; and the workflow signal is `attemptsreason`. (4) No version bump
+and a feature word for the gate. (5) Multi-attempt states are built from rows (`add_attempt()` is protected): new fixture
+`submission_fixtures::reopen()`; row counts are asserted before content (the Phase 97 lesson); no `gradepass` in source fixtures.
+
+**Tests.** `tests/external/every_attempt_test.php` (19), `ping_test` (+1), `remote_client_test` (+1). They cover: oldest-first order
+and the top-level latest; no trace of history without the parameter or from a caller that omits it (`assertArrayNotHasKey`); a draft,
+a reopened attempt and an empty handed-in attempt not described and not hiding others; the history fingerprint moving when only an
+earlier attempt changes; every attempt's mark, comment and files; an unmarked newer attempt and a draft's mark not described;
+a mark with nothing handed in; the marking workflow reason; `marks_for()` vs `mark_for()`; the switch refusing both functions and
+all four file paths, and not being a way round the submissions or marks switch; named-attempt file reads from the right attempt only,
+never a draft/reopened/missing attempt, never a teacher; a file left behind by an emptied comment; ping features.
+
+**Mutation checks (18, all caught).** Each of the four switch checks removed; the status filter in `submitted_attempts()`; each file
+function ignoring the named attempt; the workflow branch dropped; the listing check for a named mark file; the top level taking the
+first attempt (twice); the history fingerprint ignoring content; ping always empty, and ping ignoring the switch; the workflow reason
+never said; history always given; features not cleaned; a named attempt below -1 allowed. One check that was missing a test (the listing
+check in `get_mark_file`) got one after the mutation list was drawn up: the file's absence in the other attempt's item was already
+refused by `get_file()`, so the check only matters for a file left behind, which is the new test.
+
+**Result.** phplint, phpcs (also with `--max-warnings 0`), phpdoc, validate, savepoints exit 0. PHPUnit, full suite: 701 tests,
+3382 assertions, 1 skipped, identical on 5.0, 5.1, 5.2 and 5.3 (680 before plus 21). **Behat not run**: the only pages touched are the
+admin settings page (one new heading and checkbox); run it before a release.
+
+**Traps.**
+- `reset(marks::marks_for(...))` is a notice ("only variables should be passed by reference"); assign to a variable first. The suite
+  passed with the notice, so run PHPUnit with `--display-notices` after writing a test.
+- A phpcs *warning* does not fail `moodle-plugin-ci phpcs`; the exit code was 0 with a 133-character line. Check with
+  `--max-warnings 0`, and read the file name in the output (I fixed the wrong line first).
+- All 18 new tests passed on the first run. That is why the mutation list was run: a first-time green says nothing about whether the
+  tests can fail.
+
+**Not done.** The destination does not send `allattempts` or read `attempts[]` (Phases 3 and 4). No ledger change (Phase 2). The pull
+switch, the preview and the privacy provider are Phase 5. The `PAIRS_PER_CALL` batch size still counts students, not attempts (noted
+in the design as needing a test once the destination asks for every attempt).

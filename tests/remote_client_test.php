@@ -74,6 +74,40 @@ final class remote_client_test extends advanced_testcase {
     }
 
     /**
+     * The features a source says it offers are kept; a source that predates
+     * them offers none, and nothing odd is let through.
+     */
+    public function test_features_in_a_ping(): void {
+        $this->resetAfterTest();
+
+        $ping = function (array $extra): ping_result {
+            $body = json_encode(['status' => true, 'sitename' => 'S', 'release' => '5.1', 'pluginversion' => 1] + $extra);
+
+            return remote_client::ping(
+                'https://source.example.edu',
+                'abcdef0123456789abcdef0123456789',
+                $this->mock_client(new Response(200, ['Content-Type' => 'application/json'], $body))
+            );
+        };
+
+        $old = $ping([]);
+        $this->assertSame([], $old->features);
+        $this->assertFalse($old->offers('attempts1'));
+
+        $new = $ping(['features' => ['attempts1']]);
+        $this->assertSame(['attempts1'], $new->features);
+        $this->assertTrue($new->offers('attempts1'));
+        $this->assertFalse($new->offers('attempts2'));
+
+        // Not a list, or not plain words: ignored rather than trusted.
+        $this->assertSame([], $ping(['features' => 'attempts1'])->features);
+        $this->assertSame(
+            ['attempts1'],
+            $ping(['features' => ['attempts1', 'attempts1', '<b>x</b>', '', 5, ['a'], 'a b']])->features
+        );
+    }
+
+    /**
      * A 404 means the address points at something other than a Moodle site.
      */
     public function test_404_is_reported_as_wrong_address(): void {

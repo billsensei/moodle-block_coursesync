@@ -39,6 +39,9 @@ class ping_result {
     /** @var int block_coursesync version installed on the remote site. */
     public readonly int $pluginversion;
 
+    /** @var string[] Optional features the remote site says it offers; empty from a source that predates them. */
+    public readonly array $features;
+
     /**
      * Use the success() and failure() factories instead.
      *
@@ -47,19 +50,22 @@ class ping_result {
      * @param string $sitename
      * @param string $release
      * @param int $pluginversion
+     * @param string[] $features
      */
     protected function __construct(
         bool $success,
         ?string $errorkey,
         string $sitename,
         string $release,
-        int $pluginversion
+        int $pluginversion,
+        array $features = []
     ) {
         $this->success = $success;
         $this->errorkey = $errorkey;
         $this->sitename = $sitename;
         $this->release = $release;
         $this->pluginversion = $pluginversion;
+        $this->features = $features;
     }
 
     /**
@@ -68,10 +74,24 @@ class ping_result {
      * @param string $sitename
      * @param string $release
      * @param int $pluginversion
+     * @param string[] $features
      * @return self
      */
-    public static function success(string $sitename, string $release, int $pluginversion): self {
-        return new self(true, null, $sitename, $release, $pluginversion);
+    public static function success(string $sitename, string $release, int $pluginversion, array $features = []): self {
+        return new self(true, null, $sitename, $release, $pluginversion, array_values($features));
+    }
+
+    /**
+     * Does the remote site say it offers a feature?
+     *
+     * False for a source that predates features, and for one whose switch for
+     * it is off: either way the caller must not ask for it.
+     *
+     * @param string $feature
+     * @return bool
+     */
+    public function offers(string $feature): bool {
+        return in_array($feature, $this->features, true);
     }
 
     /**

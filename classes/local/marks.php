@@ -130,6 +130,53 @@ class marks {
     }
 
     /**
+     * The marks that count for a student when every attempt is asked for,
+     * oldest first.
+     *
+     * One for each attempt that is carried (one handed in), or, for a student
+     * who has handed nothing in, their latest grade row - the same rule as
+     * mark_for(), applied to each attempt. Under a marking workflow only the
+     * latest attempt's mark is known to be released (the workflow state is
+     * kept per student, not per attempt), so that is all there is.
+     *
+     * @param \stdClass $assign the assign row (id, markingworkflow)
+     * @param int $userid
+     * @return \stdClass[] attempt number => the assign_grades row
+     */
+    public static function marks_for(\stdClass $assign, int $userid): array {
+        global $DB;
+
+        if ($assign->markingworkflow) {
+            $grade = self::mark_for($assign, $userid);
+
+            return $grade ? [(int) $grade->attemptnumber => $grade] : [];
+        }
+
+        $numbers = array_keys(submissions::submitted_attempts((int) $assign->id, $userid));
+        $by = ['assignment' => $assign->id, 'userid' => $userid];
+
+        if ($numbers) {
+            [$insql, $params] = $DB->get_in_or_equal($numbers, SQL_PARAMS_NAMED);
+            $rows = $DB->get_records_select(
+                'assign_grades',
+                "assignment = :assignment AND userid = :userid AND attemptnumber {$insql}",
+                $by + $params,
+                'attemptnumber ASC'
+            );
+        } else {
+            $rows = $DB->get_records('assign_grades', $by, 'attemptnumber DESC', '*', 0, 1);
+        }
+
+        $marks = [];
+
+        foreach ($rows as $row) {
+            $marks[(int) $row->attemptnumber] = $row;
+        }
+
+        return $marks;
+    }
+
+    /**
      * Is a grade row a mark - a number given - rather than just a placeholder?
      *
      * @param \stdClass $grade the assign_grades row

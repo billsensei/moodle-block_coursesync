@@ -111,6 +111,39 @@ trait submission_fixtures {
     }
 
     /**
+     * A teacher gives a student another go: a new attempt that has not been
+     * handed in, as add_attempt() makes it (that method is protected, so the
+     * rows are made here).
+     *
+     * @param \stdClass $module
+     * @param \stdClass $student
+     * @return int the new attempt's number
+     */
+    protected function reopen(\stdClass $module, \stdClass $student): int {
+        global $DB;
+
+        $by = ['assignment' => $module->id, 'userid' => $student->id, 'groupid' => 0];
+        $next = 1 + (int) $DB->get_field_sql(
+            'SELECT MAX(attemptnumber)
+               FROM {assign_submission}
+              WHERE assignment = :assignment AND userid = :userid AND groupid = 0',
+            $by
+        );
+
+        $DB->set_field('assign_submission', 'latest', 0, ['assignment' => $module->id, 'userid' => $student->id]);
+        $DB->insert_record('assign_submission', (object) ($by + [
+            'timecreated' => time(),
+            'timemodified' => time(),
+            'timestarted' => time(),
+            'status' => 'reopened',
+            'attemptnumber' => $next,
+            'latest' => 1,
+        ]));
+
+        return $next;
+    }
+
+    /**
      * The stored files of a student's submission in one area, by name.
      *
      * @param \stdClass $module

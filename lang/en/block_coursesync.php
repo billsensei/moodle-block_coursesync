@@ -25,6 +25,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['activityfetched'] = 'Fetched {$a}.';
+$string['allowattemptsexport'] = 'Let other sites read every attempt of assignment submissions and marks from this site';
+$string['allowattemptsexport_desc'] = 'When ticked, another site\'s Course Sync can ask not only for the latest attempt each student handed in to an assignment but for every attempt, with the mark and comment each was given. It only works where this site also shares submissions or marks, and only through a sync account that holds the permissions for them. Attempts that were not handed in (drafts, reopened and empty) are never shared. When unticked, only the latest attempt can be read, whatever else is set.';
 $string['allowgradeexport'] = 'Let other sites read grades from this site';
 $string['allowgradeexport_desc'] = 'When ticked, another site\'s Course Sync can read students\' gradebook grades from courses here - but only through a sync account that also holds "Let another site read students\' grades through Course Sync" (block/coursesync:exportgrades), which no role has by default. When unticked, no grades leave this site, whatever permissions are set.';
 $string['allowgradepull'] = 'Let teachers pull grades into this site';
@@ -74,6 +76,7 @@ $string['coursesync:pullmarks'] = 'Pull assignment marks and feedback from the o
 $string['coursesync:pullsubmissions'] = 'Pull students\' assignment submissions from the other site';
 $string['coursesync:sync'] = 'Trigger a course sync';
 $string['erroractivitynotfound'] = 'That activity is no longer on the other site. It may have been deleted since the list was drawn up.';
+$string['errorattemptsexportdisabled'] = 'This site does not share earlier attempts of assignments. An administrator has to tick "Let other sites read every attempt of assignment submissions and marks from this site" first.';
 $string['errorattemptsourceoutdated'] = 'The other site\'s Course Sync is too old to share quiz attempts. It needs v1.19.0 or later there; grades still come across.';
 $string['errorbadremoteurl'] = 'The other site sent an address that is not a usable web address, so the activity was not created.';
 $string['errorbadrequest'] = 'The other site could not make sense of the request. This usually means the two sites are running different versions of Course Sync.';
@@ -346,6 +349,8 @@ $string['remoteurl_help'] = 'The address of the Moodle site that activities will
 
 It must start with https://. Enter the address of the site\'s front page, with nothing after it.';
 $string['remoteurlwizardhint'] = 'Use the setup wizard to enter the token and test the connection.';
+$string['settingsattempts'] = 'Earlier assignment attempts';
+$string['settingsattempts_desc'] = 'By default another site can read only the latest attempt each student handed in to an assignment. This lets it read every attempt as well. Submissions and marks have their own switches and permissions, which still apply.';
 $string['settingsgrades'] = 'Grade sync';
 $string['settingsgrades_desc'] = 'Grade sync moves students\' grades between sites, which copying activities never does. Each direction has its own switch: tick the first on the site grades come from, and the second on the site they go to.';
 $string['settingsmarks'] = 'Assignment marks and feedback';

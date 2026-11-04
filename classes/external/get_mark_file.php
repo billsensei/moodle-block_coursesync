@@ -16,6 +16,7 @@
 
 namespace block_coursesync\external;
 
+use block_coursesync\local\attempts;
 use block_coursesync\local\gradebook;
 use block_coursesync\local\marks;
 use core_external\external_api;
@@ -33,7 +34,10 @@ use core_external\external_value;
  *   - belongs to a student the gradebook lists (never a teacher, never a
  *     suspended enrolment),
  *   - is the mark get_marks would describe for that student (so one that is
- *     not yet released under a marking workflow cannot be read), and
+ *     not yet released under a marking workflow cannot be read) - or, when the
+ *     caller names an attempt, the mark of that attempt as get_marks would
+ *     describe it with allattempts, which also needs the source to share every
+ *     attempt and lists the file in that mark's comment - and
  *   - is in an assignment that is not a team assignment and is graded in points.
  *
  * It sits behind the same switch and permissions as get_marks, so it cannot
@@ -60,6 +64,12 @@ class get_mark_file extends external_api {
             'filename' => new external_value(PARAM_FILE, 'File name.', VALUE_REQUIRED),
             'offset' => new external_value(PARAM_INT, 'Byte to start reading at.', VALUE_DEFAULT, 0),
             'length' => new external_value(PARAM_INT, 'How many bytes to read.', VALUE_DEFAULT, self::MAX_CHUNK),
+            'attemptnumber' => new external_value(
+                PARAM_INT,
+                'The attempt the mark is for; -1 for the latest handed in. Naming one needs the source to share every attempt.',
+                VALUE_DEFAULT,
+                -1
+            ),
         ]);
     }
 
@@ -72,6 +82,7 @@ class get_mark_file extends external_api {
      * @param string $filename
      * @param int $offset
      * @param int $length
+     * @param int $attemptnumber -1 for the mark of the latest attempt handed in
      * @return array
      */
     public static function execute(
@@ -80,7 +91,8 @@ class get_mark_file extends external_api {
         string $filepath,
         string $filename,
         int $offset = 0,
-        int $length = self::MAX_CHUNK
+        int $length = self::MAX_CHUNK,
+        int $attemptnumber = -1
     ): array {
         global $DB;
 
@@ -91,6 +103,7 @@ class get_mark_file extends external_api {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
+            'attemptnumber' => $attemptnumber,
         ] = self::validate_parameters(self::execute_parameters(), [
             'cmid' => $cmid,
             'username' => $username,
@@ -98,13 +111,15 @@ class get_mark_file extends external_api {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
+            'attemptnumber' => $attemptnumber,
         ]);
 
-        if ($offset < 0 || $length < 1) {
+        if ($offset < 0 || $length < 1 || $attemptnumber < -1) {
             throw new \invalid_parameter_exception('offset must not be negative and length must be positive');
         }
 
         $length = min($length, self::MAX_CHUNK);
+        $named = $attemptnumber >= 0;
 
         // Switch and permissions first, so a site that does not share marks
         // answers every caller alike. The course is found from the activity,
@@ -117,6 +132,10 @@ class get_mark_file extends external_api {
 
         $course = marks::require_export((int) $cm->course);
         self::validate_context(\context_course::instance($course->id));
+
+        if ($named) {
+            attempts::require_export();
+        }
 
         $cminfo = get_fast_modinfo($course->id)->get_cm($cm->id);
 
@@ -132,10 +151,30 @@ class get_mark_file extends external_api {
 
         // Only a student the gradebook lists, only the mark that would be described.
         $student = gradebook::student((int) $course->id, $username);
-        $grade = $student ? marks::mark_for($assign, (int) $student->id) : null;
+        $grade = null;
+
+        if ($student) {
+            $grade = $named
+                ? (marks::marks_for($assign, (int) $student->id)[$attemptnumber] ?? null)
+                : marks::mark_for($assign, (int) $student->id);
+        }
 
         if (!$grade) {
             throw new \moodle_exception('errorfilenotallowed', 'block_coursesync');
+        }
+
+        // A named attempt is held to what the description lists for it: the
+        // file must be in that mark's comment, not merely in the area.
+        if ($named) {
+            [, , $listed] = marks::comment(\context_module::instance($cm->id), (int) $grade->id, (int) $assign->id);
+            $described = array_filter(
+                $listed,
+                static fn(array $file) => $file['filepath'] === $filepath && $file['filename'] === $filename
+            );
+
+            if (!$described) {
+                throw new \moodle_exception('errorfilenotfound', 'block_coursesync');
+            }
         }
 
         $file = get_file_storage()->get_file(
