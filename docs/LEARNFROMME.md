@@ -5429,3 +5429,29 @@ session): PHPUnit 764 tests, 3769 assertions, 1 skipped, and Behat 57 scenarios,
 **Not done.** No per-assignment choice (the choice is for the whole pull). No warning on the marks page for the attempt limit (a mark is written
 onto an attempt that exists already, so the limit is not what constrains it). Not tried against a real pair of sites; the batch size is
 unmeasured. Not pushed, tagged or released; no version bump.
+
+## Phase 103 - Release notes for the every-attempt feature (no code; version.php still v1.29.1-beta, build 2026110401), 2026-11-04
+
+**Ask.** "Update the release notes first", before bumping the version and pushing.
+
+**Done.** `CHANGES.md` now holds the notes for the next release and `changelog.md` has the same entry at the top, headed
+**Unreleased (build 2026110401, v1.30.0-beta, 2026-11-04)**. It covers everything unreleased since v1.29.1-beta (tagged 2026-11-03):
+the every-attempt feature (Phases 98-102: two new switches, the optional web service parameters, the `ping` feature word, the
+schema change in Phase 99, the pages), the performance changes (95, 96), the fix for a failing pulled mark adding an attempt (97) and
+the two LOW findings from the security review (94). Phase 93 (a test) was already pushed and is not user-visible.
+
+**Decisions I made, to be confirmed.**
+- **The version number, v1.30.0-beta.** A new feature with a schema change is a minor version here (v1.28.0 and v1.29.0 were), and the
+  build 2026110401 is already in `version.php` from Phase 99. `version.php`'s *release string* is **not** changed yet; it still says
+  v1.29.1-beta. The docs say "a release that has this feature" until the number is confirmed.
+- **The heading says Unreleased** because it is: it becomes a plain `## v1.30.0-beta (build 2026110401, <date>)` when it is tagged. The
+  date is the commit date, as the file says, so it may need changing.
+
+**Corrected.** `changelog.md` still headed v1.29.1-beta and v1.29.0-beta "Unreleased" although both are tagged (2026-11-03 and 2026-11-01).
+Their headings now match the earlier ones. The same slip is easy to repeat: when a version is tagged, take "Unreleased" out of its heading.
+
+**Checked.** Each number in the notes against the code or the logs: the 400 and 100 pairs per call, the 512 MB limit, the 100-attempt cap,
+which pages raise the limits, the test counts (764 PHPUnit, 57 Behat, on 5.0-5.3). One claim was softened: "PostgreSQL 17" became
+"PostgreSQL (17.11 on the main test site)", because the version of the Docker sites' databases was never looked at.
+
+**Not done.** The notes do not say the feature has been tried between two real sites, because it has not; the notes say so.
