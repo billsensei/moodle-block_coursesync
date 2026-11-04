@@ -236,7 +236,7 @@ class mark_writer {
 
         $assignid = (int) $cm->instance;
         $context = \context_module::instance($cm->id);
-        $assign = new \assign($context, $cm, $run->course);
+        $assign = new mark_assign($context, $cm, $run->course);
         $released = false;
         $createdfiles = null;
         $transaction = $DB->start_delegated_transaction();

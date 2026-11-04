@@ -5059,3 +5059,46 @@ preload per assignment. Whether `marks_pull` does the same was not checked. The 
 - A mock source for batching tests has to answer for the usernames in the request and the cmids in the request, or the merge looks
   right while testing nothing; the shared `counting_source()` helper in `remote_client_test.php` does that.
 - Docker sites, Selenium containers and the port 8001 PHP server were stopped afterwards; `coursesync-ci-db` is still up.
+
+## Phase 97 - Phase 0 of the per-attempt design: a failing mark reopened the assignment (no version bump; still v1.29.1-beta, build 2026110301), 2026-11-04
+
+**Ask.** `docs/DESIGN_ASSIGN_ATTEMPTS.md` (drafted the day before) listed one question to settle before any per-attempt work: reading core
+suggested `mark_writer::write()` could add an attempt on the destination. The user said "start phase 0".
+
+**Finding: real, on all four versions.** `assign::update_grade()` ends by calling `reopen_submission_if_required()`. With
+`attemptreopenmethod = untilpass` (what `assign_handler` falls back to, and carries from the source), a pass mark set in the gradebook
+and a grade that fails, it calls `add_attempt()`. A marks pull of a failing mark therefore gave the student a second, `reopened`
+attempt here that the source never described. It also made the pulled mark look missing: `mark_writer::local_grade()` reads the
+**latest** attempt, which was now the new empty one, so the grade (still on attempt 0) was no longer found. That is how the first
+test failure showed itself (`grade_here()` returned null), before I put the attempt count first to see the cause.
+
+**Test first.** `marks_pull_test::test_a_failing_mark_does_not_reopen_the_assignment_here` sets the destination assignment to
+`untilpass` with unlimited attempts and `gradepass = 50`, pulls a mark of 20, then checks there is one `assign_submission` row and
+that the grade is found. It failed with "The pull added an attempt that the source never described. Failed asserting that 2 is
+identical to 1."
+
+**Fix.** New `classes/local/mark_assign.php`: `mark_assign extends \assign`, overriding the protected
+`reopen_submission_if_required()` to return false. `mark_writer::write()` builds that instead of `\assign`. Everything else in
+`update_grade()` is unchanged (the save, the gradebook push, the event). Chosen over the alternatives because it touches no setting
+on the destination, does not depend on `get_instance()` (which returns a cached per-user clone, so changing it in memory would be
+fragile) and leaves the rest of core's behaviour alone. The method signature `($userid, $submission, $addattempt)` is identical in
+5.0, 5.1, 5.2 and 5.3 (checked in the four sources), and `update_grade()` calls it on all four.
+
+**Not covered by the test, deliberately.** A passing mark never reopened anything, so the test does not need a control for it.
+`ASSIGN_ATTEMPT_REOPEN_METHOD_AUTOMATIC` (reopen after every grade) would also have been stopped by the override; it is not tested
+separately. The override is global to the pull: a mark pull never adds an attempt for any reopen method, which is the intent.
+
+**Result.** phplint, phpcs, phpdoc, validate, savepoints exit 0 (5.1). PHPUnit, full suite: 680 tests, 3284 assertions, 1 skipped,
+identical on 5.0, 5.1, 5.2 and 5.3 (679 before plus this test). With the fix undone the new test fails on 5.0, 5.2 and 5.3 as well as
+5.1 (same message). **Behat was not run** for this change: it touches only the writer's choice of class, and the marks feature is
+covered by the 33 PHPUnit tests in `marks_pull_test`; run it before a release.
+
+**Lessons.**
+- A test helper that finds "the latest attempt" can hide a bug by reporting a missing grade. Assert the count of rows first, then the
+  content, so the failure message names the cause.
+- Any call into `update_grade()` can have side effects beyond saving the grade (gradebook push, event, reopen). When a plugin writes
+  through core to "bring a value across", list what else that call does.
+- This is a bug in the shipped marks pull (v1.22.0 onward), not only a design risk. It needs a release note when the next version
+  is cut (CHANGES.md and changelog.md are not updated yet).
+
+**Next.** The design note's other open questions are still open; nothing else from it is built. Phase 0 is done.

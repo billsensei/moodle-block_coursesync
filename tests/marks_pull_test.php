@@ -1018,4 +1018,37 @@ final class marks_pull_test extends advanced_testcase {
             array_unique(array_column($result->entries, 'cmid'))
         );
     }
+
+    /**
+     * A failing mark must not add an attempt here.
+     *
+     * mod_assign's update_grade() reopens the submission when the assignment
+     * is set to reopen until the student passes, a pass mark is set and the
+     * grade just written fails. The source's teacher already decided whether
+     * to give another go; the pull only brings the mark across.
+     */
+    public function test_a_failing_mark_does_not_reopen_the_assignment_here(): void {
+        global $DB;
+
+        $DB->update_record('assign', (object) [
+            'id' => $this->here->id,
+            'attemptreopenmethod' => ASSIGN_ATTEMPT_REOPEN_METHOD_UNTILPASS,
+            'maxattempts' => ASSIGN_UNLIMITED_ATTEMPTS,
+        ]);
+        $item = $this->grade_item_here();
+        $item->gradepass = 50;
+        $item->update();
+
+        $this->mark_there(20, 'Not yet.');
+
+        $entry = $this->only_entry($this->pull());
+
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $this->assertSame(
+            1,
+            $DB->count_records('assign_submission', ['assignment' => $this->here->id, 'userid' => $this->sam->id]),
+            'The pull added an attempt that the source never described.'
+        );
+        $this->assertEquals(20, $this->grade_here()->grade);
+    }
 }
