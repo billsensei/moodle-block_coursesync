@@ -451,6 +451,39 @@ not know about any mark pulled with **Pull grades**, since those are gradebook
 overrides, so it may show the work as ungraded while the gradebook has a grade.
 **Pull marks and feedback** (below) gives it the real grade.
 
+### Every attempt, not only the latest
+
+If a teacher on the other site gave a student another go, the student may have
+handed in more than once. By default only the latest attempt comes across. Where
+your administrator has also allowed pulling every attempt, and the other site
+shares them, the page shows a box - **Include every attempt each student handed
+in, not only the latest** - above the preview. Tick it and press **Update the
+preview**; nothing is written by that. Then each attempt is listed on its own
+line, oldest first, and the counts are of attempts, not students.
+
+- **Each attempt is kept here as the same attempt.** Attempt 2 on the other site
+  is attempt 2 here, and the latest stays the latest. Course Sync does not
+  reopen anything or change the assignment's settings.
+- **Work that is already here comes first.** If a student already has different
+  work for an attempt, it is kept (as above), and the attempts *after* it are
+  left until you have sorted it out, so the two histories are not mixed. The
+  attempts before it still come across.
+- **No gaps.** If an attempt cannot be brought (a file did not arrive intact, or
+  it is over the limit for one pull), that student's later attempts wait for the
+  next pull.
+- **A warning, not a stop.** If this assignment allows fewer attempts than the
+  other site has, the page says so. They are all written; you just cannot give
+  those students another attempt beyond that here.
+- **Latest-only and every-attempt pulls do not mix for one student.** Once a
+  student's attempts have been pulled, pulling only the latest would write the
+  newest over the first, so it leaves that student alone and says why. Pulling
+  every attempt again is always safe, and puts a copy made the old way back to
+  the attempt it really was if nobody has touched it.
+
+If the other site cannot share every attempt (its Course Sync is too old, or its
+administrator has not switched it on), you are told, and a link takes you back to
+the latest-only preview.
+
 ## Pulling assignment marks and feedback
 
 If teachers on the other site marked the work, Course Sync can bring the **mark
@@ -506,9 +539,33 @@ other site: if the teacher there changes it, the next pull updates it here. As
 soon as anyone here touches the mark or the comment, it is yours and later pulls
 leave it alone.
 
+### Every attempt's mark
+
+With the same box ticked on the marks page, the **mark for every attempt** a
+student handed in comes across, each onto the same attempt here, with its
+comment. The preview gains an **Attempt** column.
+
+- **Only onto the right work.** A mark goes onto an attempt only if that attempt
+  is here, and - where the student's submissions were pulled - is the same
+  attempt from the other site. It is never put on a student's own different
+  work, and an attempt that is not here is not made up. Pull the submissions with
+  every attempt first.
+- **Only the newest attempt changes the gradebook.** The gradebook, the
+  student's marking workflow state and a grade sync override are about the
+  student's newest attempt; an earlier attempt's mark is kept as history and
+  touches none of them.
+- **A locked grade stops all of a student's attempts**, not only the newest.
+- **Marking workflow on the other site:** only the newest attempt's mark is known
+  to be released, so earlier ones are not pulled; the page says so once for the
+  assignment.
+- Pulling only the latest mark leaves a student whose attempts were pulled alone,
+  for the same reason as for submissions.
+
 ## Sync history
 
-**View sync history** lists every sync and every grade pull (marked **Grades**),
+**View sync history** lists every sync and every grade pull (marked **Grades**,
+**Submissions** or **Marks**; when every attempt was pulled the counts say "attempts" and are
+of attempts, not students),
 newest first, with a coloured label:
 
 - **Completed** — everything it set out to do

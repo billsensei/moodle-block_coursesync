@@ -809,6 +809,53 @@ student gate on the file function, the scaling, the "changed here is kept" and
 "existing is kept" rules, "removed is not brought back", the lock, the override
 release and the grade-sync skip.
 
+## Every attempt of assignments
+
+Added after v1.29.1-beta (LEARNFROMME phases 97-102; not yet released). Designed in
+[DESIGN_ASSIGN_ATTEMPTS.md](DESIGN_ASSIGN_ATTEMPTS.md), which has the reasoning,
+the rules and what was decided against; this is the map. Off unless both
+`allowattemptsexport` (source) and `allowattemptspull` (destination) are on, on
+top of the submissions and marks switches.
+
+**Source.** `get_submissions` and `get_marks` take `allattempts` (default false:
+the answer is exactly as before). Each student's entry keeps the latest attempt's
+fields and gains `attempts[]` and `historyfingerprint`. `get_submission_file` and
+`get_mark_file` take `attemptnumber` (-1 = as before; naming one needs the
+switch). The describing and file functions share `submissions::submitted_attempts()`
+and `marks::marks_for()` so a file is served only for an attempt that was
+described. `ping` returns `features`, containing `attempts1` while the switch is
+on; `ping_result::offers()` reads it. The word is the shape of `attempts[]`, not
+a release: change it if the shape changes. Never a version comparison.
+
+**Records.** `block_coursesync_submission` and `_mark` are unique per
+(assignid, userid, attemptnumber), `attemptnumber` being the attempt *here*. The
+upgrade (2026110401) backfills it from the submission or grade the record points
+at, re-runnably.
+
+**Destination.** `submission_pull` / `marks_pull` `preview()` / `run()` take
+`$allattempts`. Gates in the engine: the switch, then a ping that must offer
+`attempts1` (refused, never a fallback to the latest). Attempts are written as the
+same number; `submission_writer::keep_one_latest()` leaves exactly one latest. The
+rules are in the design note: the limit where histories part, no gaps after a
+failed attempt (submissions only), the mixing guard (`subreasonattemptsdone` /
+`markreasonattemptsdone`), the pairing rule (a mark only onto work recorded as the
+same source attempt), and that only the newest attempt may release the workflow
+state or a grade sync override. `allattempts` and `attemptnumber` are sent only in
+this mode: an older source refuses parameters it does not know. `*_result::from_response($data, true)` requires
+`attempts[]` and holds it to ascending, unique, at most 100.
+
+**Pages.** `submissions.php` and `marks.php` take `allattempts` (GET to preview,
+carried as a hidden field to confirm); `attempts::choice_form()` is the box,
+offered only where `allowattemptspull` is on. `grade_pull_result::$warnings` carries
+notes that are not outcomes (the too-few-attempts warning); `$everyattempt` makes
+`history::record_grade_pull()` mark each activity `every`, and the history page
+words the counts as attempts.
+
+Tests: `submission_attempts_pull_test`, `marks_attempts_pull_test`,
+`external/every_attempt_test`, `upgrade_test` (rebuilds the old schema and runs the
+real step), the two `*_result_test`s, and the Behat feature
+`assignment_attempts_pull`. Each rule was mutation-checked; the log lists them.
+
 ## Security
 
 The full audit is in [SECURITY.md](SECURITY.md). The parts that constrain how you

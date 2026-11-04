@@ -221,6 +221,24 @@ and files embedded in the comment. Team assignments, scales and assignments with
 no grade are never shared, and under a marking workflow only released marks are.
 Who graded is never shared. Usernames must be the same people on both sites.
 
+## 11. Optional: share every attempt of assignments
+
+Separate from steps 9 and 10, which it needs, and off by default. Only turn it on
+if teachers on the destination should be able to bring across every attempt a
+student handed in, and the mark each was given, not only the latest.
+
+1. *Site administration > Plugins > Blocks > Course Sync*: tick **Let other sites
+   read every attempt of assignment submissions and marks from this site**.
+2. Nothing else: the sync account's `exportsubmissions` and `exportmarks`
+   permissions cover it, and it still needs the submissions and marks switches
+   from steps 9 and 10.
+
+What the destination can then read: **every attempt each named student handed
+in** (never a draft, or an attempt reopened and not handed in), with the mark and
+comment each was given. Under a marking workflow only the newest attempt's mark
+is shared. This site tells the destination it offers this when the test is run,
+so a destination never asks an older version for it.
+
 ## If the test fails
 
 | What the block says | Usually means |

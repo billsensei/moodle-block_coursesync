@@ -193,6 +193,25 @@ mark that is already there. The same warning as for grades applies: check that
 usernames mean the same people on both sites first. Only point grades are
 pulled, and the comments feedback must be switched on for the assignment here.
 
+## Every attempt of assignments
+
+Optional, and **off** until you turn it on, on top of the submissions and marks
+switches above - they still apply. By default another site can read, and a
+teacher can pull, only each student's **latest** attempt. This adds every
+attempt. Each direction has its own switch in the same settings page, under
+*Earlier assignment attempts*:
+
+| Site | Setting | Plus |
+| --- | --- | --- |
+| Source | **Let other sites read every attempt of assignment submissions and marks from this site** | The sync account needs the permissions for submissions and/or marks it already has; there is no extra permission. Drafts and attempts that were reopened but not handed in are never shared. |
+| Destination | **Let teachers pull every attempt of assignment submissions into this site** | Teachers already pulling submissions or marks see a box on those pages. |
+
+**Both sites must run a release that has this**: the
+destination asks the source whether it offers it, and refuses - rather than
+quietly pulling less - if it does not. The upgrade adds an attempt number to the
+records of what was pulled; it fills it in from the work and marks already
+there, so nothing pulled before is lost or pulled twice.
+
 ## Private networks and testing
 
 Course Sync refuses to connect to loopback, link-local or private addresses, so

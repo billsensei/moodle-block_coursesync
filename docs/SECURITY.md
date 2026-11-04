@@ -429,6 +429,41 @@ remove is a **gradebook override that grade sync wrote and nobody has changed**
 override stays (`test_an_override_changed_here_stays`). Grade sync in turn skips a
 student whose mark a marks pull wrote.
 
+## Every attempt of assignments
+
+Added after v1.29.1-beta, not yet released. A student's earlier attempts are more history than the latest attempt, so
+they have **their own switch on each site**, on top of the submissions and marks
+decisions above (which still apply, and are checked first):
+
+- **Source:** `allowattemptsexport`, default off. `allattempts=true` on
+  `get_submissions` / `get_marks`, and `attemptnumber >= 0` on either file
+  function, are refused without it. There is no new capability: the existing
+  export permissions cover it. Tested for each of the four functions, and that it
+  is not a way round the submissions or marks switch.
+- **Which attempts exist** is decided by one helper per side
+  (`submissions::submitted_attempts()`, `marks::marks_for()`), used by the
+  description and by the file functions alike, so a file can be served only for an
+  attempt that was described: never a draft, never a reopened attempt, never a
+  student the gradebook does not list. A named mark file must also be listed in
+  that mark's comment. Under a marking workflow only the newest mark exists.
+- **`ping` reports `attempts1` only while the switch is on**, which tells a token
+  holder one setting they could learn by asking. Nothing else about the site.
+- **Destination:** `allowattemptspull`, default off, checked by the engine, not
+  only the pages, and a source that does not offer it is refused. The pages take
+  `allattempts` as `PARAM_BOOL`; a preview (GET) writes nothing, the write is a
+  POST with `require_sesskey()` as before, and a value forced into the URL still
+  meets the engine's check.
+- **A hostile source:** `attempts[]` is required when asked for, strictly
+  ascending, at most 100 (a longer history is not believed), and every attempt is
+  cleaned as strictly as the latest. A repeated attempt number would be written as
+  two rows, so it is refused.
+- **Nobody's work is overwritten, and a mark is not put on work it was not given
+  for.** Per attempt the old rules hold. A mark goes only onto an attempt that is
+  recorded as pulled from the same source attempt (or, where no submission was
+  pulled, the attempt of that number), and never creates an attempt. A pull of the
+  latest alone cannot overwrite the history of a student whose attempts were
+  pulled.
+
 ## Outgoing requests
 
 A destination site makes server-side requests to whatever address is stored, so

@@ -75,6 +75,24 @@ things worth checking before teachers touch it.
       wins over a grade sync override nobody has changed, and grade sync leaves
       that student alone
 
+**If the pilot includes every attempt of assignments** (optional, needs the two lists above)
+
+- [ ] Both sites are on a release that has this feature: the destination refuses
+      a source that does not offer it
+- [ ] Source: **Let other sites read every attempt of assignment submissions and
+      marks from this site** ticked
+- [ ] Destination: **Let teachers pull every attempt of assignment submissions into
+      this site** ticked; the page then shows **Include every attempt each student
+      handed in, not only the latest**
+- [ ] Pull the **submissions** with every attempt before the **marks**: a mark goes
+      only onto work that is the same attempt from the other site
+- [ ] Decide for each assignment which way to pull and stay with it: a student whose
+      attempts were pulled is left alone by a pull of the latest only
+- [ ] Check the assignment here allows as many attempts as the source (a warning
+      says if not); they are written anyway, but no one here can add another
+- [ ] Try a reopened assignment with two or three attempts first, and read the
+      preview before confirming
+
 ## The encryption key
 
 The token is encrypted with a key created on first use, owned by whichever
