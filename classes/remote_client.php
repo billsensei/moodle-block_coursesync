@@ -593,6 +593,8 @@ class remote_client {
      * @param \core\http_client|null $client injected only by tests
      * @param string[] $usernames the only students wanted (never empty: an
      *      empty list means every student to the source)
+     * @param bool $allattempts ask for every attempt's mark, not only the latest; only of a source whose
+     *      ping offers it
      * @return marks_result
      */
     public static function get_marks(
@@ -601,7 +603,8 @@ class remote_client {
         int $courseid,
         array $cmids,
         ?http_client $client = null,
-        array $usernames = []
+        array $usernames = [],
+        bool $allattempts = false
     ): marks_result {
         // Refused for its own permission, not the grades one; and a source
         // that answers as Course Sync but lacks the function is from before it.
@@ -611,19 +614,25 @@ class remote_client {
         ];
         $answers = [];
 
-        $batches = self::student_batches($cmids, $usernames, external\get_marks::MAX_CMIDS);
+        $batches = self::student_batches(
+            $cmids,
+            $usernames,
+            external\get_marks::MAX_CMIDS,
+            $allattempts ? self::ATTEMPT_PAIRS_PER_CALL : self::PAIRS_PER_CALL
+        );
 
         foreach ($batches as [$batch, $names]) {
+            // The allattempts parameter goes only when it is wanted, as for submissions.
             $outcome = self::call_for_students($baseurl, $token, 'block_coursesync_get_marks', [
                 'courseid' => $courseid,
                 'cmids' => $batch,
-            ], $names, $client);
+            ] + ($allattempts ? ['allattempts' => 1] : []), $names, $client);
 
             if ($outcome['errorkey'] !== null) {
                 return marks_result::failure($translate[$outcome['errorkey']] ?? $outcome['errorkey']);
             }
 
-            $answer = marks_result::from_response($outcome['data']);
+            $answer = marks_result::from_response($outcome['data'], $allattempts);
 
             if (!$answer->success) {
                 return $answer;
@@ -647,6 +656,8 @@ class remote_client {
      * @param int $offset byte to start at
      * @param int $length how many bytes to ask for
      * @param \core\http_client|null $client injected only by tests
+     * @param int|null $attemptnumber the attempt whose comment holds the file; null for the latest, and then
+     *      nothing is sent
      * @return file_chunk
      */
     public static function get_mark_file(
@@ -658,8 +669,10 @@ class remote_client {
         string $filename,
         int $offset,
         int $length,
-        ?http_client $client = null
+        ?http_client $client = null,
+        ?int $attemptnumber = null
     ): file_chunk {
+        // The attempt goes only when one is named, so an older source is never refused.
         $outcome = self::call($baseurl, $token, 'block_coursesync_get_mark_file', [
             'cmid' => $cmid,
             'username' => $username,
@@ -667,7 +680,7 @@ class remote_client {
             'filename' => $filename,
             'offset' => $offset,
             'length' => $length,
-        ], $client);
+        ] + ($attemptnumber === null ? [] : ['attemptnumber' => $attemptnumber]), $client);
 
         if ($outcome['errorkey'] !== null) {
             return file_chunk::failure($outcome['errorkey']);

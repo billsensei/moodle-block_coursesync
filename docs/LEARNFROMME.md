@@ -5297,3 +5297,76 @@ damaged, but changes to that mark stop coming. **Phase 3 must not be released wi
 attempt, and the history counts entries. `maxattempts` lower than the number of attempts is written anyway, with no warning yet. Not
 tried against a real pair of sites; the batch size is unmeasured. A limit at *m* when the source has no attempt *m* but some above it
 leaves those attempts (noted in the design).
+
+## Phase 101 - Per-attempt marks, phase 4: pulling every attempt's mark (build 2026110401; release still v1.29.1-beta), 2026-11-04
+
+**Ask.** "Start phase 4" of `docs/DESIGN_ASSIGN_ATTEMPTS.md`: the destination side for marks - per-attempt classify and write, and the
+marking-workflow reason. Phase 100 had ended with a warning that Phase 3 must not be released without this. An advisor review before
+coding made four blocking points; all are in the build.
+
+**Built.** `marks_pull::preview/run(..., bool $allattempts = false)`; no page passes `true` yet (Phase 5).
+- **Gates and wire** as for submissions: `allowattemptspull`, the ping offering `attempts1` (refused, not cut down), `allattempts` and
+  `attemptnumber` sent only when asked, `ATTEMPT_PAIRS_PER_CALL` pairs per call. `marks_result::from_response($data, $allattempts)` requires
+  `attempts[]` when asked, strictly ascending with no repeats, at most 100, each held to what the latest mark is; `attemptsreason` is kept
+  only if it is `workflowhistory`. The fake source now passes the new parameters through for marks and mark files (Phase 3 had done only the
+  submission pair).
+- **Each mark on the same attempt.** `mark_writer::write(..., $allattempts)` uses `get_user_grade($userid, true, $n)`. I read in core that this
+  calls `get_user_submission(..., true, $n)`, which creates a submission row if there is none at *n* (an existing row comes back
+  unchanged). So the engine only writes where attempt *n* exists here as `submitted` or `draft`; the exception is a student with no work
+  here at all, who is marked at attempt 0 as before.
+- **Pairing.** If the student has submission records here, a mark goes only onto an attempt recorded as pulled from that same source
+  attempt, and the record must point at the row that is there now (`markreasonmismatch`). That keeps a mark off the student's own
+  different work, off a latest-only copy, and off a row that replaced what was pulled. Without any submission records, pairing is by number
+  alone, as it always was for the latest. Documented in the design note, including the limit that a submissions pull which wrote nothing
+  looks the same as one that never ran.
+- **Per-student state only for the newest attempt (advisor point 1).** `update_grade()` keeps an earlier attempt out of the gradebook, but
+  `mark_writer::write()` also released the workflow state and took away a grade sync's override: both are about the student, not the
+  attempt. Both, and the preview's "released" line, now happen only when the attempt written is the newest *here* (from the rows here, not
+  the source's numbering). Writing is oldest first.
+- **The latest-only guard.** A latest-only marks pull now leaves a student alone (`markreasonattemptsdone`) with several mark records, or
+  any submission record above attempt 0 - the exact case traced at the end of Phase 3. The guard is before the lookup of the record, which
+  can now find several rows (advisor point 2); the traced scenario is a real test, not a scratch one.
+- **Decisions the advisor left to me.** The gradebook lock is checked for every attempt, not only the newest: an earlier write would not
+  touch the gradebook, but a locked grade means nobody wants it changed, and the cost is a skipped history. A mark that fails leaves
+  no hole, so there is no hold-back (a failed file on attempt 1 does not stop attempt 2: tested). The assignment-level note for a source
+  marking workflow does not stop the students being worked through; the history counts it as one skipped entry per assignment, as it
+  counts every whole-assignment reason.
+
+**Tests.** `tests/marks_attempts_pull_test.php` (21), `tests/marks_result_test.php` (6); the batching test in `remote_client_test` now
+covers marks as well as submissions. The 34 existing `marks_pull_test` tests pass unchanged (advisor: the regression check). Every pull test
+asserts the student's submission row count and that exactly one row is latest. They cover: three marks arriving on attempts 0, 1, 2 with
+comments and files, a record each, the gradebook showing only the newest; a preview writing nothing; files asked for by attempt; a second
+pull all "same"; a change to an earlier mark updating it while the gradebook does not move; a mark changed here kept; an earlier mark
+leaving a grade-sync override and the workflow state alone, and the newest mark then releasing both (preview and pull); no attempt made up
+for a mark; a student with no work marked at attempt 0 only; a latest-only copy of the work, the student's own work, and a replaced row not
+being marked; the latest-only guard from both of its causes (the traced scenario, and several marks with no submission ever pulled); a
+latest-only copy mended; a source marking workflow; a failed file not holding back the others; the lock stopping every attempt; the two
+switches and a failing ping; and a latest-only pull sending nothing about attempts.
+
+**Mutation checks (24, all caught).** Pairing: no attempt made up when there is no work, an attempt that need not exist, any work will do,
+the same row not required, another attempt will do. The guard's two causes. The record not kept per attempt; an earlier attempt looked up as
+the latest. The preview counting an earlier mark as releasing; the writer releasing the workflow and the override for an earlier mark. The
+workflow note not made. The two switches, the offer and the ping. Writing to the latest attempt; the file not asked for by attempt;
+`allattempts` and `attemptnumber` always sent. The list not required, a repeat believed, an endless history believed, any reason kept.
+**Three survived the first time, and each was a missing test, not a missing check:** the new test for the row-identity comparison had never
+been added (my edit script asserted on an anchor that was not in the file and stopped without writing - twice; read the failure of the
+script, not just the test run after it), the "several marks" guard was hidden by the "later work" guard in the same test, and the preview's
+override line was never checked for an earlier mark. All three now have tests.
+
+**Result.** phplint, phpcs (`--max-warnings 0`), phpdoc, validate, savepoints exit 0. PHPUnit, full suite: 759 tests, 3724 assertions,
+1 skipped, identical on 5.0, 5.1, 5.2 and 5.3 (732 before plus 27). **Behat not run**: no page changed.
+
+**Traps.**
+- An entry's `attempt` is the *source's* attempt number, not where it was written: a latest-only mark for source attempt 2 written to
+  local attempt 0 is reported under 2. Two of my expectations had it wrong.
+- A script that edits a test file by `str.replace` after an `assert anchor in s` fails silently if its output is not read - the next
+  command (the test run) still ran, on the old file. Check that "written" was printed.
+- `ping`, `get_marks` and `get_mark_file` in the fake source each need the new parameters passed through; a fake that drops them makes
+  every-attempt tests pass or fail for the wrong reason.
+
+**Not done.** No page, preview grouping or history count (Phase 5). Not tried against a real pair of sites; the batch size is unmeasured.
+The latest-only marks pull now makes two more queries per student (the guard), and the every-attempt pull reads a student's rows and
+records once - the per-student queries of the parked Finding 4 are not made better or much worse. After the *destination's own* teacher
+reopens an assignment, a latest-only marks pull still reports a mark it pulled as "removed here" (as v1.22.0 did): not about this
+feature, left. **With Phases 3 and 4 both built, the feature is complete in code but reachable only from code**; Phase 5 adds the pages. It
+should not be released before Phase 5, and a release needs `CHANGES.md` and `changelog.md` to say so, along with the Phase 97 fix.

@@ -16,6 +16,7 @@
 
 namespace block_coursesync;
 
+use block_coursesync\local\attempts;
 use block_coursesync\local\mark_writer;
 use block_coursesync\local\marks;
 use core\http_client;
@@ -34,6 +35,15 @@ use core\http_client;
  * wrote it and nobody has touched it since. Anything else is flagged and left
  * exactly as it is.
  *
+ * Or, when every attempt is asked for (and both sites have agreed to share
+ * them), the mark of each attempt a student handed in, put on the same attempt
+ * here. A mark goes only onto work that is recorded as that same attempt from
+ * the other site (or, for a student whose submissions were never pulled, onto
+ * the attempt of that number): grading a student's own different work with a
+ * teacher's mark for something else would be worse than leaving it. Only the
+ * newest attempt's mark can change the gradebook, the workflow state or a grade
+ * sync's override; an earlier one is history.
+ *
  * It is written through mod_assign's own grade update, so the grader screen
  * and the gradebook agree. That is also why this takes over from grade sync
  * for an assignment: a grade that grade sync wrote as a gradebook override,
@@ -48,6 +58,9 @@ class marks_pull {
     /** @var int Most file bytes one pull brings; the rest wait for the next pull. */
     public const RUN_BYTES = 536870912;
 
+    /** @var string[] Why a pull was never allowed to begin, which is not a pull that happened. */
+    protected const NOT_ALLOWED = ['errornomarkspullpermission', 'errormarkspulloff', 'errorattemptspulloff'];
+
     /**
      * Show what a pull would do, writing nothing.
      *
@@ -55,15 +68,17 @@ class marks_pull {
      * @param int $courseid the destination course
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
+     * @param bool $allattempts the mark of every attempt, not only the latest
      * @return grade_pull_result
      */
     public static function preview(
         int $blockinstanceid,
         int $courseid,
         ?http_client $client = null,
-        ?array $only = null
+        ?array $only = null,
+        bool $allattempts = false
     ): grade_pull_result {
-        $result = self::pull($blockinstanceid, $courseid, false, $client, $only);
+        $result = self::pull($blockinstanceid, $courseid, false, $client, $only, $allattempts);
         $result->preview = true;
 
         return $result;
@@ -80,13 +95,15 @@ class marks_pull {
      * @param int $courseid the destination course
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
+     * @param bool $allattempts the mark of every attempt, not only the latest
      * @return grade_pull_result
      */
     public static function run(
         int $blockinstanceid,
         int $courseid,
         ?http_client $client = null,
-        ?array $only = null
+        ?array $only = null,
+        bool $allattempts = false
     ): grade_pull_result {
         global $USER;
 
@@ -98,7 +115,7 @@ class marks_pull {
             $result = grade_pull_result::failure('errorsyncinprogress');
         } else {
             try {
-                $result = self::pull($blockinstanceid, $courseid, true, $client, $only);
+                $result = self::pull($blockinstanceid, $courseid, true, $client, $only, $allattempts);
             } finally {
                 $lock->release();
             }
@@ -106,7 +123,7 @@ class marks_pull {
 
         // Written down whatever happened - but not when pulling was never
         // allowed to begin: that is not a pull that happened.
-        if (!in_array($result->errorkey, ['errornomarkspullpermission', 'errormarkspulloff'], true)) {
+        if (!in_array($result->errorkey, self::NOT_ALLOWED, true)) {
             history::record_grade_pull(
                 $blockinstanceid,
                 $courseid,
@@ -127,11 +144,16 @@ class marks_pull {
      * preview counts: it shows other people's marks from the other site.
      *
      * @param int $courseid
+     * @param bool $allattempts every attempt is being asked for, which has a switch of its own
      * @return string|null language string identifier, or null if allowed
      */
-    public static function check_allowed(int $courseid): ?string {
+    public static function check_allowed(int $courseid, bool $allattempts = false): ?string {
         if (!get_config('block_coursesync', 'allowmarkspull')) {
             return 'errormarkspulloff';
+        }
+
+        if ($allattempts && !get_config('block_coursesync', 'allowattemptspull')) {
+            return 'errorattemptspulloff';
         }
 
         // The marks are written as if the person pulling had given them, so
@@ -165,6 +187,7 @@ class marks_pull {
      * @param bool $write false for a preview
      * @param http_client|null $client
      * @param int[]|null $only remote course module ids to cover; null means every copied assignment
+     * @param bool $allattempts the mark of every attempt, not only the latest
      * @return grade_pull_result
      */
     protected static function pull(
@@ -172,9 +195,10 @@ class marks_pull {
         int $courseid,
         bool $write,
         ?http_client $client,
-        ?array $only = null
+        ?array $only = null,
+        bool $allattempts = false
     ): grade_pull_result {
-        $notallowed = self::check_allowed($courseid);
+        $notallowed = self::check_allowed($courseid, $allattempts);
 
         if ($notallowed !== null) {
             return grade_pull_result::failure($notallowed);
@@ -221,13 +245,28 @@ class marks_pull {
             return $result;
         }
 
+        // Every attempt is asked for only of a source that says it can give
+        // them (see submission_pull): refused, not quietly cut down to the latest.
+        if ($allattempts) {
+            $ping = remote_client::ping($record->remoteurl, $token, $client);
+
+            if (!$ping->success) {
+                return grade_pull_result::failure($ping->errorkey);
+            }
+
+            if (!$ping->offers(attempts::FEATURE)) {
+                return grade_pull_result::failure('errorattemptssourceunable');
+            }
+        }
+
         $found = remote_client::get_marks(
             $record->remoteurl,
             $token,
             (int) $record->remotecourseid,
             array_keys($copies),
             $client,
-            array_map('strval', array_keys($students))
+            array_map('strval', array_keys($students)),
+            $allattempts
         );
 
         if (!$found->success) {
@@ -249,6 +288,7 @@ class marks_pull {
             'record' => $record,
             'token' => $token,
             'client' => $client,
+            'allattempts' => $allattempts,
         ];
 
         foreach ($copies as $remotecmid => $cm) {
@@ -260,12 +300,23 @@ class marks_pull {
                 continue;
             }
 
+            // Said once for the assignment; the students are still worked through.
+            if ($allattempts && $item->attemptsreason !== '') {
+                $result->add(self::entry($cm, null, grade_pull_result::SKIPPED, 'markreason' . $item->attemptsreason));
+            }
+
             foreach ($item->marks as $mark) {
                 $student = $students[$mark->username] ?? null;
 
                 // Not a student here, or out of this teacher's reach: not
                 // previewed, not written, not mentioned.
-                if ($student) {
+                if (!$student) {
+                    continue;
+                }
+
+                if ($allattempts) {
+                    self::pull_attempt_marks($result, $run, $cm, $remotecmid, $item, $mark, $student);
+                } else {
                     self::pull_mark($result, $run, $cm, $remotecmid, $item, $mark, $student);
                 }
             }
@@ -320,8 +371,10 @@ class marks_pull {
      * @param \cm_info $cm the copy here
      * @param int $remotecmid
      * @param \stdClass $item what the source said about the assignment
-     * @param \stdClass $mark what the source described
+     * @param \stdClass $mark what the source described (one attempt's, when every attempt is pulled)
      * @param \stdClass $student the student here
+     * @param \stdClass|null $each with every attempt: what is here for this student, read once (see
+     *      pull_attempt_marks); null for the latest alone
      * @return void
      */
     protected static function pull_mark(
@@ -331,7 +384,8 @@ class marks_pull {
         int $remotecmid,
         \stdClass $item,
         \stdClass $mark,
-        \stdClass $student
+        \stdClass $student,
+        ?\stdClass $each = null
     ): void {
         global $DB;
 
@@ -339,13 +393,28 @@ class marks_pull {
         $context = \context_module::instance($cm->id);
         $assign = $DB->get_record('assign', ['id' => $assignid], 'id, grade', MUST_EXIST);
         $incoming = $mark->grade === null ? null : marks::convert($mark->grade, $item->grademax, (float) $assign->grade);
-        $local = mark_writer::local_grade($assignid, (int) $student->id);
+        $number = (int) $mark->attemptnumber;
+        $local = $each
+            ? mark_writer::local_grade_at($assignid, (int) $student->id, $number)
+            : mark_writer::local_grade($assignid, (int) $student->id);
         $entry = self::entry($cm, $student, grade_pull_result::SKIPPED, null);
-        $entry->attempt = $mark->attemptnumber;
+        $entry->attempt = $number;
         $entry->files = count($mark->files);
         $entry->grade = $incoming;
         $entry->localgrade = $local && marks::is_marked($local) ? (float) $local->grade : null;
         $result->add($entry);
+
+        if ($each) {
+            $unpaired = self::pairing_problem($each, $number);
+        } else {
+            $unpaired = self::mixing_problem($assignid, (int) $student->id);
+        }
+
+        if ($unpaired !== null) {
+            $entry->reason = $unpaired;
+
+            return;
+        }
 
         // Whatever the source claims, a mark outside what this assignment can
         // hold is not written: the gradebook would carry a grade above its
@@ -371,7 +440,9 @@ class marks_pull {
             return;
         }
 
-        $ledger = $DB->get_record('block_coursesync_mark', ['assignid' => $assignid, 'userid' => $student->id]);
+        $ledger = $each
+            ? ($each->ledgers[$number] ?? false)
+            : $DB->get_record('block_coursesync_mark', ['assignid' => $assignid, 'userid' => $student->id]);
         [$outcome, $reason] = self::classify($mark, $incoming, $ledger, $local, $context, $assignid);
         $entry->outcome = $outcome;
         $entry->reason = $reason;
@@ -391,16 +462,28 @@ class marks_pull {
         }
 
         $run->budget -= $bytes;
-        $released = $incoming !== null && mark_writer::releasable_override($run->course, $assignid, (int) $student->id) !== null;
+        $isnewest = !$each || $each->newest === null || $number >= $each->newest;
+        $released = $isnewest && $incoming !== null
+            && mark_writer::releasable_override($run->course, $assignid, (int) $student->id) !== null;
 
         if ($run->write) {
             try {
                 // Everything is fetched before anything here changes, so a
                 // transfer that fails leaves the student exactly as they were.
-                $paths = mark_writer::fetch_files($run->record, $run->token, $remotecmid, $mark, $run->client);
+                $paths = mark_writer::fetch_files($run->record, $run->token, $remotecmid, $mark, $run->client, $run->allattempts);
 
                 try {
-                    $released = mark_writer::write($run, $cm, $mark, $incoming, $student, $remotecmid, $ledger, $paths);
+                    $released = mark_writer::write(
+                        $run,
+                        $cm,
+                        $mark,
+                        $incoming,
+                        $student,
+                        $remotecmid,
+                        $ledger,
+                        $paths,
+                        $run->allattempts
+                    );
                 } finally {
                     foreach ($paths as $path) {
                         @unlink($path);
@@ -421,6 +504,124 @@ class marks_pull {
         if ($released) {
             $result->add(self::entry($cm, $student, grade_pull_result::RELEASED, null));
         }
+    }
+
+    /**
+     * Each attempt's mark for one student, oldest first, every one decided on its own.
+     *
+     * What is here for the student is read once: their attempts, the records
+     * of the submissions pulled, and the records of the marks pulled. Writing
+     * goes oldest first, so what the newest attempt does to the gradebook
+     * happens last. A mark that cannot be brought leaves no hole to guard
+     * against, as a missing attempt would: the others carry on.
+     *
+     * @param grade_pull_result $result
+     * @param \stdClass $run what the whole pull shares
+     * @param \cm_info $cm the copy here
+     * @param int $remotecmid
+     * @param \stdClass $item what the source said about the assignment
+     * @param \stdClass $mark what the source described, with its attempts
+     * @param \stdClass $student the student here
+     * @return void
+     */
+    protected static function pull_attempt_marks(
+        grade_pull_result $result,
+        \stdClass $run,
+        \cm_info $cm,
+        int $remotecmid,
+        \stdClass $item,
+        \stdClass $mark,
+        \stdClass $student
+    ): void {
+        global $DB;
+
+        $by = ['assignid' => (int) $cm->instance, 'userid' => (int) $student->id];
+        $each = (object) ['locals' => [], 'subledgers' => [], 'ledgers' => [], 'newest' => null];
+
+        foreach (
+            $DB->get_records(
+                'assign_submission',
+                ['assignment' => $by['assignid'], 'userid' => $by['userid'], 'groupid' => 0],
+                'attemptnumber ASC'
+            ) as $row
+        ) {
+            $each->locals[(int) $row->attemptnumber] = $row;
+        }
+
+        foreach ($DB->get_records('block_coursesync_submission', $by) as $record) {
+            $each->subledgers[(int) $record->attemptnumber] = $record;
+        }
+
+        foreach ($DB->get_records('block_coursesync_mark', $by) as $record) {
+            $each->ledgers[(int) $record->attemptnumber] = $record;
+        }
+
+        $each->newest = $each->locals ? max(array_keys($each->locals)) : null;
+
+        foreach ($mark->attempts as $attempt) {
+            self::pull_mark($result, $run, $cm, $remotecmid, $item, $attempt, $student, $each);
+        }
+    }
+
+    /**
+     * Why a mark for one attempt cannot go onto the work here, if it cannot.
+     *
+     * A student with no work here at all is marked at attempt 0, as a teacher
+     * marking someone who handed nothing in does. Otherwise the attempt must
+     * be here. And if the student's submissions were pulled, it must be
+     * recorded as that same attempt from the other site: the student's own
+     * work, or another attempt's, is not what the mark was given for.
+     *
+     * @param \stdClass $each what is here for the student (see pull_attempt_marks)
+     * @param int $number the attempt the mark is for
+     * @return string|null language string identifier, or null if it can go
+     */
+    protected static function pairing_problem(\stdClass $each, int $number): ?string {
+        if (!$each->locals) {
+            return $number === 0 ? null : 'markreasonnoattempt';
+        }
+
+        $row = $each->locals[$number] ?? null;
+
+        if (!$row || !in_array($row->status, ['submitted', 'draft'], true)) {
+            return 'markreasonnoattempt';
+        }
+
+        if ($each->subledgers) {
+            $pulled = $each->subledgers[$number] ?? null;
+
+            if (!$pulled || (int) $pulled->remoteattempt !== $number || (int) $pulled->submissionid !== (int) $row->id) {
+                return 'markreasonmismatch';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Why the latest alone cannot be pulled for this student, if it cannot.
+     *
+     * A pull of the latest puts the mark where the student's latest attempt is
+     * here. For a student whose marks were pulled for several attempts, or
+     * whose submissions were, that is the wrong attempt - or no attempt that
+     * had it - and the mark it already pulled would be reported as removed.
+     *
+     * @param int $assignid
+     * @param int $userid
+     * @return string|null language string identifier, or null if the latest can be pulled
+     */
+    protected static function mixing_problem(int $assignid, int $userid): ?string {
+        global $DB;
+
+        $by = ['assignid' => $assignid, 'userid' => $userid];
+        $severalmarks = $DB->count_records('block_coursesync_mark', $by) > 1;
+        $laterwork = $DB->record_exists_select(
+            'block_coursesync_submission',
+            'assignid = :assignid AND userid = :userid AND attemptnumber > 0',
+            $by
+        );
+
+        return $severalmarks || $laterwork ? 'markreasonattemptsdone' : null;
     }
 
     /**

@@ -135,7 +135,8 @@ trait source_on_this_site {
             return get_marks::execute(
                 (int) $params['courseid'],
                 array_map('intval', $params['cmids'] ?? []),
-                (string) ($params['usernames'] ?? '')
+                (string) ($params['usernames'] ?? ''),
+                !empty($params['allattempts'])
             );
         }
 
@@ -146,7 +147,8 @@ trait source_on_this_site {
                 (string) $params['filepath'],
                 (string) $params['filename'],
                 (int) $params['offset'],
-                (int) $params['length']
+                (int) $params['length'],
+                isset($params['attemptnumber']) ? (int) $params['attemptnumber'] : -1
             );
         }
 

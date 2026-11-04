@@ -247,6 +247,52 @@ latest-only marks pull no longer finds the mark it pulled before (it is on attem
 "removed here", so changes to it stop coming. Nothing is damaged, but Phase 3 must not be released
 without Phase 4.
 
+## Built in Phase 4 (marks, destination side)
+
+Entry point: `marks_pull::preview/run(..., $only, bool $allattempts = false)`; the gates are the same as for
+submissions (`allowattemptspull`, the ping offering `attempts1`, a refusal and not a fallback).
+
+- **What a mark is put on.** The grade row of the attempt with the same number, written with
+  `get_user_grade($userid, true, $n)`. That call creates a submission row if there is none at *n*, so it is
+  only made when attempt *n* exists here as `submitted` or `draft`. The one exception is today's case: a
+  student with no work here at all is marked at attempt 0, and only there.
+- **Pairing, tighter than "attempt *n* exists".** If the student has submission records here (their
+  submissions were pulled), a mark goes only onto an attempt recorded as pulled from that same source
+  attempt - same number, and the record points at the row that is there now (`markreasonmismatch`
+  otherwise). That keeps a mark off the student's own different work, off a latest-only copy (the newest
+  attempt written as attempt 0), and off a row that replaced what was pulled. If the student has no
+  submission records, pairing is by number alone, as it always was for the latest. *Limit:* a pull of
+  submissions that wrote nothing (everything conflicted) leaves no records, so it cannot be told from one
+  that never ran.
+- **An earlier attempt's mark is history.** `update_grade()` already keeps it out of the gradebook, but the
+  writer also released the workflow state (per student) and took away a grade sync's override; both now
+  happen only when the attempt written is the student's newest *here* (decided from the rows here, not from
+  the source's numbering) - in the write and in the preview's "released" line. Writing is oldest first, so the
+  newest attempt's effect on the gradebook comes last.
+- **The gradebook lock** is checked for every attempt, not only the newest. Writing an earlier attempt would
+  not touch the gradebook, but a locked grade means nobody wants this student's grade changed; the cautious
+  choice costs only a skipped history.
+- **No hold-back.** Unlike submissions, a mark that fails leaves no hole (a grade row is independent of the
+  others), so the other attempts carry on.
+- **The two ways of pulling.** A latest-only marks pull puts the mark where the student's latest attempt is
+  *here*. It now leaves a student alone (`markreasonattemptsdone`) when they have more than one mark record,
+  or any submission record above attempt 0 - the case found at the end of Phase 3, where the mark it had
+  pulled was reported as "removed here". The check is before the lookup of the record, which may now find
+  several rows. An every-attempt pull mends an untouched latest-only copy: the record says `remoteattempt` 2 at
+  attempt 0, the mark for attempt 0 differs, so it is updated.
+- **Marking workflow on the source.** Only the newest attempt's mark comes (see Phase 1). The destination adds
+  one note for the assignment (`markreasonworkflowhistory`) and still works through the students. The history
+  counts it as one skipped entry for the assignment, as it counts every whole-assignment reason.
+- **On the wire.** As for submissions: the new parameters go only in every-attempt mode (`allattempts`,
+  `attemptnumber`), calls hold at most `ATTEMPT_PAIRS_PER_CALL` pairs, and `attempts[]` is required for every
+  student, strictly ascending, at most 100, with each mark held to what the latest one is (a finite number
+  or none). `attemptsreason` is kept only if it is `workflowhistory`.
+
+**Not changed (and found on the way).** After the *destination's own* teacher reopens an assignment, a
+latest-only marks pull still reports a mark it pulled before as "removed here" (the record is at the old
+attempt, the latest has no grade). That is how v1.22.0 behaved and it is not about this feature, so it is
+left; the new guard only covers students whose attempts were pulled.
+
 ## Privacy and lifecycle
 
 No new table, so no new declaration, but the two ledger tables gain a column that the
@@ -275,7 +321,7 @@ Submissions and marks written here are mod_assign's own rows, deleted by its own
 | 1 | **Done (Phase 98):** `allattempts` on both source functions, the file functions' `attemptnumber`, the source-side switch `allowattemptsexport` (moved up from Phase 5: the data must be gated the moment it can be asked for), the `ping` feature word, source tests |
 | 2 | **Done (Phase 99):** ledger column `attemptnumber` and the index swap, with the upgrade step and its tests; build 2026110401 |
 | 3 | **Done (Phase 100):** submissions: per-attempt classify/write, the `latest` rule, conflict handling, the engine's pull-side switch and the ping gate. Reachable from code only; no page offers it yet |
-| 4 | Marks: per-attempt classify/write, the marking-workflow reason |
+| 4 | **Done (Phase 101):** marks: per-attempt classify/write, the marking-workflow reason, the pairing rule and the guards. Reachable from code only |
 | 5 | The pages' checkbox, preview grouping, history counts, docs (the pull-side switch itself moved to Phase 3) |
 | 6 | Behat (a reopened assignment end to end), then 5.0, 5.1, 5.2 and 5.3, then a real pair of sites |
 

@@ -47,6 +47,7 @@ class mark_writer {
      * @param int $remotecmid
      * @param \stdClass $mark
      * @param http_client|null $client
+     * @param bool $allattempts name the attempt when asking for each file (only of a source known to understand it)
      * @return string[] temporary path for each file, in the same order as the mark's files
      * @throws \moodle_exception if any file cannot be fetched or fails its check
      */
@@ -55,7 +56,8 @@ class mark_writer {
         string $token,
         int $remotecmid,
         \stdClass $mark,
-        ?http_client $client
+        ?http_client $client,
+        bool $allattempts = false
     ): array {
         $paths = [];
 
@@ -71,7 +73,8 @@ class mark_writer {
                         $file['filename'],
                         $offset,
                         file_sync::CHUNK,
-                        $client
+                        $client,
+                        $allattempts ? (int) $mark->attemptnumber : null
                     ),
                     $file['contenthash'],
                     (int) $file['filesize']
@@ -111,6 +114,43 @@ class mark_writer {
         $rows = $DB->get_records('assign_grades', $where, 'attemptnumber DESC', '*', 0, 1);
 
         return $rows ? reset($rows) : null;
+    }
+
+    /**
+     * The grade row here for one attempt, if there is one.
+     *
+     * @param int $assignid
+     * @param int $userid
+     * @param int $attempt
+     * @return \stdClass|null the assign_grades row
+     */
+    public static function local_grade_at(int $assignid, int $userid, int $attempt): ?\stdClass {
+        global $DB;
+
+        $row = $DB->get_record('assign_grades', ['assignment' => $assignid, 'userid' => $userid, 'attemptnumber' => $attempt]);
+
+        return $row ?: null;
+    }
+
+    /**
+     * The student's newest attempt here: the one the gradebook, the grader
+     * screen and the workflow state are about.
+     *
+     * @param int $assignid
+     * @param int $userid
+     * @return int|null null if they have no submission here at all
+     */
+    public static function newest_attempt(int $assignid, int $userid): ?int {
+        global $DB;
+
+        $newest = $DB->get_field_sql(
+            'SELECT MAX(attemptnumber)
+               FROM {assign_submission}
+              WHERE assignment = :assignment AND userid = :userid AND groupid = 0',
+            ['assignment' => $assignid, 'userid' => $userid]
+        );
+
+        return $newest === null || $newest === false ? null : (int) $newest;
     }
 
     /**
@@ -217,6 +257,8 @@ class mark_writer {
      * @param int $remotecmid
      * @param \stdClass|false $ledger the record of an earlier pull, if any
      * @param string[] $paths the fetched files, in the mark's order
+     * @param bool $allattempts write to the attempt the mark is for, not to the student's latest; the attempt
+     *      must exist here already (see marks_pull)
      * @return bool whether a grade sync's override was taken away
      * @throws \moodle_exception if mod_assign refuses the grade
      */
@@ -228,7 +270,8 @@ class mark_writer {
         \stdClass $student,
         int $remotecmid,
         $ledger,
-        array $paths
+        array $paths,
+        bool $allattempts = false
     ): bool {
         global $CFG, $DB, $USER;
 
@@ -244,8 +287,17 @@ class mark_writer {
         try {
             // Makes the student's submission row too if they have none - as
             // marking someone who has handed nothing in does.
-            $row = $assign->get_user_grade((int) $student->id, true);
+            $row = $allattempts
+                ? $assign->get_user_grade((int) $student->id, true, (int) $mark->attemptnumber)
+                : $assign->get_user_grade((int) $student->id, true);
             $createdfiles = (int) $row->id;
+
+            // The workflow state and the gradebook are about the student's
+            // newest attempt, not about the one written. An earlier attempt's
+            // mark is history: it must not release the newest attempt's mark
+            // or take away the override that stands in for it.
+            $newest = self::newest_attempt($assignid, (int) $student->id);
+            $isnewest = !$allattempts || $newest === null || (int) $row->attemptnumber >= $newest;
 
             self::write_comment($context, $row, $mark, $student, $assignid, $paths);
 
@@ -256,12 +308,17 @@ class mark_writer {
                 throw new \moodle_exception('errormarkrefused', 'block_coursesync');
             }
 
-            self::release_workflow($assign, $assignid, (int) $student->id);
+            if ($isnewest) {
+                self::release_workflow($assign, $assignid, (int) $student->id);
+            }
+
             self::save_record($context, $row, $mark, $student, $run, $assignid, $remotecmid, $ledger);
 
             // After the grade is in: releasing makes the gradebook ask the
             // assignment for its own grade, which must be there to be asked for.
-            $released = self::release_override($run->course, $assignid, (int) $student->id);
+            if ($isnewest) {
+                $released = self::release_override($run->course, $assignid, (int) $student->id);
+            }
 
             $transaction->allow_commit();
         } catch (\Throwable $e) {

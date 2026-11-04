@@ -34,6 +34,12 @@ class marks_result {
     /** @var string[] The reasons a source may give for not describing an assignment. */
     public const REASONS = ['team', 'scale', 'nograde', 'notassign'];
 
+    /** @var string[] The reasons a source may give for holding earlier attempts' marks back. */
+    public const ATTEMPT_REASONS = ['workflowhistory'];
+
+    /** @var int Most attempts one student may have in an answer; a longer history is not believed. */
+    public const MAX_ATTEMPTS = 100;
+
     /** @var bool Whether the remote site answered. */
     public readonly bool $success;
 
@@ -41,11 +47,14 @@ class marks_result {
     public readonly ?string $errorkey;
 
     /**
-     * @var \stdClass[] Assignments: cmid, reason, grademax (float), marks
+     * @var \stdClass[] Assignments: cmid, reason, attemptsreason (empty, or why earlier
+     *      attempts' marks are missing), grademax (float), marks
      *      (\stdClass[]: username, attemptnumber, timemodified, grade
      *      (float|null), comment (string|null), commentformat, fingerprint,
      *      files (array[]: area, filepath, filename, filesize, contenthash,
-     *      timemodified)).
+     *      timemodified), and attempts: null unless every attempt was asked
+     *      for, then each attempt's mark, oldest first, in the same shape
+     *      with the username added).
      */
     public readonly array $items;
 
@@ -87,9 +96,10 @@ class marks_result {
      * cleaning every value on the way in.
      *
      * @param mixed $data
+     * @param bool $allattempts every attempt was asked for, so every student must come with them
      * @return self failure('errorbadresponse') if it is not the expected shape
      */
-    public static function from_response($data): self {
+    public static function from_response($data, bool $allattempts = false): self {
         if (!is_array($data) || !is_array($data['items'] ?? null)) {
             return self::failure('errorbadresponse');
         }
@@ -104,7 +114,7 @@ class marks_result {
             $markrows = [];
 
             foreach ($row['marks'] as $mark) {
-                $clean = self::clean_mark($mark);
+                $clean = self::clean_mark($mark, $allattempts);
 
                 if ($clean === null) {
                     return self::failure('errorbadresponse');
@@ -125,6 +135,7 @@ class marks_result {
             $items[] = (object) [
                 'cmid' => (int) $row['cmid'],
                 'reason' => self::known_reason((string) ($row['reason'] ?? '')),
+                'attemptsreason' => self::known_attempts_reason((string) ($row['attemptsreason'] ?? '')),
                 'grademax' => $grademax,
                 'marks' => $markrows,
             ];
@@ -185,13 +196,76 @@ class marks_result {
     }
 
     /**
+     * Why earlier attempts' marks are missing, kept only if this version knows it.
+     *
+     * @param string $reason
+     * @return string empty for none or for one this version does not know
+     */
+    protected static function known_attempts_reason(string $reason): string {
+        $reason = clean_param($reason, PARAM_ALPHA);
+
+        return in_array($reason, self::ATTEMPT_REASONS, true) ? $reason : '';
+    }
+
+    /**
      * One student's mark, cleaned.
      *
      * @param mixed $mark
+     * @param bool $allattempts every attempt was asked for
      * @return \stdClass|null null if it is not the expected shape
      */
-    protected static function clean_mark($mark): ?\stdClass {
-        if (!is_array($mark) || !isset($mark['username'], $mark['fingerprint']) || !is_array($mark['files'] ?? null)) {
+    protected static function clean_mark($mark, bool $allattempts = false): ?\stdClass {
+        $latest = self::clean_attempt($mark);
+
+        if ($latest === null || !isset($mark['username'])) {
+            return null;
+        }
+
+        $latest->username = clean_param((string) $mark['username'], PARAM_USERNAME);
+        $latest->attempts = null;
+
+        if (!$allattempts) {
+            return $latest;
+        }
+
+        // Asked for, so required: a student without the list is not described
+        // as having one attempt, which would be believed to be all of them.
+        $list = $mark['attempts'] ?? null;
+
+        if (!is_array($list) || !$list || count($list) > self::MAX_ATTEMPTS) {
+            return null;
+        }
+
+        $attempts = [];
+        $previous = -1;
+
+        foreach ($list as $row) {
+            $one = self::clean_attempt($row);
+
+            // Each as clean as the latest, one number once, and in order.
+            if ($one === null || $one->attemptnumber <= $previous) {
+                return null;
+            }
+
+            $previous = $one->attemptnumber;
+            $one->username = $latest->username;
+            $attempts[] = $one;
+        }
+
+        $latest->attempts = $attempts;
+
+        return $latest;
+    }
+
+    /**
+     * One attempt's mark, cleaned: what is the same at the top of a student's
+     * entry and in each of their attempts.
+     *
+     * @param mixed $mark
+     * @return \stdClass|null null if it is not the expected shape (no username: the caller adds it)
+     */
+    protected static function clean_attempt($mark): ?\stdClass {
+        if (!is_array($mark) || !isset($mark['fingerprint']) || !is_array($mark['files'] ?? null)) {
             return null;
         }
 
@@ -230,7 +304,6 @@ class marks_result {
         }
 
         return (object) [
-            'username' => clean_param((string) $mark['username'], PARAM_USERNAME),
             'attemptnumber' => max(0, (int) ($mark['attemptnumber'] ?? 0)),
             'timemodified' => max(0, (int) ($mark['timemodified'] ?? 0)),
             'grade' => $grade === null ? null : (float) $grade,
