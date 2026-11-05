@@ -5552,3 +5552,32 @@ worst-case call against the 20 s limit), that a very large pull is one long requ
 keeps what it wrote), and what was **not** tried (a production-sized site, real network delay, live MariaDB/MySQL, a source from before this
 version, and cutting a long pull off part-way - the last is the design's behaviour, each attempt in its own transaction, but I did not kill a
 request to see it). The published GitHub release body and the tag are unchanged: they still carry the earlier wording.
+
+## Phase 106 - Collapsible sections on the Choose page (not yet released; version.php still v1.30.0-beta), 2026-11-05
+
+A teacher asked for the sections on the "Choose what to copy" page to fold away, to scroll less. The page already had
+collapsible *groups* (New / Changed / Already here / Question content, native `<details>`), and already had a heading row
+per course section inside each table, but the heading did nothing.
+
+**What was built.** The section heading row (`tr[data-coursesync-group]`) now holds a toggle button (`aria-expanded`, a count
+badge, a caret from `styles.css`) and a **Select this section** button. Closing a section sets `hidden` on its rows - they
+stay in the form, so what is ticked in a closed section is still sent. **Expand all** / **Collapse all** sit beside Select
+all / Select none (Expand all also opens the groups). A section starts **open** if it holds a new or changed activity or a
+collision; the rest start closed - but only when something is new or changed somewhere (`$attention`). With nothing new, every
+section starts open, so the page that used to show everything still does. Without JavaScript everything stays open. Files:
+`sync.php`, `amd/src/choose.js` (+ build), `styles.css` (new), three strings, `docs/TEACHER_GUIDE.md`,
+`tests/behat/sync_choose_sections.feature` (5 scenarios).
+
+**Why not `<details>` per section.** A section's rows live in one table with the other sections; `<details>` cannot sit inside
+a `<tbody>`, and splitting into a table per section would have changed the markup the existing Behat steps rely on. Toggling
+`hidden` on rows keeps the markup as it was.
+
+**Trap hit.** The scenario "Expand all and Collapse all" failed on 5.3 only: `I press "Expand all"` picked another "Expand
+all" button on the page (5.3 has one outside the form), so nothing on our page opened. Fixed by scoping the step to
+`#coursesync-choose`. The same words in a button label can match a core control on a newer Moodle: scope button steps.
+
+**Checked.** Static: phplint, phpcs --max-warnings 0, phpdoc, validate, savepoints, grunt amd (build copied back), gherkinlint.
+Behat 62 scenarios (57 + 5 new), 1537 steps on 5.0, 5.1, 5.2 and 5.3 (the 5.3 run after the scoping fix: the new feature on all
+four, 5/5 each). Mutation checks: with every section forced open, 2 scenarios fail; with "Select this section" ticking nothing,
+1 fails. Not done: PHPUnit (nothing server-side changed except markup), a real browser look at the caret and spacing,
+a very long course.
