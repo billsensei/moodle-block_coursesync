@@ -127,6 +127,20 @@ Status column says which of two things will happen:
   edition is the one Course Sync keeps up to date; the old one is yours to hide
   or remove when you are ready.
 
+**Sections open and close.** Inside each group the activities are listed under
+the section they are in on the other course. Click a section's name to fold its
+activities away or open them again; the number beside the name says how many
+activities are in it. A section starts **open** when it holds something new or
+changed (or something that needs a look, such as an activity carrying a synced
+identity Course Sync did not put there), and starts **closed** when it holds
+only what is already here - but only when there is something new or changed to
+look at; if there is not, every section starts open. Folding a section away
+does not untick anything: what is ticked in a closed section is still copied.
+**Select this section** next to a section's name ticks the new and changed
+activities in that section only, and **Expand all** and **Collapse all** above
+the lists open or close every section. Without JavaScript the sections simply
+stay open.
+
 **Already on this course** comes last. Nothing there starts ticked, and
 **Select all** leaves it alone, but you can tick any of it to copy it again -
 useful when your copy has been edited or broken and you want a clean one:

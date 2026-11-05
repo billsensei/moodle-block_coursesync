@@ -256,12 +256,49 @@ if (!$confirm) {
         )));
         $tableattributes = ['class' => 'table table-striped', 'style' => 'table-layout: fixed; width: 100%;'];
 
+        // A section starts open when it holds something to act on: a new or
+        // changed activity, or one that collides with a synced identity. The rest
+        // start closed, but only when something else needs attention - with
+        // nothing new anywhere, closing every section would hide the whole page.
+        $attention = $newrows !== [] || $changedrows !== [];
+        $sectionkey = static function (array $row) use ($placement): int {
+            $at = $placement[$row['activity']->cmid] ?? null;
+
+            return $at === null ? -1 : $at['section'];
+        };
+        $opensections = [];
+
+        foreach (array_merge($newrows, $changedrows) as $row) {
+            $opensections[$sectionkey($row)] = true;
+        }
+
+        foreach ($alreadyrows as $row) {
+            if ($row['status'] === 'collision') {
+                $opensections[$sectionkey($row)] = true;
+            }
+        }
+
         // Every row can be chosen; only new ones start ticked. "Select all"
         // reaches only new and changed ones (data-coursesync-bulk), so one
         // click never copies everything already here a second time.
-        $renderrows = static function (array $rows, bool $grouped = true) use ($statuslabels, $placement): string {
+        $renderrows = static function (
+            array $rows,
+            bool $grouped = true
+        ) use (
+            $statuslabels,
+            $placement,
+            $attention,
+            $opensections,
+            $sectionkey
+        ): string {
             $out = '';
             $group = null;
+            $collapsed = false;
+            $counts = [];
+
+            foreach ($rows as $row) {
+                $counts[$sectionkey($row)] = ($counts[$sectionkey($row)] ?? 0) + 1;
+            }
 
             foreach ($rows as $row) {
                 if ($grouped && $placement !== []) {
@@ -276,9 +313,31 @@ if (!$confirm) {
                             $at['section'] === 0 => get_string('general'),
                             default => get_string('section') . ' ' . $at['section'],
                         };
+                        $collapsed = $attention && !isset($opensections[$key]);
+                        $toggle = html_writer::tag(
+                            'button',
+                            html_writer::tag('span', '', ['class' => 'coursesync-caret me-1', 'aria-hidden' => 'true'])
+                            . $title . ' '
+                            . html_writer::tag('span', (string) $counts[$key], ['class' => 'badge bg-secondary ms-1']),
+                            [
+                                'type' => 'button',
+                                'class' => 'btn btn-link p-0 fw-bold text-start',
+                                'data-action' => 'coursesync-toggle-section',
+                                'aria-expanded' => $collapsed ? 'false' : 'true',
+                            ]
+                        );
+                        $pick = html_writer::tag(
+                            'button',
+                            get_string('syncsectionselect', 'block_coursesync'),
+                            [
+                                'type' => 'button',
+                                'class' => 'btn btn-link btn-sm p-0 ms-3',
+                                'data-action' => 'coursesync-select-section',
+                            ]
+                        );
                         $out .= html_writer::tag(
                             'tr',
-                            html_writer::tag('th', $title, ['colspan' => 5, 'scope' => 'rowgroup']),
+                            html_writer::tag('th', $toggle . $pick, ['colspan' => 5, 'scope' => 'rowgroup']),
                             ['class' => 'table-secondary', 'data-coursesync-group' => $key]
                         );
                     }
@@ -322,13 +381,16 @@ if (!$confirm) {
                     $type = s($activity->get_type_name());
                 }
 
+                // A closed section's rows stay in the form, so what is ticked in them is still sent.
+                $insection = $grouped && $placement !== [];
                 $out .= html_writer::tag(
                     'tr',
                     html_writer::tag('td', $checkbox)
                     . html_writer::tag('td', $label)
                     . html_writer::tag('td', $type)
                     . html_writer::tag('td', userdate($activity->timemodified))
-                    . html_writer::tag('td', $statuslabels[$row['status']])
+                    . html_writer::tag('td', $statuslabels[$row['status']]),
+                    $insection ? ['hidden' => $collapsed ? 'hidden' : null] : null
                 );
             }
 
@@ -345,8 +407,6 @@ if (!$confirm) {
         // New and changed start open - they are what the page is for. What is
         // already here starts closed, unless there is nothing else to look at
         // or it carries the collision warning.
-        $attention = $newrows !== [] || $changedrows !== [];
-
         $rendergroup = static function (
             array $rows,
             string $headingkey,
@@ -400,6 +460,16 @@ if (!$confirm) {
             . html_writer::tag('button', get_string('syncselectnone', 'block_coursesync'), [
                 'type' => 'button',
                 'data-action' => 'coursesync-select-none',
+                'class' => 'btn btn-link btn-sm p-0 me-3',
+            ])
+            . html_writer::tag('button', get_string('syncexpandall', 'block_coursesync'), [
+                'type' => 'button',
+                'data-action' => 'coursesync-expand-all',
+                'class' => 'btn btn-link btn-sm p-0 me-3',
+            ])
+            . html_writer::tag('button', get_string('synccollapseall', 'block_coursesync'), [
+                'type' => 'button',
+                'data-action' => 'coursesync-collapse-all',
                 'class' => 'btn btn-link btn-sm p-0',
             ]),
             ['class' => 'mb-2']

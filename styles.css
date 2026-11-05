@@ -1,0 +1,8 @@
+/* The open/closed arrow in front of a section's name on the "Choose what to copy" page. */
+.coursesync-caret::before {
+    content: "\25BE";
+}
+
+[aria-expanded="false"] > .coursesync-caret::before {
+    content: "\25B8";
+}
