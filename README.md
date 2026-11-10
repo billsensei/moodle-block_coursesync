@@ -137,6 +137,13 @@ Two things follow from that:
 Only the last four characters are kept in the clear, so an administrator can
 tell which token is stored without being able to reconstruct it.
 
+**Course backups do not carry the connection.** The plugin has no backup or
+restore step of its own, so the remote address, token and course mapping stay
+out of a course backup (`.mbz`) and a token never travels inside one. A course
+restored or imported from a backup has the block set up again from the start;
+its activities are recognised and linked on the first sync rather than copied
+twice.
+
 ## Database
 
 | Table | Purpose |
