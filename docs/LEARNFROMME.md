@@ -5581,3 +5581,52 @@ Behat 62 scenarios (57 + 5 new), 1537 steps on 5.0, 5.1, 5.2 and 5.3 (the 5.3 ru
 four, 5/5 each). Mutation checks: with every section forced open, 2 scenarios fail; with "Select this section" ticking nothing,
 1 fails. Not done: PHPUnit (nothing server-side changed except markup), a real browser look at the caret and spacing,
 a very long course.
+
+## Phase 107 - Choosing which grades to pull, and a section per student (v1.32.0-beta, build 2026111001, not committed), 2026-11-10
+
+A teacher asked for two things on the Pull Grades page: tick which grades come across (some are not needed), and put them
+in collapsible sections by student account.
+
+**What was built.** `grade_pull::run()` and `attempt_pull::work()` take a last parameter `?array $chosen` (null = everything,
+so every existing caller and test is unchanged). A key per grade/attempt, `grade_pull_result::key()`, is a sha1 of
+kind, cmid, remote item id, item number, username and attempt number - never a row id, because a manual grade item a
+preview would create has none yet. The key only narrows: it is checked after the pull has worked out ADD/UPDATE itself, so a
+forged key, one for a student outside the groups, or one for a conflict writes nothing. An unticked entry becomes SKIPPED
+(`gradeskipnotchosen` / `attemptskipnotchosen`), writes no ledger row and so is offered again. `grades.php` builds one
+`<details>` per student (grades and attempts together), a toggle-all checkbox per student and for the page via core's
+`core/checkbox-toggleall` (no new JavaScript), and a hidden `picking=1` so that "nothing ticked" is told from "an older
+form". Files: `grades.php`, `classes/grade_pull.php`, `grade_pull_result.php`, `attempt_pull.php`, lang (18 added, 12 dead
+list-heading strings and 2 button strings changed), `tests/grade_pull_test.php`, `grade_pull_quiz_test.php`, the grade and quiz
+attempt Behat features, TEACHER_GUIDE, CHANGES, changelog.
+
+**Data-loss trap, found by the advisor before coding.** A quiz whose attempts come across has the earlier grade override
+released (taken away) so the quiz works the grade out itself. With one of a student's attempts unticked, releasing the
+override leaves them with no grade at all. The release is therefore skipped when any of that student's attempts at that
+quiz was left out (`grade_pull_result::attempt_left_out()`), and also when the release row itself is unticked.
+
+**Traps hit.**
+- `checkbox-toggleall` calls its roles `master`/`slave` before Moodle 5.1 and `toggler`/`target` from 5.1 (the old names
+  still work there but warn). Using the new names everywhere passed on 5.1/5.2/5.3 and failed only on 5.0 - the JavaScript
+  Behat scenario caught it. Fixed with `$CFG->branch >= 501`.
+- Behat `the field "..."` finds a checkbox by its `<label>` text, not by `aria-label`: the boxes got visually hidden labels.
+  There is no `I uncheck` step in Moodle's Behat - use `I set the field "..." to ""`.
+- Existing Behat steps read `coursesync-grades-written` tables and a button called "Pull the grades (1)"; both are gone, so
+  `"Pull the grades" "button" should not exist` would have passed vacuously. The steps were rewritten and the negative checks
+  now name the new label.
+- A `grade_here()->finalgrade` on a grade row that was never created is a PHP warning, not a failure: the tests use a
+  helper that says whether any grade exists.
+- A mistyped `--config` path made `behat` prompt for a context and wait on stdin for ten minutes. Always `</dev/null`.
+- `phpunit/behat init` on the Docker sites fails inside `composer self-update` (the checkout's `composer.phar` is root's):
+  use `--no-composer-self-update`, as `www-data`, and do not run it as root on the shared checkout.
+- `jq` is not installed here; the doctor's first parse check reported "BAD" for two perfectly good files.
+
+**Checked.** PHPUnit 771 tests (764 + 7 new) on 5.0, 5.1, 5.2 and 5.3. Behat `grade_pull` 6 scenarios / 189 steps (the
+JavaScript one among them) and `quiz_attempt_pull` 2 / 75 on all four. phplint, phpcs `--max-warnings 0`, phpdoc, validate,
+savepoints clean on 5.1. Mutations, each caught: gate on the grade write removed (2 tests fail), release coupling removed (1),
+gate on the attempt write removed (2), null no longer meaning "all" (8 fail). **Follow-up, same day:** `moodle-plugin-ci grunt
+--max-lint-warnings 0` (bare, on the CI copy) failed on `grade_pull.feature`: `no-multiple-empty-lines`, a second blank line
+at the end of the file that I had written myself - the v1.26.0 trap again, caught before any push. Fixed; grunt then exit 0
+with the JavaScript build identical to the source. The whole Behat suite then passed: 65 scenarios / 1634 steps on 5.0, 5.1,
+5.2 and 5.3. **Not done:** the release-row-unticked gate has no mutation of its own; no look at the page in a real browser;
+no pull between two real sites.
+

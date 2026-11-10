@@ -89,9 +89,16 @@ class grade_pull {
      * @param int $blockinstanceid
      * @param int $courseid the destination course
      * @param http_client|null $client injected only by tests
+     * @param bool[]|null $chosen keys (see grade_pull_result::key()) of the grades
+     *      and attempts to write, or null for all of them; it only narrows
      * @return grade_pull_result
      */
-    public static function run(int $blockinstanceid, int $courseid, ?http_client $client = null): grade_pull_result {
+    public static function run(
+        int $blockinstanceid,
+        int $courseid,
+        ?http_client $client = null,
+        ?array $chosen = null
+    ): grade_pull_result {
         global $USER;
 
         $timestarted = time();
@@ -102,7 +109,7 @@ class grade_pull {
             $result = grade_pull_result::failure('errorsyncinprogress');
         } else {
             try {
-                $result = self::pull($blockinstanceid, $courseid, true, $client);
+                $result = self::pull($blockinstanceid, $courseid, true, $client, $chosen);
             } finally {
                 $lock->release();
             }
@@ -186,9 +193,16 @@ class grade_pull {
      * @param int $courseid
      * @param bool $write false for a preview
      * @param http_client|null $client
+     * @param bool[]|null $chosen see run()
      * @return grade_pull_result
      */
-    protected static function pull(int $blockinstanceid, int $courseid, bool $write, ?http_client $client): grade_pull_result {
+    protected static function pull(
+        int $blockinstanceid,
+        int $courseid,
+        bool $write,
+        ?http_client $client,
+        ?array $chosen = null
+    ): grade_pull_result {
         global $CFG;
 
         require_once($CFG->libdir . '/gradelib.php');
@@ -213,6 +227,7 @@ class grade_pull {
         }
 
         $result = new grade_pull_result();
+        $result->chosen = $chosen;
         $copies = self::local_copies($courseid);
 
         // Who this pull is for, before the source is asked anything: it is
@@ -227,7 +242,7 @@ class grade_pull {
         // Quizzes first: where the source's attempts can come into a quiz
         // here, they do, and that quiz then works out its own grade - so it
         // is left out of the overrides below (see pull_item()).
-        $failed = self::bring_attempts($result, $copies, $blockinstanceid, $courseid, $record, $token, $write, $client);
+        $failed = self::bring_attempts($result, $copies, $blockinstanceid, $courseid, $record, $token, $write, $client, $chosen);
 
         if ($failed !== null) {
             return $failed;
@@ -485,6 +500,7 @@ class grade_pull {
      * @param string $token the source's web service token
      * @param bool $write false for a preview
      * @param http_client|null $client
+     * @param bool[]|null $chosen see run()
      * @return grade_pull_result|null the failure to return, or null to carry on
      */
     protected static function bring_attempts(
@@ -495,7 +511,8 @@ class grade_pull {
         \stdClass $record,
         string $token,
         bool $write,
-        ?http_client $client
+        ?http_client $client,
+        ?array $chosen = null
     ): ?grade_pull_result {
         $quizzes = array_filter($copies, static fn(\cm_info $cm) => $cm->modname === 'quiz');
 
@@ -503,7 +520,7 @@ class grade_pull {
             return null;
         }
 
-        $attempts = attempt_pull::work($blockinstanceid, $courseid, $record, $token, $write, $client);
+        $attempts = attempt_pull::work($blockinstanceid, $courseid, $record, $token, $write, $client, $chosen);
 
         if ($attempts->success) {
             $result->entries = $attempts->entries;
@@ -685,6 +702,14 @@ class grade_pull {
 
             $writes = in_array($entry->outcome, [grade_pull_result::ADD, grade_pull_result::UPDATE], true);
 
+            // Left unticked: not written, and nothing is recorded for it, so
+            // the next preview offers it again.
+            if ($writes && !$result->is_chosen($entry)) {
+                $entry->outcome = grade_pull_result::SKIPPED;
+                $entry->reason = 'gradeskipnotchosen';
+                $writes = false;
+            }
+
             if ($write && $writes) {
                 if (!$gradeitem->id) {
                     $gradeitem->insert(self::SOURCE);
@@ -783,7 +808,12 @@ class grade_pull {
             $entry->outcome = grade_pull_result::RELEASED;
             $entry->localgrade = self::finalgrade($existing);
 
-            if ($write) {
+            // Not ticked - or an attempt of theirs is left out, in which case
+            // the grade override is all they would have: it stays.
+            if (!$result->is_chosen($entry) || $result->attempt_left_out((int) $entry->cmid, $entry->username)) {
+                $entry->outcome = grade_pull_result::SKIPPED;
+                $entry->reason = 'gradeskipnotchosen';
+            } else if ($write) {
                 self::release($gradeitem, $existing, $pulled);
             }
 

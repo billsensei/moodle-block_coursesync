@@ -85,6 +85,7 @@ class attempt_pull {
      * @param string $token
      * @param bool $write false for a preview
      * @param http_client|null $client
+     * @param bool[]|null $chosen keys of the attempts to write, or null for all (see grade_pull::run())
      * @return grade_pull_result
      */
     public static function work(
@@ -93,7 +94,8 @@ class attempt_pull {
         \stdClass $record,
         string $token,
         bool $write,
-        ?http_client $client
+        ?http_client $client,
+        ?array $chosen = null
     ): grade_pull_result {
         global $CFG;
 
@@ -101,6 +103,7 @@ class attempt_pull {
         require_once($CFG->libdir . '/completionlib.php');
 
         $result = new grade_pull_result();
+        $result->chosen = $chosen;
         $copies = array_filter(grade_pull::local_copies($courseid), static fn(\cm_info $cm) => $cm->modname === 'quiz');
 
         if (!$copies) {
@@ -234,6 +237,13 @@ class attempt_pull {
             // later pull, once somebody has marked it.
             if ($remote->sumgrades === null || self::needs_grading($remote)) {
                 $entry->reason = 'attemptskipnotgraded';
+                $result->add($entry);
+                continue;
+            }
+
+            // Left unticked: not written, and not counted towards the limit.
+            if (!$result->is_chosen($entry)) {
+                $entry->reason = 'attemptskipnotchosen';
                 $result->add($entry);
                 continue;
             }
@@ -627,6 +637,8 @@ class attempt_pull {
         } else if (!self::same_marks($written, self::current_marks($quba, array_keys($marks)))) {
             $entry->outcome = grade_pull_result::CONFLICT;
             $entry->reason = 'attemptconflict';
+        } else if (!$result->is_chosen($entry)) {
+            $entry->reason = 'attemptskipnotchosen';
         } else {
             $entry->outcome = grade_pull_result::UPDATE;
 

@@ -35,6 +35,8 @@ use core\output\html_writer;
 $instanceid = required_param('instanceid', PARAM_INT);
 $courseid = required_param('courseid', PARAM_INT);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
+$picking = optional_param('picking', 0, PARAM_BOOL);
+$pick = optional_param_array('pick', [], PARAM_ALPHANUM);
 
 $course = get_course($courseid);
 require_login($course);
@@ -81,8 +83,26 @@ if (!connection::is_mapped($record)) {
 
 if ($confirm) {
     require_sesskey();
+
+    // The form says what was ticked; a form that says nothing (a link, an
+    // older page) pulls everything, as it always did. Keys only narrow a pull:
+    // the pull works out for itself what may be written.
+    $chosen = $picking ? array_fill_keys(array_values($pick), true) : null;
+
+    if ($chosen === []) {
+        echo $OUTPUT->notification(get_string('gradesnonechosen', 'block_coursesync'), 'warning', false);
+        echo html_writer::link(
+            $pageurl,
+            get_string('gradesbacktopreview', 'block_coursesync'),
+            ['class' => 'btn btn-primary me-2']
+        );
+        echo $backtocourse;
+        echo $OUTPUT->footer();
+        die;
+    }
+
     long_run::begin();
-    $result = grade_pull::run($instanceid, $course->id);
+    $result = grade_pull::run($instanceid, $course->id, null, $chosen);
 } else {
     // Following a link writes nothing: this asks the other site, shows what
     // a pull would do, and the button below (with a sesskey) does it.
@@ -184,23 +204,6 @@ $studentname = static function (\stdClass $entry) use ($users): string {
     return $entry->username !== '' ? $entry->username : get_string('gradesallstudents', 'block_coursesync');
 };
 
-// One table of rows, under its heading.
-$rendertable = static function (array $columns, string $rows, string $headingkey, string $id) use ($OUTPUT): void {
-    $head = html_writer::tag('tr', implode('', array_map(
-        static fn(string $key): string => html_writer::tag('th', get_string($key, 'block_coursesync'), ['scope' => 'col']),
-        $columns
-    )));
-
-    echo $OUTPUT->heading(get_string($headingkey, 'block_coursesync'), 4);
-    echo html_writer::tag(
-        'table',
-        html_writer::tag('caption', get_string($headingkey, 'block_coursesync'), ['class' => 'visually-hidden'])
-        . html_writer::tag('thead', $head)
-        . html_writer::tag('tbody', $rows),
-        ['class' => 'table table-sm table-striped', 'id' => $id]
-    );
-};
-
 // Grade items, fetched once each, to show grades the way the gradebook does.
 $gradeitems = [];
 $showgrade = static function (?float $value, int $gradeitemid) use (&$gradeitems): string {
@@ -218,100 +221,7 @@ $showgrade = static function (?float $value, int $gradeitemid) use (&$gradeitems
     return $gradeitems[$gradeitemid] ? grade_format_gradevalue($value, $gradeitems[$gradeitemid]) : '-';
 };
 
-// Students' gradebook grades, for one outcome or more.
-$rendergrades = static function (
-    array $entries,
-    string $headingkey,
-    string $id
-) use (
-    $rendertable,
-    $studentname,
-    $showgrade,
-    $coursecontext
-): void {
-    if ($entries === []) {
-        return;
-    }
-
-    $rows = '';
-
-    foreach ($entries as $entry) {
-        $reason = match (true) {
-            $entry->reason !== null => get_string($entry->reason, 'block_coursesync'),
-            $entry->outcome === grade_pull_result::UPDATE => get_string('gradesreasonupdate', 'block_coursesync'),
-            $entry->outcome === grade_pull_result::CONFLICT => get_string('gradesreasonconflict', 'block_coursesync'),
-            $entry->outcome === grade_pull_result::RELEASED => get_string('gradesreasonreleased', 'block_coursesync'),
-            default => '',
-        };
-
-        $rows .= html_writer::tag(
-            'tr',
-            html_writer::tag('td', s($studentname($entry)))
-            . html_writer::tag('td', format_string($entry->activity, true, ['context' => $coursecontext]))
-            . html_writer::tag('td', $entry->userid ? $showgrade($entry->grade, $entry->gradeitemid) : '-')
-            . html_writer::tag('td', $showgrade($entry->localgrade, $entry->gradeitemid))
-            . html_writer::tag('td', $reason)
-        );
-    }
-
-    $rendertable(
-        ['gradescolstudent', 'gradescolactivity', 'gradescolthere', 'gradescolhere', 'gradescolreason'],
-        $rows,
-        $headingkey,
-        $id
-    );
-};
-
-// Students' quiz attempts, for one outcome or more.
-$renderattempts = static function (
-    array $entries,
-    string $headingkey,
-    string $id
-) use (
-    $rendertable,
-    $studentname,
-    $coursecontext
-): void {
-    if ($entries === []) {
-        return;
-    }
-
-    $marks = static fn(?float $value): string => $value === null ? '-' : format_float($value, 2);
-    $rows = '';
-
-    foreach ($entries as $entry) {
-        $why = [];
-
-        if ($entry->reason !== null) {
-            $why[] = get_string($entry->reason, 'block_coursesync');
-        } else if ($entry->outcome === grade_pull_result::UPDATE) {
-            $why[] = get_string('attemptsreasonupdate', 'block_coursesync');
-        }
-
-        foreach ($entry->notes ?? [] as $note) {
-            $why[] = get_string($note, 'block_coursesync');
-        }
-
-        $rows .= html_writer::tag(
-            'tr',
-            html_writer::tag('td', s($studentname($entry)))
-            . html_writer::tag('td', format_string($entry->activity, true, ['context' => $coursecontext]))
-            . html_writer::tag('td', $entry->attempt ? (int) $entry->attempt : '-')
-            . html_writer::tag('td', $entry->username !== '' ? $marks($entry->grade) : '-')
-            . html_writer::tag('td', $marks($entry->localgrade))
-            . html_writer::tag('td', implode(' ', $why))
-        );
-    }
-
-    $rendertable(
-        ['gradescolstudent', 'attemptscolquiz', 'attemptscolattempt', 'attemptscolthere', 'attemptscolhere', 'gradescolreason'],
-        $rows,
-        $headingkey,
-        $id
-    );
-};
-
-// Gradebook grades. What wants the teacher's attention comes first.
+// What happened in each activity, as counts.
 if ($result->of_kind(grade_pull_result::KIND_GRADE) !== []) {
     echo $OUTPUT->heading(get_string('gradessectiongrades', 'block_coursesync'), 3);
     $rendersummary($result->by_activity(grade_pull_result::KIND_GRADE), [
@@ -323,26 +233,8 @@ if ($result->of_kind(grade_pull_result::KIND_GRADE) !== []) {
         'gradescolskipped' => grade_pull_result::SKIPPED,
         'gradescolreleased' => grade_pull_result::RELEASED,
     ], 'gradessummaryheading', 'coursesync-grades-summary');
-
-    $kind = grade_pull_result::KIND_GRADE;
-    $rendergrades($result->with_outcome(grade_pull_result::CONFLICT, $kind), 'gradesgroupconflict', 'coursesync-grades-conflicts');
-    $rendergrades($result->with_outcome(grade_pull_result::SKIPPED, $kind), 'gradesgroupskipped', 'coursesync-grades-skipped');
-    $rendergrades(
-        $result->with_outcome(grade_pull_result::RELEASED, $kind),
-        'gradesgroupreleased',
-        'coursesync-grades-released'
-    );
-    $rendergrades(
-        array_merge(
-            $result->with_outcome(grade_pull_result::ADD, $kind),
-            $result->with_outcome(grade_pull_result::UPDATE, $kind)
-        ),
-        $result->preview ? 'gradesgrouptowrite' : 'gradesgroupwritten',
-        'coursesync-grades-written'
-    );
 }
 
-// Quiz attempts, the same way round.
 if ($result->of_kind(grade_pull_result::KIND_ATTEMPT) !== []) {
     echo $OUTPUT->heading(get_string('attemptssection', 'block_coursesync'), 3);
     $rendersummary($result->by_activity(grade_pull_result::KIND_ATTEMPT), [
@@ -353,25 +245,197 @@ if ($result->of_kind(grade_pull_result::KIND_ATTEMPT) !== []) {
         'gradescolconflict' => grade_pull_result::CONFLICT,
         'gradescolskipped' => grade_pull_result::SKIPPED,
     ], 'attemptssummaryheading', 'coursesync-attempts-summary');
+}
 
-    $kind = grade_pull_result::KIND_ATTEMPT;
-    $renderattempts(
-        $result->with_outcome(grade_pull_result::CONFLICT, $kind),
-        'attemptsgroupconflict',
-        'coursesync-attempts-conflicts'
+// Why one entry ended up as it did, in words.
+$reasontext = static function (\stdClass $entry): string {
+    $why = [];
+
+    if ($entry->reason !== null) {
+        $why[] = get_string($entry->reason, 'block_coursesync');
+    } else if ($entry->outcome === grade_pull_result::UPDATE) {
+        $why[] = get_string(
+            $entry->kind === grade_pull_result::KIND_ATTEMPT ? 'attemptsreasonupdate' : 'gradesreasonupdate',
+            'block_coursesync'
+        );
+    } else if ($entry->outcome === grade_pull_result::CONFLICT) {
+        $why[] = get_string('gradesreasonconflict', 'block_coursesync');
+    } else if ($entry->outcome === grade_pull_result::RELEASED) {
+        $why[] = get_string('gradesreasonreleased', 'block_coursesync');
+    }
+
+    foreach ($entry->notes ?? [] as $note) {
+        $why[] = get_string($note, 'block_coursesync');
+    }
+
+    return implode(' ', $why);
+};
+
+$outcomelabels = [
+    grade_pull_result::ADD => 'gradescoladd',
+    grade_pull_result::UPDATE => 'gradescolupdate',
+    grade_pull_result::SAME => 'gradescolsame',
+    grade_pull_result::CONFLICT => 'gradescolconflict',
+    grade_pull_result::SKIPPED => 'gradescolskipped',
+    grade_pull_result::RELEASED => 'gradescolreleased',
+];
+$writable = [grade_pull_result::ADD, grade_pull_result::UPDATE, grade_pull_result::RELEASED];
+
+// Everything that happened, a section to each student: grades and quiz
+// attempts together, so one person's lines are in one place. A section can be
+// folded away, and (before the pull) each line ticked or not. What is not
+// about one student - a whole activity skipped - comes last.
+$sections = [];
+
+foreach ($result->entries as $entry) {
+    $key = $entry->username === '' ? '' : ($entry->userid ? 'u' . $entry->userid : 'n' . $entry->username);
+    $sections[$key]['name'] ??= $key === '' ? get_string('gradeswholeactivity', 'block_coursesync') : $studentname($entry);
+    $sections[$key]['username'] ??= $entry->username;
+    $sections[$key]['entries'][] = $entry;
+}
+
+uksort($sections, static function (string $a, string $b) use ($sections): int {
+    if (($a === '') !== ($b === '')) {
+        return $a === '' ? 1 : -1;
+    }
+
+    return strnatcasecmp($sections[$a]['name'], $sections[$b]['name']);
+});
+
+$inform = $result->preview && $towrite > 0;
+
+// Core's tick-all script calls these roles master and slave before Moodle 5.1.
+$togglerrole = (int) $CFG->branch >= 501 ? 'toggler' : 'master';
+$targetrole = (int) $CFG->branch >= 501 ? 'target' : 'slave';
+$marks = static fn(?float $value): string => $value === null ? '-' : format_float($value, 2);
+
+if ($inform) {
+    echo html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl->out(false), 'id' => 'coursesync-grades-form']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'picking', 'value' => 1]);
+    echo html_writer::tag('p', get_string('gradespickintro', 'block_coursesync'));
+    echo html_writer::div(
+        html_writer::checkbox('coursesync-pickall', 1, true, get_string('gradespickall', 'block_coursesync'), [
+            'id' => 'coursesync-pickall',
+            'data-action' => 'toggle',
+            'data-toggle' => $togglerrole,
+            'data-togglegroup' => 'coursesync',
+        ]),
+        'mb-3'
     );
-    $renderattempts(
-        $result->with_outcome(grade_pull_result::SKIPPED, $kind),
-        'attemptsgroupskipped',
-        'coursesync-attempts-skipped'
-    );
-    $renderattempts(
-        array_merge(
-            $result->with_outcome(grade_pull_result::ADD, $kind),
-            $result->with_outcome(grade_pull_result::UPDATE, $kind)
+    $PAGE->requires->js_call_amd('core/checkbox-toggleall', 'init');
+}
+
+echo $OUTPUT->heading(get_string('gradessectionstudents', 'block_coursesync'), 3);
+$number = 0;
+
+foreach ($sections as $key => $section) {
+    $number++;
+    $group = 'coursesync-s' . $number;
+    $counts = array_fill_keys(grade_pull_result::OUTCOMES, 0);
+    $rows = '';
+
+    foreach ($section['entries'] as $entry) {
+        $counts[$entry->outcome]++;
+        $isattempt = $entry->kind === grade_pull_result::KIND_ATTEMPT;
+        $pick = '';
+
+        if ($inform && in_array($entry->outcome, $writable, true)) {
+            $pick = html_writer::checkbox(
+                'pick[]',
+                grade_pull_result::key($entry),
+                true,
+                get_string('gradespickone', 'block_coursesync', (object) [
+                    'student' => $section['name'],
+                    'activity' => format_string($entry->activity, true, ['context' => $coursecontext]),
+                ]),
+                [
+                    'id' => 'coursesync-pick-' . grade_pull_result::key($entry),
+                    'data-action' => 'toggle',
+                    'data-toggle' => $targetrole,
+                    'data-togglegroup' => $group,
+                ],
+                ['class' => 'visually-hidden']
+            );
+        }
+
+        if ($isattempt) {
+            $what = get_string('gradeswhatattempt', 'block_coursesync', (int) $entry->attempt);
+            $there = $entry->username !== '' ? $marks($entry->grade) : '-';
+            $here = $marks($entry->localgrade);
+        } else {
+            $what = get_string('gradeswhatgrade', 'block_coursesync');
+            $there = $entry->userid ? $showgrade($entry->grade, $entry->gradeitemid) : '-';
+            $here = $showgrade($entry->localgrade, $entry->gradeitemid);
+        }
+
+        $rows .= html_writer::tag(
+            'tr',
+            html_writer::tag('td', $pick)
+            . html_writer::tag('td', format_string($entry->activity, true, ['context' => $coursecontext]))
+            . html_writer::tag('td', $what)
+            . html_writer::tag('td', $there)
+            . html_writer::tag('td', $here)
+            . html_writer::tag('td', get_string($outcomelabels[$entry->outcome], 'block_coursesync'))
+            . html_writer::tag('td', $reasontext($entry))
+        );
+    }
+
+    $master = '';
+
+    $towritehere = $counts[grade_pull_result::ADD] + $counts[grade_pull_result::UPDATE] + $counts[grade_pull_result::RELEASED];
+
+    if ($inform && $towritehere > 0) {
+        $master = html_writer::checkbox('', 1, true, get_string('gradespickstudent', 'block_coursesync', $section['name']), [
+            'id' => 'coursesync-pickstudent-' . $number,
+            'data-action' => 'toggle',
+            'data-toggle' => $togglerrole,
+            'data-togglegroup' => $group,
+        ], ['class' => 'visually-hidden']);
+    }
+
+    $head = html_writer::tag('tr', html_writer::tag('th', $master, ['scope' => 'col'])
+        . implode('', array_map(
+            static fn(string $key): string => html_writer::tag('th', get_string($key, 'block_coursesync'), ['scope' => 'col']),
+            ['gradescolactivity', 'gradescolwhat', 'gradescolthere', 'gradescolhere', 'gradescolresult', 'gradescolreason']
+        )));
+
+    $badges = '';
+    foreach (
+        [
+            [$towritehere, $result->preview ? 'gradesbadgetopull' : 'gradesbadgepulled', 'bg-success'],
+            [$counts[grade_pull_result::CONFLICT], 'gradesbadgekept', 'bg-warning text-dark'],
+            [$counts[grade_pull_result::SKIPPED], 'gradesbadgeskipped', 'bg-secondary'],
+        ] as [$count, $string, $class]
+    ) {
+        if ($count > 0) {
+            $badges .= ' ' . html_writer::span(get_string($string, 'block_coursesync', $count), 'badge ' . $class);
+        }
+    }
+
+    $attention = $key === '' || $towritehere > 0 || $counts[grade_pull_result::CONFLICT] > 0;
+    $title = s($section['name']);
+
+    if ($key !== '' && $section['username'] !== '') {
+        $title .= ' (' . s($section['username']) . ')';
+    }
+
+    echo html_writer::tag(
+        'details',
+        html_writer::tag('summary', $title . $badges, ['class' => 'fw-bold py-1'])
+        . html_writer::tag(
+            'table',
+            html_writer::tag('caption', $title, ['class' => 'visually-hidden'])
+            . html_writer::tag('thead', $head)
+            . html_writer::tag('tbody', $rows),
+            ['class' => 'table table-sm table-striped', 'id' => 'coursesync-student-' . $number]
         ),
-        $result->preview ? 'attemptsgrouptowrite' : 'attemptsgroupwritten',
-        'coursesync-attempts-written'
+        array_filter([
+            'class' => 'coursesync-student mb-2 border rounded px-2',
+            'id' => 'coursesync-student-section-' . $number,
+            'open' => $attention ? 'open' : null,
+        ])
     );
 }
 
@@ -380,17 +444,13 @@ if ($result->preview) {
         echo $OUTPUT->notification(get_string('gradesnothingtowrite', 'block_coursesync'), 'info', false);
         echo $backtocourse;
     } else {
-        echo html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl->out(false)]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
         echo html_writer::tag(
             'div',
             html_writer::empty_tag('input', [
                 'type' => 'submit',
                 'value' => get_string(
                     $result->of_kind(grade_pull_result::KIND_ATTEMPT) !== [] ? 'gradessubmitall' : 'gradessubmit',
-                    'block_coursesync',
-                    $towrite
+                    'block_coursesync'
                 ),
                 'class' => 'btn btn-primary me-2',
             ])

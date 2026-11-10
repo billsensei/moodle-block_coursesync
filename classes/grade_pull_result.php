@@ -103,6 +103,18 @@ class grade_pull_result {
     public array $entries = [];
 
     /**
+     * Which grades and attempts the person ticked, as a set of keys (see
+     * key()), or null for "everything" - a preview, or a pull nobody narrowed.
+     *
+     * It can only narrow a pull: a key says "this one may be written", and the
+     * pull still works out for itself whether it can be. A key it does not
+     * recognise, or one for a student outside the person's groups, does nothing.
+     *
+     * @var bool[]|null key => true
+     */
+    public ?array $chosen = null;
+
+    /**
      * A pull that could not start or could not reach the other site.
      *
      * @param string $errorkey
@@ -114,6 +126,62 @@ class grade_pull_result {
         $result->errorkey = $errorkey;
 
         return $result;
+    }
+
+    /**
+     * The key that names one grade or attempt, the same on the preview and on
+     * the pull that follows it.
+     *
+     * Built from who and what it is, never from a row id: a manual grade item
+     * a preview would create has none yet. Hashed, so it is safe to put in a
+     * form and to read back as PARAM_ALPHANUM, whatever a username holds.
+     *
+     * @param \stdClass $entry see $entries
+     * @return string
+     */
+    public static function key(\stdClass $entry): string {
+        return sha1(implode('|', [
+            $entry->kind ?? self::KIND_GRADE,
+            (int) ($entry->cmid ?? 0),
+            (int) ($entry->remoteitemid ?? 0),
+            (int) ($entry->itemnumber ?? 0),
+            (string) ($entry->username ?? ''),
+            (int) ($entry->attempt ?? 0),
+        ]));
+    }
+
+    /**
+     * May this entry be written, as far as the person's ticks go?
+     *
+     * @param \stdClass $entry see $entries
+     * @return bool
+     */
+    public function is_chosen(\stdClass $entry): bool {
+        return $this->chosen === null || isset($this->chosen[self::key($entry)]);
+    }
+
+    /**
+     * Was any attempt of this student's at this quiz left unticked?
+     *
+     * A quiz's grade override can only be taken away once its attempts are
+     * here; with one of them left out, taking it away would leave the student
+     * with no grade at all.
+     *
+     * @param int $cmid the quiz here
+     * @param string $username
+     * @return bool
+     */
+    public function attempt_left_out(int $cmid, string $username): bool {
+        foreach ($this->entries as $entry) {
+            if (
+                ($entry->kind ?? '') === self::KIND_ATTEMPT && (int) $entry->cmid === $cmid
+                && $entry->username === $username && ($entry->reason ?? null) === 'attemptskipnotchosen'
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

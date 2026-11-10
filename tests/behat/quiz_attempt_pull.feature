@@ -70,16 +70,16 @@ Feature: Pulling students' quiz attempts from the other site
   Scenario: A teacher brings the attempts across and sees them in the quiz's own report
     When I am on the "DEST" "block_coursesync > Grades" page logged in as "teacher1"
     Then I should see "Quiz attempts"
-    And I should see "Attempts to bring across"
-    And I should see "Sam Student" in the "coursesync-attempts-written" "table"
-    And I should see "3.00" in the "Sam Student" "table_row"
-    And I should see "0.80" in the "Sue Student" "table_row"
+    And I should see "Sam Student" in the "#coursesync-student-section-1" "css_element"
+    And I should see "Attempt 1" in the "#coursesync-student-1" "css_element"
+    And I should see "3.00" in the "#coursesync-student-1" "css_element"
+    And I should see "0.80" in the "#coursesync-student-2" "css_element"
     # The quiz works its grade out from the attempts: no override is written.
-    And I should not see "Grades to pull"
+    And "#coursesync-grades-summary" "css_element" should not exist
 
-    When I press "Pull grades and attempts (2)"
+    When I press "Pull the ticked grades and attempts"
     Then I should see "Quiz attempts brought across: 2 new, 0 updated."
-    And I should see "Attempts brought across"
+    And I should see "1 pulled" in the "#coursesync-student-section-1" "css_element"
 
     # The attempts are real attempts in the quiz, which grades them itself
     # (out of 100, the generator's default): 3 of 3 marks, and 0.8 of 3.
@@ -91,7 +91,7 @@ Feature: Pulling students' quiz attempts from the other site
     # Pulling again brings nothing twice.
     When I am on the "DEST" "block_coursesync > Grades" page
     Then I should see "Nothing would change"
-    And "Pull grades and attempts" "button" should not exist
+    And "Pull the ticked grades and attempts" "button" should not exist
 
     # The history keeps the attempts' counts apart, and no names.
     When I am on the "DEST" "block_coursesync > History" page
@@ -102,5 +102,5 @@ Feature: Pulling students' quiz attempts from the other site
     Given slot 1 of the synced quiz "Unit quiz" in "DEST" is worth "5"
     When I am on the "DEST" "block_coursesync > Grades" page logged in as "teacher1"
     Then I should see "The quiz here no longer matches the one on the other site"
-    And I should see "Grades to pull"
-    And I should see "Sam Student" in the "coursesync-grades-written" "table"
+    And I should see "1 to pull" in the "#coursesync-student-section-1" "css_element"
+    And I should see "Sam Student" in the "#coursesync-student-section-1" "css_element"

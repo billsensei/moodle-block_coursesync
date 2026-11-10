@@ -328,4 +328,110 @@ final class grade_pull_quiz_test extends advanced_testcase {
         );
         $this->assertNotEmpty($this->grade_here()->overridden);
     }
+
+    /**
+     * The key of the entry of one kind a pull made for the student.
+     *
+     * @param grade_pull_result $result
+     * @param string $kind
+     * @param int|null $attempt only this attempt number
+     * @return string
+     */
+    protected function key_of(grade_pull_result $result, string $kind, ?int $attempt = null): string {
+        $entries = array_filter(
+            $this->of_kind($result, $kind),
+            static fn($e) => $attempt === null || (int) $e->attempt === $attempt
+        );
+        $this->assertCount(1, $entries);
+
+        return grade_pull_result::key(reset($entries));
+    }
+
+    /**
+     * An attempt left unticked is not brought across, and is offered again.
+     */
+    public function test_an_unticked_attempt_is_not_brought(): void {
+        global $DB;
+
+        $this->source_attempt($this->student, $this->answers(), 4);
+        $this->source_attempt($this->student, $this->answers(), 2);
+
+        $preview = grade_pull::preview($this->instanceid, $this->course->id, $this->local_source());
+        $first = $this->key_of($preview, grade_pull_result::KIND_ATTEMPT, 1);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->local_source(), [$first => true]);
+
+        $this->assertSame(
+            [1 => grade_pull_result::ADD, 2 => grade_pull_result::SKIPPED],
+            array_column($this->of_kind($result, grade_pull_result::KIND_ATTEMPT), 'outcome', 'attempt')
+        );
+        $this->assertSame(
+            1,
+            $DB->count_records('quiz_attempts', ['quiz' => $this->copycm->instance, 'userid' => $this->student->id])
+        );
+        $this->assertSame(1, $DB->count_records('block_coursesync_attempt', ['quizid' => $this->copycm->instance]));
+
+        $again = grade_pull::preview($this->instanceid, $this->course->id, $this->local_source());
+        $this->assertSame(
+            [1 => grade_pull_result::SAME, 2 => grade_pull_result::ADD],
+            array_column($this->of_kind($again, grade_pull_result::KIND_ATTEMPT), 'outcome', 'attempt')
+        );
+    }
+
+    /**
+     * With one of a student's attempts left out, the override an earlier pull
+     * wrote is all the student has: it must not be taken away, or they would
+     * be left with no grade.
+     */
+    public function test_the_override_stays_while_an_attempt_is_left_out(): void {
+        $this->earlier_pull_wrote((int) $this->student->id, 8);
+        $this->source_attempt($this->student, $this->answers(), 4);
+        $this->source_attempt($this->student, $this->answers(), 2);
+
+        $preview = grade_pull::preview($this->instanceid, $this->course->id, $this->local_source());
+        $grade = $this->key_of($preview, grade_pull_result::KIND_GRADE);
+        $first = $this->key_of($preview, grade_pull_result::KIND_ATTEMPT, 1);
+
+        // The release is ticked, one attempt is not.
+        $result = grade_pull::run(
+            $this->instanceid,
+            $this->course->id,
+            $this->local_source(),
+            [$grade => true, $first => true]
+        );
+
+        $this->assertSame(
+            [grade_pull_result::SKIPPED],
+            array_column($this->of_kind($result, grade_pull_result::KIND_GRADE), 'outcome')
+        );
+        $this->assertNotEmpty($this->grade_here()->overridden);
+        $this->assertEquals(8, $this->grade_here()->finalgrade);
+    }
+
+    /**
+     * With every attempt ticked but the release not, the override stays too;
+     * ticking all of it takes it away.
+     */
+    public function test_the_release_is_only_made_when_ticked(): void {
+        $this->earlier_pull_wrote((int) $this->student->id, 8);
+        $this->source_attempt($this->student, $this->answers(), 4);
+
+        $preview = grade_pull::preview($this->instanceid, $this->course->id, $this->local_source());
+        $attempt = $this->key_of($preview, grade_pull_result::KIND_ATTEMPT);
+        $grade = $this->key_of($preview, grade_pull_result::KIND_GRADE);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->local_source(), [$attempt => true]);
+        $this->assertSame(
+            [grade_pull_result::SKIPPED],
+            array_column($this->of_kind($result, grade_pull_result::KIND_GRADE), 'outcome')
+        );
+        $this->assertNotEmpty($this->grade_here()->overridden);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->local_source(), [$attempt => true, $grade => true]);
+        $this->assertSame(
+            [grade_pull_result::RELEASED],
+            array_column($this->of_kind($result, grade_pull_result::KIND_GRADE), 'outcome')
+        );
+        $this->assertEmpty($this->grade_here()->overridden);
+    }
 }

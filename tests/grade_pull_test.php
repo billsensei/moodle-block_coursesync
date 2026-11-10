@@ -1314,4 +1314,144 @@ final class grade_pull_test extends advanced_testcase {
         $this->assertEquals(15, $grade->finalgrade);
         $this->assertSame('Well argued', $grade->feedback);
     }
+
+    /**
+     * Has the student any grade at all in an activity here?
+     *
+     * @param \stdClass $module
+     * @return bool
+     */
+    protected function has_grade_here(\stdClass $module): bool {
+        $grade = $this->grade_here($module);
+
+        return $grade && $grade->finalgrade !== null;
+    }
+
+    /**
+     * The keys of a preview's entries, by activity name.
+     *
+     * @param grade_pull_result $preview
+     * @return string[]
+     */
+    protected function keys_by_activity(grade_pull_result $preview): array {
+        $keys = [];
+
+        foreach ($preview->entries as $entry) {
+            $keys[$entry->activity] = grade_pull_result::key($entry);
+        }
+
+        return $keys;
+    }
+
+    /**
+     * Only the grades that were ticked are written; the others are offered
+     * again by the next preview, as if nothing had happened to them.
+     */
+    public function test_only_ticked_grades_are_written(): void {
+        global $DB;
+
+        $first = $this->copy_of(777, ['name' => 'Essay one']);
+        $second = $this->copy_of(778, ['name' => 'Essay two']);
+        $this->sourceitems = [
+            $this->remote_item(777, [$this->remote_grade('sam', 80)]),
+            $this->remote_item(778, [$this->remote_grade('sam', 60)]),
+        ];
+
+        $keys = $this->keys_by_activity(grade_pull::preview($this->instanceid, $this->course->id, $this->source()));
+        $this->assertCount(2, $keys);
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source(), [$keys['Essay one'] => true]);
+
+        $outcomes = array_column($result->entries, 'outcome', 'activity');
+        $this->assertSame(grade_pull_result::ADD, $outcomes['Essay one']);
+        $this->assertSame(grade_pull_result::SKIPPED, $outcomes['Essay two']);
+        $this->assertSame('gradeskipnotchosen', array_column($result->entries, 'reason', 'activity')['Essay two']);
+        $this->assertEquals(80, $this->grade_here($first)->finalgrade);
+        $this->assertFalse($this->has_grade_here($second));
+        $this->assertEquals(1, $DB->count_records('block_coursesync_grade'));
+
+        // Nothing was remembered for the unticked one, so it is offered again.
+        $again = grade_pull::preview($this->instanceid, $this->course->id, $this->source());
+        $this->assertSame(
+            ['Essay one' => grade_pull_result::SAME, 'Essay two' => grade_pull_result::ADD],
+            array_column($again->entries, 'outcome', 'activity')
+        );
+    }
+
+    /**
+     * Nothing ticked writes nothing - and no grade item is created for a
+     * manual item whose grades were all left out.
+     */
+    public function test_an_empty_selection_writes_nothing(): void {
+        global $DB;
+
+        $assign = $this->copy_of(777);
+        $this->sourceitems = [
+            $this->remote_item(777, [$this->remote_grade('sam', 80)]),
+            [
+                'cmid' => \block_coursesync\external\get_grades::MANUAL,
+                'itemid' => 5,
+                'itemname' => 'Participation',
+                'itemnumber' => 0,
+                'gradetype' => GRADE_TYPE_VALUE,
+                'grademin' => 0,
+                'grademax' => 10,
+                'scale' => '',
+                'hidden' => 0,
+                'grades' => [$this->remote_grade('sam', 7)],
+            ],
+        ];
+        $before = $DB->count_records('grade_items');
+
+        $result = grade_pull::run($this->instanceid, $this->course->id, $this->source(), []);
+
+        $this->assertTrue($result->success, (string) $result->errorkey);
+        $this->assertNotEmpty($result->entries);
+        $this->assertSame([grade_pull_result::SKIPPED], array_values(array_unique(array_column($result->entries, 'outcome'))));
+        $this->assertFalse($this->has_grade_here($assign));
+        $this->assertSame(0, $DB->count_records('block_coursesync_grade'));
+        $this->assertSame($before, $DB->count_records('grade_items'));
+    }
+
+    /**
+     * A key only narrows a pull. The key of a grade that would not be
+     * written anyway - one someone here has already graded - writes nothing,
+     * and nor does a key that names nothing at all.
+     */
+    public function test_a_key_cannot_make_the_pull_write_more(): void {
+        $assign = $this->copy_of(777);
+        $this->item($assign)->update_final_grade($this->student->id, 55, 'gradebook');
+        $this->sourceitems = [$this->remote_item(777, [$this->remote_grade('sam', 80)])];
+
+        $keys = $this->keys_by_activity(grade_pull::preview($this->instanceid, $this->course->id, $this->source()));
+        $result = grade_pull::run(
+            $this->instanceid,
+            $this->course->id,
+            $this->source(),
+            [reset($keys) => true, sha1('forged') => true]
+        );
+
+        $this->assertSame(grade_pull_result::CONFLICT, $this->only_entry($result)->outcome);
+        $this->assertEquals(55, $this->grade_here($assign)->finalgrade);
+    }
+
+    /**
+     * What a preview offers has a key that is the same on the pull, and
+     * different for each grade.
+     */
+    public function test_keys_are_stable_and_distinct(): void {
+        $this->copy_of(777, ['name' => 'Essay one']);
+        $this->copy_of(778, ['name' => 'Essay two']);
+        $this->sourceitems = [
+            $this->remote_item(777, [$this->remote_grade('sam', 80)]),
+            $this->remote_item(778, [$this->remote_grade('sam', 60)]),
+        ];
+
+        $one = $this->keys_by_activity(grade_pull::preview($this->instanceid, $this->course->id, $this->source()));
+        $two = $this->keys_by_activity(grade_pull::run($this->instanceid, $this->course->id, $this->source()));
+
+        $this->assertSame($one, $two);
+        $this->assertNotSame($one['Essay one'], $one['Essay two']);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{40}$/', $one['Essay one']);
+    }
 }

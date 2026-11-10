@@ -330,21 +330,34 @@ groups, just as in the gradebook.
 ### What happens
 
 **Pull grades** first shows you what it *would* do. Nothing is written until you
-press **Pull the grades** (or **Pull grades and attempts**, when quizzes are
-involved). Under **Gradebook grades** the page lists:
+press **Pull the ticked grades** (or **Pull the ticked grades and attempts**, when
+quizzes are involved).
 
+The page lists each student in a section of their own, with their grades and quiz
+attempts together. Click a student's name to open or close their section; a
+section opens by itself when it has something to pull or something that was kept.
+Each line says what would happen to it:
+
+- **New** or **Updated** — will be written. These have a tick box, ticked to
+  begin with. **Untick** the ones you do not want; they are not pulled, nothing is
+  remembered about them, and the next preview offers them again. The box at the top
+  of a student's section ticks or unticks all of theirs, and **Select all / none**
+  does the whole page. Closing a section does not untick anything in it.
 - **Kept as they were** — a student already has a different grade here, given by
   someone on this site. That grade is **never replaced**. Both grades are shown
   side by side; if the other site's is the right one, change it in the gradebook
   yourself.
 - **Skipped** — a grade that could not be used, and why: the grade is locked, or
-  the activity is graded differently here (a different scale, say). Only your
-  own students' grades are asked for, so students who are not in your course
-  here do not appear at all. (If the other site's Course Sync is older, it may
-  send everyone's; those show as skipped because nobody here has that username,
-  or the student is not active in your course.)
-- **Grades to pull** — students who have no grade here yet. A grade out of a
-  different maximum is converted: 40 out of 50 there becomes 80 out of 100 here.
+  the activity is graded differently here (a different scale, say), or you left it
+  unticked. Only your own students' grades are asked for, so students who are not
+  in your course here do not appear at all. (If the other site's Course Sync is
+  older, it may send everyone's; those show as skipped because nobody here has
+  that username, or the student is not active in your course.)
+- **Already the same** — nothing to do.
+
+A grade out of a different maximum is converted: 40 out of 50 there becomes 80 out
+of 100 here. If you leave one of a student's attempts at a quiz unticked, the grade
+an earlier pull set for that quiz is left alone, so the student always has a grade.
 
 Feedback comes across with each grade. A grade the other site keeps hidden from
 the student is hidden here too.
