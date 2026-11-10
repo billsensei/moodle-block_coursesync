@@ -333,6 +333,8 @@ $number = 0;
 foreach ($sections as $key => $section) {
     $number++;
     $group = 'coursesync-s' . $number;
+    // The name can be a username from the other site, and labels are not escaped for us.
+    $safename = s($section['name']);
     $counts = array_fill_keys(grade_pull_result::OUTCOMES, 0);
     $rows = '';
 
@@ -347,7 +349,7 @@ foreach ($sections as $key => $section) {
                 grade_pull_result::key($entry),
                 true,
                 get_string('gradespickone', 'block_coursesync', (object) [
-                    'student' => $section['name'],
+                    'student' => $safename,
                     'activity' => format_string($entry->activity, true, ['context' => $coursecontext]),
                 ]),
                 [
@@ -387,7 +389,7 @@ foreach ($sections as $key => $section) {
     $towritehere = $counts[grade_pull_result::ADD] + $counts[grade_pull_result::UPDATE] + $counts[grade_pull_result::RELEASED];
 
     if ($inform && $towritehere > 0) {
-        $master = html_writer::checkbox('', 1, true, get_string('gradespickstudent', 'block_coursesync', $section['name']), [
+        $master = html_writer::checkbox('', 1, true, get_string('gradespickstudent', 'block_coursesync', $safename), [
             'id' => 'coursesync-pickstudent-' . $number,
             'data-action' => 'toggle',
             'data-toggle' => $togglerrole,
@@ -415,7 +417,7 @@ foreach ($sections as $key => $section) {
     }
 
     $attention = $key === '' || $towritehere > 0 || $counts[grade_pull_result::CONFLICT] > 0;
-    $title = s($section['name']);
+    $title = $safename;
 
     if ($key !== '' && $section['username'] !== '') {
         $title .= ' (' . s($section['username']) . ')';

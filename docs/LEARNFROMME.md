@@ -5630,3 +5630,21 @@ with the JavaScript build identical to the source. The whole Behat suite then pa
 5.2 and 5.3. **Not done:** the release-row-unticked gate has no mutation of its own; no look at the page in a real browser;
 no pull between two real sites.
 
+## Phase 108 - Escaping miss in Phase 107 found by the security review, fixed in v1.32.1-beta, 2026-11-10
+
+After v1.32.0-beta was pushed and released, the automated security review of the commit flagged `grades.php`: the labels of the
+new tick boxes (`html_writer::checkbox()` does not escape its label) were built from `$section['name']`, which for a student
+with no match here is the **username the other site sent** - remote data. The section title next to them already used `s()`,
+so the page escaped the same value in one place and not in two others. Valid finding; the repo's own rule (escape remote data
+at render time) was already known and I still missed it because the name looked like a display name, not a remote value.
+
+**Fix.** One `$safename = s($section['name'])` per section, used for the title and both label strings (`grades.php`). Version
+bumped to v1.32.1-beta (build 2026111002); the release was already public with the flaw, so a new release rather than a rewrite.
+**Lesson.** When a value goes into any string handed to `html_writer`, ask where it came from, not what it is called;
+`checkbox()`/`label()` take raw HTML. **Trap in the release itself:** a script that did `open(f,'w').write(open(f).read()...)`
+truncated `CHANGES.md` to nothing before reading it; caught at once (`ValueError`, then `wc -c` = 0) and restored with
+`git checkout -- CHANGES.md`, which worked only because the file was committed. Read first, write second.
+**Not done:** no test with a hostile username (the page cannot be rendered from PHPUnit, and the Behat source would need a
+student whose username cannot exist here); verified by reading and by the existing scenarios. phpcs clean, grade and
+quiz-attempt Behat 8 / 264 on 5.1.
+
