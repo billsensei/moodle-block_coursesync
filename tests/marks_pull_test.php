@@ -1082,4 +1082,64 @@ final class marks_pull_test extends advanced_testcase {
         $this->assertSame(1, $DB->count_records('block_coursesync_mark', ['assignid' => $this->here->id]));
         $this->assertSame(1, (int) $DB->get_field('block_coursesync_mark', 'attemptnumber', ['id' => $ledger->id]));
     }
+
+    /**
+     * Only the ticked marks are written. A mark left unticked is skipped with
+     * its own reason, leaves no record, and is offered again next time.
+     */
+    public function test_only_the_ticked_marks_are_pulled(): void {
+        global $DB;
+
+        [, $here2] = $this->second_marked();
+        $ticks = [];
+
+        foreach ($this->preview()->entries as $entry) {
+            if ($entry->cmid === (int) $here2->cmid) {
+                $ticks[grade_pull_result::key($entry)] = true;
+            }
+        }
+
+        $this->assertCount(1, $ticks);
+        $result = marks_pull::run($this->instanceid, $this->course->id, $this->source(), null, false, $ticks);
+        $outcomes = [];
+
+        foreach ($result->entries as $entry) {
+            $outcomes[$entry->cmid] = $entry->outcome . ':' . $entry->reason;
+        }
+
+        $this->assertSame('skipped:subreasonnotchosen', $outcomes[$this->here->cmid]);
+        $this->assertSame('add:', $outcomes[$here2->cmid]);
+        $this->assertNull($this->grade_here());
+        $this->assertSame(1, $DB->count_records('block_coursesync_mark'));
+        $this->assertEquals(70, $DB->get_field('assign_grades', 'grade', ['assignment' => $here2->id, 'userid' => $this->sam->id]));
+
+        // The one left out is still there to pull.
+        $this->assertSame(grade_pull_result::ADD, $this->only_entry(
+            marks_pull::preview($this->instanceid, $this->course->id, $this->source(), [$this->there->cmid])
+        )->outcome);
+    }
+
+    /**
+     * A selection that matches nothing writes nothing: an empty one, or keys
+     * that name no mark in this pull. It can only narrow.
+     */
+    public function test_a_selection_that_matches_nothing_writes_nothing(): void {
+        global $DB;
+
+        $this->second_marked();
+
+        foreach ([[], ['0123456789abcdef' => true]] as $chosen) {
+            $result = marks_pull::run($this->instanceid, $this->course->id, $this->source(), null, false, $chosen);
+
+            $this->assertTrue($result->success);
+            $this->assertNotEmpty($result->entries);
+
+            foreach ($result->entries as $entry) {
+                $this->assertSame('skipped:subreasonnotchosen', $entry->outcome . ':' . $entry->reason);
+            }
+        }
+
+        $this->assertSame(0, $DB->count_records('block_coursesync_mark'));
+        $this->assertNull($this->grade_here());
+    }
 }

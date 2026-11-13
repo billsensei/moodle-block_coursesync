@@ -5648,3 +5648,47 @@ truncated `CHANGES.md` to nothing before reading it; caught at once (`ValueError
 student whose username cannot exist here); verified by reading and by the existing scenarios. phpcs clean, grade and
 quiz-attempt Behat 8 / 264 on 5.1.
 
+## Phase 109 - Choosing which submissions and marks to pull, a section per student (v1.33.0-beta, build 2026111301, not committed), 2026-11-13
+
+**Ask.** "For pulling assignments, can we make them selectable ... and put them into collapsible sections based on the
+student's account." The Submissions and Marks pages already had one tick box per *assignment*, so the first question was what
+"selectable" meant. Asked the user: per student's work (chosen, and for every-attempt pulls one box per attempt), on both pages.
+
+**What changed.** `submission_pull::run()/preview()` and `marks_pull::run()/preview()` take a last parameter `?array $chosen`
+(a set of `grade_pull_result::key()` values; null = everything), kept beside the old `$only` (assignments, still used by
+tests). The key already included the attempt, so no new key was needed. The check sits where a write would begin
+(`write_one()` for submissions, after `classify()` in `pull_mark()`): a line that would be ADD/UPDATE and is not in the set
+becomes SKIPPED `subreasonnotchosen`, **before** any file is fetched or any of the 512 MB budget is taken, and no ledger row is
+written. A new `classes/local/student_sections.php` draws the `<details>` per student, the per-line and per-student tick boxes
+and the select-all (roles `master`/`slave` before 5.1, `toggler`/`target` from 5.1); both pages use it, `grades.php` is
+untouched. The page forms send `pick[]` (`PARAM_ALPHANUM`) and `picking=1`, no longer `chosen[]` (`PARAM_INT`).
+
+**Decisions.**
+- *A form that says nothing pulls nothing.* Pull Grades treats a POST without `picking` as "everything" (old links); these
+  two pages always refused an empty tick, so they keep that: no `picking`, or no keys, shows "Nothing was ticked".
+- *Submissions: an unticked attempt that would be written holds back the later ones* (`subreasonnotchosen` is in `STOPS`),
+  the same rule as a failed transfer, so a student's history has no hole. An attempt that is already the same has no box and
+  holds nothing back. *Marks: each attempt on its own*, because `pull_attempt_marks()` has no hole rule ("a mark that cannot
+  be brought leaves no hole to guard against").
+- Ten strings that only the old three tables used were removed, seven added, and the button texts now say "work" and "marks".
+
+**Traps hit.**
+- The advisor's point that mattered: `write_one()` takes the file bytes off the budget *before* it looks at `$run->write`, so a
+  not-chosen check placed after it would let unticked work push ticked work into `subreasonrunlimit`. There is a test for it.
+- My first `lang` edit sorted the whole `$string` block and asserted the block held only strings; it holds comments, so the
+  assertion stopped it before it wrote anything. The second version removed lines and inserted each new one at its sorted
+  position, then checked the whole file is sorted with no duplicates (531 keys).
+- phpcs caught what I wrote: four test files ended in two newlines (I appended with an extra `'\n'`), and four lines over 132
+  characters in the new pages and helper. Fixed after the Behat run finished, not during it (the sites bind-mount the plugin).
+- Behat found nothing wrong with the new pages, but five features needed rewriting: they read the old per-outcome tables
+  (`coursesync-submissions-written` and friends) and the "Pull {assignment}" boxes. They now use the same ids as Pull Grades
+  (`#coursesync-student-section-N`, `#coursesync-student-N`) and "Pull Essay one for Sam Student" labels. Student sections are
+  ordered by name, so Sam is 1 and Sue is 2.
+- The student's name goes into the tick-box labels through `s()` once per section, as the Phase 108 lesson says.
+
+**Checked.** PHPUnit 779 tests on all four Moodle versions (771 + 8). Mutation: with the not-chosen check made unreachable in
+both pulls, 7 of the 8 new tests fail (the eighth, "an attempt already here does not hold back the later ones", is meant to
+pass both ways). Behat 67 scenarios / 1707 steps on 5.0, 5.1, 5.2, 5.3; after the line-length reformat the three assignment
+features (15 scenarios) again on 5.1. phplint, phpcs `--max-warnings 0`, phpdoc, validate, savepoints, grunt clean.
+**Not done:** no pull between two real sites; no look in a real browser; Pull Grades still has its own copy of the section
+code (it could use `student_sections` later).

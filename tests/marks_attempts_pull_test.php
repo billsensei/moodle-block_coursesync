@@ -831,4 +831,30 @@ final class marks_attempts_pull_test extends advanced_testcase {
 
         $this->assertNotContains('block_coursesync_ping', array_column($this->calls, 'wsfunction'));
     }
+
+    /**
+     * An attempt's mark left unticked is not written, and the others carry on:
+     * marks leave no hole to guard against. Nothing is recorded for it, so the
+     * next preview offers it again.
+     */
+    public function test_an_unticked_attempts_mark_does_not_hold_back_the_others(): void {
+        $this->three_goes();
+        $this->pull_work();
+        $ticks = [];
+
+        foreach ($this->preview_all()->entries as $entry) {
+            if ($entry->userid && $entry->outcome === grade_pull_result::ADD && (int) $entry->attempt !== 1) {
+                $ticks[grade_pull_result::key($entry)] = true;
+            }
+        }
+
+        $this->assertCount(2, $ticks);
+        $result = marks_pull::run($this->instanceid, $this->course->id, $this->source(), null, true, $ticks);
+
+        $this->assertSame([0 => 'add', 1 => 'skipped:subreasonnotchosen', 2 => 'add'], $this->outcomes($result));
+        $this->assertSame([0, 2], array_keys($this->grades_here()));
+        $this->assertSame([0, 2], array_keys($this->ledger()));
+        $this->assertEquals(80, $this->gradebook_here());
+        $this->assertSame([0 => 'same', 1 => 'add', 2 => 'same'], $this->outcomes($this->preview_all()));
+    }
 }

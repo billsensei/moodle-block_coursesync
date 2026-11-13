@@ -69,6 +69,7 @@ class marks_pull {
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
      * @param bool $allattempts the mark of every attempt, not only the latest
+     * @param bool[]|null $chosen the marks the teacher ticked, as a set of grade_pull_result::key() values; null means all of them
      * @return grade_pull_result
      */
     public static function preview(
@@ -76,9 +77,10 @@ class marks_pull {
         int $courseid,
         ?http_client $client = null,
         ?array $only = null,
-        bool $allattempts = false
+        bool $allattempts = false,
+        ?array $chosen = null
     ): grade_pull_result {
-        $result = self::pull($blockinstanceid, $courseid, false, $client, $only, $allattempts);
+        $result = self::pull($blockinstanceid, $courseid, false, $client, $only, $allattempts, $chosen);
         $result->preview = true;
 
         return $result;
@@ -96,6 +98,7 @@ class marks_pull {
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
      * @param bool $allattempts the mark of every attempt, not only the latest
+     * @param bool[]|null $chosen the marks the teacher ticked, as a set of grade_pull_result::key() values; null means all of them
      * @return grade_pull_result
      */
     public static function run(
@@ -103,7 +106,8 @@ class marks_pull {
         int $courseid,
         ?http_client $client = null,
         ?array $only = null,
-        bool $allattempts = false
+        bool $allattempts = false,
+        ?array $chosen = null
     ): grade_pull_result {
         global $USER;
 
@@ -115,7 +119,7 @@ class marks_pull {
             $result = grade_pull_result::failure('errorsyncinprogress');
         } else {
             try {
-                $result = self::pull($blockinstanceid, $courseid, true, $client, $only, $allattempts);
+                $result = self::pull($blockinstanceid, $courseid, true, $client, $only, $allattempts, $chosen);
             } finally {
                 $lock->release();
             }
@@ -188,6 +192,7 @@ class marks_pull {
      * @param http_client|null $client
      * @param int[]|null $only remote course module ids to cover; null means every copied assignment
      * @param bool $allattempts the mark of every attempt, not only the latest
+     * @param bool[]|null $chosen the marks the teacher ticked, as a set of grade_pull_result::key() values; null means all of them
      * @return grade_pull_result
      */
     protected static function pull(
@@ -196,7 +201,8 @@ class marks_pull {
         bool $write,
         ?http_client $client,
         ?array $only = null,
-        bool $allattempts = false
+        bool $allattempts = false,
+        ?array $chosen = null
     ): grade_pull_result {
         $notallowed = self::check_allowed($courseid, $allattempts);
 
@@ -217,6 +223,7 @@ class marks_pull {
         }
 
         $result = new grade_pull_result();
+        $result->chosen = $chosen;
         $result->everyattempt = $allattempts;
         $copies = submission_pull::local_copies($courseid);
 
@@ -290,6 +297,7 @@ class marks_pull {
             'token' => $token,
             'client' => $client,
             'allattempts' => $allattempts,
+            'chosen' => $chosen,
         ];
 
         foreach ($copies as $remotecmid => $cm) {
@@ -449,6 +457,16 @@ class marks_pull {
         $entry->reason = $reason;
 
         if (!in_array($outcome, [grade_pull_result::ADD, grade_pull_result::UPDATE], true)) {
+            return;
+        }
+
+        // Left unticked: nothing is fetched, no budget is spent, and no record
+        // is kept, so it is offered again next time. Marks have no gap to
+        // guard against, so the other attempts carry on.
+        if ($run->chosen !== null && !isset($run->chosen[grade_pull_result::key($entry)])) {
+            $entry->outcome = grade_pull_result::SKIPPED;
+            $entry->reason = 'subreasonnotchosen';
+
             return;
         }
 

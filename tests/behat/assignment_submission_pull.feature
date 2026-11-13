@@ -62,21 +62,22 @@ Feature: Pulling students' assignment submissions from the other site
     And "student2" has handed in "Sue's own words" to the synced "Essay one" in course "DEST"
     When I am on the "Destination Course" course page logged in as "teacher1"
     And I follow "Pull Submissions"
-    Then I should see "Submissions to pull"
-    And I should see "Sam Student" in the "coursesync-submissions-written" "table"
-    And I should see "Kept as it was"
-    And I should see "Sue Student" in the "coursesync-submissions-conflicts" "table"
-    And I should see "already has different work here" in the "Sue Student" "table_row"
+    Then I should see "2 to pull" in the "#coursesync-student-section-1" "css_element"
+    And I should see "Sam Student" in the "#coursesync-student-section-1" "css_element"
+    And I should see "Kept as they were"
+    And I should see "Sue Student" in the "#coursesync-student-section-2" "css_element"
+    And I should see "1 kept" in the "#coursesync-student-section-2" "css_element"
+    And I should see "already has different work here" in the "#coursesync-student-2" "css_element"
 
-    When I press "Pull the ticked assignments"
+    When I press "Pull the ticked work"
     Then I should see "Submissions pulled: 2 (2 new, 0 updated)."
     And I should see "Some students already had work here that differs"
-    And I should see "Sam Student" in the "coursesync-submissions-written" "table"
+    And I should see "2 pulled" in the "#coursesync-student-section-1" "css_element"
 
     # Pulling again changes nothing: Sam's work is already here.
     When I am on the "DEST" "block_coursesync > Submissions" page
     Then I should see "Nothing would change"
-    And "Pull the ticked assignments" "button" should not exist
+    And "Pull the ticked work" "button" should not exist
 
     # The pull is in the history, as counts only.
     When I am on the "DEST" "block_coursesync > History" page
@@ -84,25 +85,46 @@ Feature: Pulling students' assignment submissions from the other site
     And I should not see "Sam Student"
     And I should not see "finished essay"
 
-  Scenario: A teacher ticks which assignments to pull, and the rest wait
+  Scenario: A teacher leaves one student's work unticked and it is not pulled
     Given Course Sync submission sharing is switched on
     And Course Sync submission pulling is switched on
     When I am on the "DEST" "block_coursesync > Submissions" page logged in as "teacher1"
-    Then the field "Pull Essay one" matches value "1"
-    And the field "Pull Essay two" matches value "1"
+    Then the field "Pull Essay one for Sam Student" matches value "1"
+    And the field "Pull Essay two for Sam Student" matches value "1"
+    And the field "Pull Essay one for Sue Student" matches value "1"
 
-    When I set the field "Pull Essay two" to ""
-    And I press "Pull the ticked assignments"
+    When I set the field "Pull Essay two for Sam Student" to ""
+    And I press "Pull the ticked work"
     Then I should see "Submissions pulled: 2 (2 new, 0 updated)."
+    And I should see "1 skipped" in the "#coursesync-student-section-1" "css_element"
+    And I should see "You left this unticked" in the "#coursesync-student-1" "css_element"
 
-    # Essay two was left out, so Sam's second essay is still waiting.
+    # Nothing was remembered about Sam's second essay, so it is offered again.
     When I am on the "DEST" "block_coursesync > Submissions" page
-    Then the field "Pull Essay two" matches value "1"
-    And the field "Pull Essay one" matches value "0"
+    Then the field "Pull Essay two for Sam Student" matches value "1"
+    And "Pull Essay one for Sam Student" "field" should not exist
 
-    When I set the field "Pull Essay two" to ""
-    And I press "Pull the ticked assignments"
-    Then I should see "No assignments were ticked, so nothing was pulled."
+    When I set the field "Pull Essay two for Sam Student" to ""
+    And I press "Pull the ticked work"
+    Then I should see "Nothing was ticked, so nothing was pulled."
+    And I should not see "Submissions pulled"
+
+  @javascript
+  Scenario: The tick boxes can be switched for everything or for one student
+    Given Course Sync submission sharing is switched on
+    And Course Sync submission pulling is switched on
+    When I am on the "DEST" "block_coursesync > Submissions" page logged in as "teacher1"
+    And I set the field "Select all for Sue Student" to ""
+    Then the field "Pull Essay one for Sue Student" matches value ""
+    And the field "Pull Essay one for Sam Student" matches value "1"
+
+    When I set the field "Select all / none" to ""
+    Then the field "Pull Essay one for Sam Student" matches value ""
+    And the field "Select all for Sam Student" matches value ""
+
+    When I set the field "Select all / none" to "1"
+    Then the field "Pull Essay one for Sam Student" matches value "1"
+    And the field "Pull Essay one for Sue Student" matches value "1"
 
   Scenario: The button is only offered where submission pulling is switched on and allowed
     Given Course Sync submission sharing is switched on

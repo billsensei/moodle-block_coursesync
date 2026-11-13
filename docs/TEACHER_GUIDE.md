@@ -448,19 +448,27 @@ activity completion as it would have if they had done it here.
 ### What happens
 
 **Pull submissions** first shows you what it *would* do. Nothing is written until
-you press **Pull the ticked assignments**. Each assignment has a tick box,
-ticked where there is something to pull; untick the ones you want to leave for
-later. The page lists:
+you press **Pull the ticked work**.
 
-- **Kept as it was** - the student already has different work here, or an earlier
-  pull brought work across and someone has changed it since. It is **never
+The page starts with a table of counts for each assignment, then lists each
+student in a section of their own. Click a student's name to open or close their
+section; a section opens by itself when it has something to pull or something that
+was kept. Each line says what would happen to it:
+
+- **New** or **Updated** - will be written. These have a tick box, ticked to begin
+  with. **Untick** the work you do not want; it is not pulled, nothing is
+  remembered about it, and the next preview offers it again. The box at the top of a
+  student's section ticks or unticks all of theirs, and **Select all / none** does
+  the whole page. Closing a section does not untick anything in it.
+- **Kept as they were** - the student already has different work here, or an
+  earlier pull brought work across and someone has changed it since. It is **never
   replaced**; look at it and decide.
 - **Skipped** - and why: the assignment here does not take that kind of
   submission (switch files or online text on in its settings), a file is larger
-  than your course allows, the assignment is a team assignment, or a file did not
-  arrive intact. Work a teacher removed here after it was pulled is not brought
-  back.
-- **Submissions to pull** - students with nothing here yet.
+  than your course allows, the assignment is a team assignment, a file did not
+  arrive intact, or you left it unticked. Work a teacher removed here after it was
+  pulled is not brought back.
+- **Already the same** - nothing to do.
 
 A pull brings up to 512 MB of files at a time; if there is more, the rest wait
 for the next pull.
@@ -497,7 +505,11 @@ line, oldest first, and the counts are of attempts, not students.
   attempts before it still come across.
 - **No gaps.** If an attempt cannot be brought (a file did not arrive intact, or
   it is over the limit for one pull), that student's later attempts wait for the
-  next pull.
+  next pull. **The same goes for an attempt you leave unticked:** each attempt has
+  its own tick box, but unticking one holds back that student's later attempts of
+  the same assignment, so their history has no hole. Tick the earlier ones, or
+  none of them. An attempt that is already here, and so has no tick box, holds
+  nothing back.
 - **A warning, not a stop.** If this assignment allows fewer attempts than the
   other site has, the page says so. They are all written; you just cannot give
   those students another attempt beyond that here.
@@ -540,19 +552,26 @@ marks are pulled.
 ### What happens
 
 **Pull marks and feedback** first shows you what it *would* do. Nothing is
-written until you press **Pull the ticked assignments**. Each assignment has a
-tick box, ticked where there is something to pull; untick the ones you want to
-leave for later (pulling marks writes grades, so this is the place to hold one
-back). The page lists:
+written until you press **Pull the ticked marks**. Pulling marks writes grades, so
+this is the place to hold one back.
 
-- **Kept as it was** - the student already has a different mark or comment here,
+Like the submissions page, it starts with a table of counts for each assignment,
+then lists each student in a section of their own, which you can open or close.
+Each line says what would happen to it:
+
+- **New** or **Updated** - will be written. These have a tick box, ticked to begin
+  with. **Untick** the marks you do not want; they are not pulled, nothing is
+  remembered about them, and the next preview offers them again. The box at the top
+  of a student's section ticks or unticks all of theirs, and **Select all / none**
+  does the whole page.
+- **Kept as they were** - the student already has a different mark or comment here,
   or an earlier pull brought a mark across and someone has changed it since. It
   is **never replaced**; look at it and decide.
 - **Skipped** - and why: the assignment here is not graded in points, the
   comments feedback is not switched on here, the grade is locked in the
-  gradebook, or a file did not arrive intact. A mark a teacher removed here
-  after it was pulled is not brought back.
-- **Marks to pull** - students with no mark here yet.
+  gradebook, a file did not arrive intact, or you left it unticked. A mark a
+  teacher removed here after it was pulled is not brought back.
+- **Already the same** - nothing to do.
 
 If **Pull grades** had already put a gradebook override on that student's grade,
 and nobody has changed it, it is removed once the real grade is in (the table
@@ -570,7 +589,8 @@ leave it alone.
 
 With the same box ticked on the marks page, the **mark for every attempt** a
 student handed in comes across, each onto the same attempt here, with its
-comment. The preview gains an **Attempt** column.
+comment. The preview gains an **Attempt** column, and each attempt's mark has a tick
+box of its own; the other attempts carry on if you leave one unticked.
 
 - **Only onto the right work.** A mark goes onto an attempt only if that attempt
   is here, and - where the student's submissions were pulled - is the same

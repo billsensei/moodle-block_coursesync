@@ -749,4 +749,67 @@ final class submission_attempts_pull_test extends advanced_testcase {
         $this->assertSame([], $latest->warnings);
         $this->assertFalse($latest->everyattempt);
     }
+
+    /**
+     * The ticks the page would send for a preview of every attempt: the keys of
+     * the attempts that would be written, less the numbers left unticked.
+     *
+     * @param int[] $unticked attempt numbers left out
+     * @return bool[] key => true
+     */
+    protected function ticks_except(array $unticked): array {
+        $ticks = [];
+
+        foreach ($this->preview_all()->entries as $entry) {
+            if (in_array($entry->outcome, ['add', 'update'], true) && !in_array((int) $entry->attempt, $unticked, true)) {
+                $ticks[grade_pull_result::key($entry)] = true;
+            }
+        }
+
+        return $ticks;
+    }
+
+    /**
+     * An attempt left unticked is not brought, and the student's later ones
+     * wait for it, so their history has no hole. Nothing is recorded for the
+     * ones left out, so the next preview offers them again.
+     */
+    public function test_an_unticked_attempt_holds_back_the_later_ones(): void {
+        $this->three_goes();
+        $ticks = $this->ticks_except([1]);
+        $this->assertCount(2, $ticks);
+
+        $result = submission_pull::run($this->instanceid, $this->course->id, $this->source(), null, true, $ticks);
+
+        $this->assertSame(
+            [0 => 'add', 1 => 'skipped:subreasonnotchosen', 2 => 'skipped:subreasonearlierskipped'],
+            $this->outcomes($result)
+        );
+        $this->assertSame(['first'], array_column($this->attempts_here(), 'text'));
+        $this->assertSame([0], array_keys($this->ledger()));
+
+        // Both are offered again.
+        $this->assertSame([0 => 'same', 1 => 'add', 2 => 'add'], $this->outcomes($this->preview_all()));
+    }
+
+    /**
+     * An attempt that is not offered because it is already the same is not a
+     * hole: the later attempts that were ticked still come across.
+     */
+    public function test_an_attempt_that_is_already_here_does_not_hold_back_the_later_ones(): void {
+        $this->hand_in('first', ['a.txt' => 'one']);
+        $this->pull_all();
+        $this->reopen($this->there, $this->sam);
+        $this->hand_in('second', ['b.txt' => 'two']);
+        $this->reopen($this->there, $this->sam);
+        $this->hand_in('third', ['c.txt' => 'three']);
+
+        $ticks = $this->ticks_except([]);
+        $this->assertCount(2, $ticks);
+
+        $result = submission_pull::run($this->instanceid, $this->course->id, $this->source(), null, true, $ticks);
+
+        $this->assertSame([0 => 'same', 1 => 'add', 2 => 'add'], $this->outcomes($result));
+        $this->assertSame(['first', 'second', 'third'], array_column($this->attempts_here(), 'text'));
+    }
 }

@@ -1229,4 +1229,131 @@ final class submission_pull_test extends advanced_testcase {
             array_unique(array_column($result->entries, 'cmid'))
         );
     }
+
+    /**
+     * The ticks for one assignment's work, as the page sends them: the keys of
+     * what a preview said it would write there.
+     *
+     * @param \stdClass $copy the assignment here
+     * @return bool[] key => true
+     */
+    protected function ticks_for(\stdClass $copy): array {
+        $ticks = [];
+
+        foreach ($this->preview()->entries as $entry) {
+            if ($entry->cmid === (int) $copy->cmid && $entry->outcome === grade_pull_result::ADD) {
+                $ticks[grade_pull_result::key($entry)] = true;
+            }
+        }
+
+        $this->assertNotEmpty($ticks);
+
+        return $ticks;
+    }
+
+    /**
+     * Only the ticked work is written. What was left unticked is skipped with
+     * its own reason, leaves no record, and is offered again by the next
+     * preview.
+     */
+    public function test_only_the_ticked_work_is_pulled(): void {
+        global $DB;
+
+        [, $here2] = $this->second_assignment();
+
+        $result = submission_pull::run(
+            $this->instanceid,
+            $this->course->id,
+            $this->source(),
+            null,
+            false,
+            $this->ticks_for($here2)
+        );
+
+        $this->assertTrue($result->success);
+        $byactivity = [];
+
+        foreach ($result->entries as $entry) {
+            $byactivity[$entry->cmid] = $entry->outcome . ':' . $entry->reason;
+        }
+
+        $this->assertSame('skipped:subreasonnotchosen', $byactivity[$this->here->cmid]);
+        $this->assertSame('add:', $byactivity[$here2->cmid]);
+        $this->assertNull($this->row());
+        $this->assertSame(1, $DB->count_records('assign_submission', ['assignment' => $here2->id]));
+        $this->assertSame(1, $DB->count_records('block_coursesync_submission'));
+
+        // The one left out is still there to pull.
+        $this->assertSame(grade_pull_result::ADD, $this->only_entry(
+            submission_pull::preview($this->instanceid, $this->course->id, $this->source(), [$this->there->cmid])
+        )->outcome);
+    }
+
+    /**
+     * A selection that matches nothing pulls nothing: an empty one, or keys that
+     * name no work in this pull. It can only narrow.
+     */
+    public function test_a_selection_that_matches_nothing_writes_nothing(): void {
+        global $DB;
+
+        $this->second_assignment();
+
+        foreach ([[], ['0123456789abcdef' => true]] as $chosen) {
+            $result = submission_pull::run($this->instanceid, $this->course->id, $this->source(), null, false, $chosen);
+
+            $this->assertTrue($result->success);
+            $this->assertNotEmpty($result->entries);
+
+            foreach ($result->entries as $entry) {
+                $this->assertSame('skipped:subreasonnotchosen', $entry->outcome . ':' . $entry->reason);
+            }
+        }
+
+        $this->assertSame(0, $DB->count_records('block_coursesync_submission'));
+        $this->assertNull($this->row());
+    }
+
+    /**
+     * Work left unticked is not fetched and does not use up the pull's limit
+     * for file data, so it cannot push the work that was ticked out.
+     */
+    public function test_unticked_work_does_not_use_the_run_limit(): void {
+        global $CFG;
+
+        // No site or course limit, so it is the pull's own that is reached.
+        $CFG->maxbytes = 0;
+        $there2 = $this->assignment($this->source, ['name' => 'Essay two']);
+        $here2 = $this->assignment($this->course, ['name' => 'Essay two'], ['idnumber' => 'coursesync-' . $there2->cmid]);
+        $this->hand_in('First essay', ['a.txt' => 'file']);
+        $this->submit($this->sam, $there2, 'Second essay', ['b.txt' => 'file']);
+        $firstcmid = (int) $this->there->cmid;
+        $this->tamper['block_coursesync_get_submissions'] = static function (array $body) use ($firstcmid): array {
+            foreach ($body['items'] as &$item) {
+                if ((int) $item['cmid'] === $firstcmid) {
+                    $item['submissions'][0]['files'][0]['filesize'] = submission_pull::RUN_BYTES - 1;
+                }
+            }
+
+            return $body;
+        };
+
+        $ticks = [];
+
+        foreach ($this->preview()->entries as $entry) {
+            if ($entry->cmid === (int) $here2->cmid) {
+                $ticks[grade_pull_result::key($entry)] = true;
+            }
+        }
+
+        $this->assertNotEmpty($ticks);
+        $result = submission_pull::run($this->instanceid, $this->course->id, $this->source(), null, false, $ticks);
+        $outcomes = [];
+
+        foreach ($result->entries as $entry) {
+            $outcomes[$entry->cmid] = $entry->outcome . ':' . $entry->reason;
+        }
+
+        $this->assertSame('skipped:subreasonnotchosen', $outcomes[$this->here->cmid]);
+        $this->assertSame('add:', $outcomes[$here2->cmid]);
+    }
 }

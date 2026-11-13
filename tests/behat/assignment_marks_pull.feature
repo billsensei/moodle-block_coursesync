@@ -54,20 +54,22 @@ Feature: Pulling teachers' marks and feedback from the other site
     And "student2" was marked 55 with "My own view" in "Essay one" of "DEST"
     When I am on the "Destination Course" course page logged in as "teacher1"
     And I follow "Pull Marks and Feedback"
-    Then I should see "Marks to pull"
-    And I should see "Sam Student" in the "coursesync-marks-written" "table"
-    And I should see "Kept as it was"
-    And I should see "Sue Student" in the "coursesync-marks-conflicts" "table"
-    And I should see "already has a different mark or comment here" in the "Sue Student" "table_row"
+    Then I should see "1 to pull" in the "#coursesync-student-section-1" "css_element"
+    And I should see "Sam Student" in the "#coursesync-student-section-1" "css_element"
+    And I should see "Kept as they were"
+    And I should see "Sue Student" in the "#coursesync-student-section-2" "css_element"
+    And I should see "1 kept" in the "#coursesync-student-section-2" "css_element"
+    And I should see "already has a different mark or comment here" in the "#coursesync-student-2" "css_element"
 
-    When I press "Pull the ticked assignments"
+    When I press "Pull the ticked marks"
     Then I should see "Marks pulled: 1 (1 new, 0 updated)."
     And I should see "Some students already had a different mark or comment here"
+    And I should see "1 pulled" in the "#coursesync-student-section-1" "css_element"
 
     # Pulling again changes nothing: Sam's mark is already here.
     When I am on the "DEST" "block_coursesync > Marks" page
     Then I should see "Nothing would change"
-    And "Pull the ticked assignments" "button" should not exist
+    And "Pull the ticked marks" "button" should not exist
 
     # The grade is the assignment's own: the grader screen has it.
     When I am on the "Destination Course" course page
@@ -80,29 +82,28 @@ Feature: Pulling teachers' marks and feedback from the other site
     Then I should see "Marks pulled: 1, kept as they were: 1, skipped: 0"
     And I should not see "Well argued"
 
-  Scenario: A teacher ticks which assignments to pull, and the rest wait
+  Scenario: A teacher leaves one mark unticked and it is not pulled
     Given Course Sync marks sharing is switched on
     And Course Sync marks pulling is switched on
     And "student1" was marked 80 with "First essay comment" in "Essay one" of "SRC"
     And "student1" was marked 75 with "Second essay comment" in "Essay two" of "SRC"
     When I am on the "DEST" "block_coursesync > Marks" page logged in as "teacher1"
-    Then the field "Pull Essay one" matches value "1"
-    And the field "Pull Essay two" matches value "1"
+    Then the field "Pull Essay one for Sam Student" matches value "1"
+    And the field "Pull Essay two for Sam Student" matches value "1"
 
-    When I set the field "Pull Essay two" to ""
-    And I press "Pull the ticked assignments"
+    When I set the field "Pull Essay two for Sam Student" to ""
+    And I press "Pull the ticked marks"
     Then I should see "Marks pulled: 1 (1 new, 0 updated)."
+    And I should see "You left this unticked" in the "#coursesync-student-1" "css_element"
 
     # The one left out is still waiting.
     When I am on the "DEST" "block_coursesync > Marks" page
-    Then I should see "Sam Student" in the "coursesync-marks-written" "table"
-    And I should see "Marks to pull"
-    And the field "Pull Essay one" matches value "0"
-    And the field "Pull Essay two" matches value "1"
+    Then the field "Pull Essay two for Sam Student" matches value "1"
+    And "Pull Essay one for Sam Student" "field" should not exist
 
-    When I set the field "Pull Essay two" to ""
-    And I press "Pull the ticked assignments"
-    Then I should see "No assignments were ticked, so nothing was pulled."
+    When I set the field "Pull Essay two for Sam Student" to ""
+    And I press "Pull the ticked marks"
+    Then I should see "Nothing was ticked, so nothing was pulled."
 
   Scenario: The button is only offered where marks pulling is switched on and allowed
     Given Course Sync marks sharing is switched on

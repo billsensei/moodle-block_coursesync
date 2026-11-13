@@ -29,15 +29,17 @@ use block_coursesync\connection;
 use block_coursesync\grade_pull_result;
 use block_coursesync\local\attempts;
 use block_coursesync\local\long_run;
+use block_coursesync\local\student_sections;
 use block_coursesync\submission_pull;
 use core\output\html_writer;
 
 $instanceid = required_param('instanceid', PARAM_INT);
 $courseid = required_param('courseid', PARAM_INT);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
-// The assignments ticked on the preview, as the other site knows them. An empty
-// selection is a decision, not a request for everything.
-$chosen = array_values(array_filter(optional_param_array('chosen', [], PARAM_INT)));
+// The work ticked on the preview, as keys that only the pull itself can read. A form
+// that says nothing was ticked is a decision, not a request for everything.
+$picking = optional_param('picking', 0, PARAM_BOOL);
+$pick = optional_param_array('pick', [], PARAM_ALPHANUM);
 // Every attempt each student handed in, not only the latest. Asked for on the preview and carried to the
 // confirmation; the pull itself checks that this site allows it.
 $allattempts = (bool) optional_param('allattempts', 0, PARAM_BOOL);
@@ -88,6 +90,8 @@ if (!connection::is_mapped($record)) {
 if ($confirm) {
     require_sesskey();
 
+    $chosen = $picking ? array_fill_keys(array_values($pick), true) : [];
+
     if ($chosen === []) {
         echo $OUTPUT->notification(get_string('pullnothingchosen', 'block_coursesync'), 'info', false);
         echo $backtocourse;
@@ -96,7 +100,7 @@ if ($confirm) {
     }
 
     long_run::begin();
-    $result = submission_pull::run($instanceid, $course->id, null, $chosen, $allattempts);
+    $result = submission_pull::run($instanceid, $course->id, null, null, $allattempts, $chosen);
 } else {
     // Following a link writes nothing: this asks the other site, shows what
     // a pull would do, and the button below (with a sesskey) does it.
@@ -173,53 +177,8 @@ $head = html_writer::tag('tr', implode('', array_map(
 )));
 $rows = '';
 
-// On the preview, each assignment can be ticked: the form wraps everything
-// below, so the button at the end sends the ticks. Ticked to start with where
-// there is something to write.
-$choosing = $result->preview && $towrite > 0;
-$remoteids = array_flip(array_map(static fn(cm_info $cm): int => (int) $cm->id, submission_pull::local_copies($course->id)));
-
-if ($choosing) {
-    $head = html_writer::tag('tr', html_writer::tag('th', get_string('pullcolchoose', 'block_coursesync'), ['scope' => 'col'])
-        . substr($head, strlen('<tr>')));
-    echo html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl->out(false)]);
-    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
-
-    if ($allattempts) {
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'allattempts', 'value' => 1]);
-    }
-}
-
 foreach ($result->by_activity(grade_pull_result::KIND_SUBMISSION) as $activity) {
     $cells = html_writer::tag('td', format_string($activity['name'], true, ['context' => $coursecontext]));
-
-    if ($choosing) {
-        $remotecmid = $remoteids[$activity['cmid']] ?? 0;
-        $box = '';
-
-        if ($remotecmid) {
-            $ticked = $activity[grade_pull_result::ADD] + $activity[grade_pull_result::UPDATE] > 0;
-            $box = html_writer::label(
-                get_string(
-                    'pullchoosefor',
-                    'block_coursesync',
-                    format_string($activity['name'], true, ['context' => $coursecontext])
-                ),
-                'chosen' . $remotecmid,
-                false,
-                ['class' => 'visually-hidden']
-            ) . html_writer::empty_tag('input', [
-                'type' => 'checkbox',
-                'name' => 'chosen[]',
-                'id' => 'chosen' . $remotecmid,
-                'value' => $remotecmid,
-                'class' => 'form-check-input',
-            ] + ($ticked ? ['checked' => 'checked'] : []));
-        }
-
-        $cells = html_writer::tag('td', $box) . $cells;
-    }
 
     foreach (array_slice($columns, 1) as $outcome) {
         $cells .= html_writer::tag('td', $activity[$outcome]);
@@ -236,80 +195,70 @@ echo html_writer::tag(
     ['class' => 'table table-striped', 'id' => 'coursesync-submissions-summary']
 );
 
+// On the preview, each student's work can be ticked: the form wraps the sections,
+// so the button at the end sends the ticks. Everything starts ticked.
+$choosing = $result->preview && $towrite > 0;
+
+if ($choosing) {
+    echo html_writer::start_tag('form', [
+        'method' => 'post',
+        'action' => $pageurl->out(false),
+        'id' => 'coursesync-submissions-form',
+    ]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'picking', 'value' => 1]);
+
+    if ($allattempts) {
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'allattempts', 'value' => 1]);
+    }
+
+    echo student_sections::pick_all($allattempts ? 'submissionspickintroattempts' : 'submissionspickintro');
+}
+
 // Names for every student mentioned, fetched once.
 $userids = array_filter(array_unique(array_column($result->entries, 'userid')));
 $users = $userids ? $DB->get_records_list('user', 'id', $userids) : [];
-$studentname = static function (stdClass $entry) use ($users): string {
-    if (isset($users[$entry->userid])) {
-        return fullname($users[$entry->userid]);
-    }
+$columns = ['submissionscolassignment', 'submissionscolattempt', 'submissionscolfiles', 'gradescolresult', 'gradescolreason'];
+$outcomelabels = [
+    grade_pull_result::ADD => 'gradescoladd',
+    grade_pull_result::UPDATE => 'gradescolupdate',
+    grade_pull_result::SAME => 'gradescolsame',
+    grade_pull_result::CONFLICT => 'gradescolconflict',
+    grade_pull_result::SKIPPED => 'gradescolskipped',
+];
 
-    // No student: the line is about a whole assignment.
-    return $entry->username !== '' ? $entry->username : get_string('gradesallstudents', 'block_coursesync');
-};
-
-// The students (or assignments) with one outcome or more, under their heading.
-$render = static function (array $entries, string $headingkey, string $id) use ($OUTPUT, $studentname, $coursecontext): void {
-    if ($entries === []) {
-        return;
-    }
-
-    // A student's attempts together, oldest first, under their assignment.
-    usort($entries, static fn(stdClass $a, stdClass $b): int => [$a->activity, $studentname($a), (int) $a->attempt]
-        <=> [$b->activity, $studentname($b), (int) $b->attempt]);
-
-    $rows = '';
-
-    foreach ($entries as $entry) {
+echo $OUTPUT->heading(get_string('gradessectionstudents', 'block_coursesync'), 3);
+echo student_sections::render(
+    $result->of_kind(grade_pull_result::KIND_SUBMISSION),
+    $users,
+    $columns,
+    static function (stdClass $entry) use ($outcomelabels, $coursecontext): array {
         $reason = match (true) {
             $entry->reason !== null => get_string($entry->reason, 'block_coursesync'),
             $entry->outcome === grade_pull_result::UPDATE => get_string('submissionsreasonupdate', 'block_coursesync'),
             default => '',
         };
 
-        $rows .= html_writer::tag(
-            'tr',
-            html_writer::tag('td', s($studentname($entry)))
-            . html_writer::tag('td', format_string($entry->activity, true, ['context' => $coursecontext]))
-            . html_writer::tag('td', $entry->userid ? (int) $entry->attempt + 1 : '-')
-            . html_writer::tag('td', $entry->userid ? (int) $entry->files : '-')
-            . html_writer::tag('td', $reason)
-        );
-    }
-
-    $columns = [
-        'gradescolstudent',
-        'submissionscolassignment',
-        'submissionscolattempt',
-        'submissionscolfiles',
-        'gradescolreason',
-    ];
-    $head = html_writer::tag('tr', implode('', array_map(
-        static fn(string $key): string => html_writer::tag('th', get_string($key, 'block_coursesync'), ['scope' => 'col']),
-        $columns
-    )));
-
-    echo $OUTPUT->heading(get_string($headingkey, 'block_coursesync'), 4);
-    echo html_writer::tag(
-        'table',
-        html_writer::tag('caption', get_string($headingkey, 'block_coursesync'), ['class' => 'visually-hidden'])
-        . html_writer::tag('thead', $head)
-        . html_writer::tag('tbody', $rows),
-        ['class' => 'table table-sm table-striped', 'id' => $id]
-    );
-};
-
-// What wants the teacher's attention comes first.
-$kind = grade_pull_result::KIND_SUBMISSION;
-$render($result->with_outcome(grade_pull_result::CONFLICT, $kind), 'submissionsgroupconflict', 'coursesync-submissions-conflicts');
-$render($result->with_outcome(grade_pull_result::SKIPPED, $kind), 'submissionsgroupskipped', 'coursesync-submissions-skipped');
-$render(
-    array_merge(
-        $result->with_outcome(grade_pull_result::ADD, $kind),
-        $result->with_outcome(grade_pull_result::UPDATE, $kind)
-    ),
-    $result->preview ? 'submissionsgrouptowrite' : 'submissionsgroupwritten',
-    'coursesync-submissions-written'
+        return [
+            format_string($entry->activity, true, ['context' => $coursecontext]),
+            $entry->userid ? (string) ((int) $entry->attempt + 1) : '-',
+            $entry->userid ? (string) (int) $entry->files : '-',
+            get_string($outcomelabels[$entry->outcome], 'block_coursesync'),
+            $reason,
+        ];
+    },
+    $choosing,
+    $result->preview,
+    static fn(stdClass $entry, string $student): string => get_string(
+        $allattempts ? 'pullpickattempt' : 'pullpickone',
+        'block_coursesync',
+        (object) [
+            'student' => $student,
+            'activity' => format_string($entry->activity, true, ['context' => $coursecontext]),
+            'attempt' => (int) $entry->attempt + 1,
+        ]
+    )
 );
 
 if ($result->preview) {

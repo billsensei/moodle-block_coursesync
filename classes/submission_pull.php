@@ -60,8 +60,11 @@ class submission_pull {
     /** @var string[] Why a pull was never allowed to begin, which is not a pull that happened. */
     protected const NOT_ALLOWED = ['errornosubmissionpullpermission', 'errorsubmissionpulloff', 'errorattemptspulloff'];
 
-    /** @var string[] The reasons after which a student's later attempts wait, so their history has no gap. */
-    protected const STOPS = ['subreasonrunlimit', 'subreasoncorrupt', 'subreasonfailed', 'subreasontransfer'];
+    /**
+     * @var string[] The reasons after which a student's later attempts wait, so their history has no gap. An attempt the
+     *      teacher left unticked is one of them: bringing the later ones across would leave a hole in the history.
+     */
+    protected const STOPS = ['subreasonrunlimit', 'subreasoncorrupt', 'subreasonfailed', 'subreasontransfer', 'subreasonnotchosen'];
 
     /** @var string[] What a person needs in an assignment itself to have work written into it. */
     public const MODULE_CAPABILITIES = ['mod/assign:grade', 'mod/assign:editothersubmission'];
@@ -74,6 +77,7 @@ class submission_pull {
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
      * @param bool $allattempts every attempt each student handed in, not only the latest
+     * @param bool[]|null $chosen the work the teacher ticked, as a set of grade_pull_result::key() values; null means all of it
      * @return grade_pull_result
      */
     public static function preview(
@@ -81,9 +85,10 @@ class submission_pull {
         int $courseid,
         ?http_client $client = null,
         ?array $only = null,
-        bool $allattempts = false
+        bool $allattempts = false,
+        ?array $chosen = null
     ): grade_pull_result {
-        $result = self::pull($blockinstanceid, $courseid, false, $client, $only, $allattempts);
+        $result = self::pull($blockinstanceid, $courseid, false, $client, $only, $allattempts, $chosen);
         $result->preview = true;
 
         return $result;
@@ -101,6 +106,7 @@ class submission_pull {
      * @param http_client|null $client injected only by tests
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
      * @param bool $allattempts every attempt each student handed in, not only the latest
+     * @param bool[]|null $chosen the work the teacher ticked, as a set of grade_pull_result::key() values; null means all of it
      * @return grade_pull_result
      */
     public static function run(
@@ -108,7 +114,8 @@ class submission_pull {
         int $courseid,
         ?http_client $client = null,
         ?array $only = null,
-        bool $allattempts = false
+        bool $allattempts = false,
+        ?array $chosen = null
     ): grade_pull_result {
         global $USER;
 
@@ -120,7 +127,7 @@ class submission_pull {
             $result = grade_pull_result::failure('errorsyncinprogress');
         } else {
             try {
-                $result = self::pull($blockinstanceid, $courseid, true, $client, $only, $allattempts);
+                $result = self::pull($blockinstanceid, $courseid, true, $client, $only, $allattempts, $chosen);
             } finally {
                 $lock->release();
             }
@@ -212,6 +219,7 @@ class submission_pull {
      * @param http_client|null $client
      * @param int[]|null $only remote course module ids to cover; null means every copied assignment
      * @param bool $allattempts every attempt each student handed in, not only the latest
+     * @param bool[]|null $chosen the work the teacher ticked (see run()); null means all of it
      * @return grade_pull_result
      */
     protected static function pull(
@@ -220,7 +228,8 @@ class submission_pull {
         bool $write,
         ?http_client $client,
         ?array $only = null,
-        bool $allattempts = false
+        bool $allattempts = false,
+        ?array $chosen = null
     ): grade_pull_result {
         $notallowed = self::check_allowed($courseid, $allattempts);
 
@@ -242,6 +251,7 @@ class submission_pull {
 
         $result = new grade_pull_result();
         $result->everyattempt = $allattempts;
+        $result->chosen = $chosen;
         $copies = self::local_copies($courseid);
 
         // Only what the teacher chose. This can only narrow the pull: an id
@@ -317,6 +327,7 @@ class submission_pull {
             'token' => $token,
             'client' => $client,
             'allattempts' => $allattempts,
+            'chosen' => $chosen,
         ];
 
         foreach ($copies as $remotecmid => $cm) {
@@ -674,6 +685,15 @@ class submission_pull {
         \stdClass $entry
     ): \stdClass {
         if (!in_array($entry->outcome, [grade_pull_result::ADD, grade_pull_result::UPDATE], true)) {
+            return $entry;
+        }
+
+        // Left unticked: nothing is fetched, no budget is spent, and no record
+        // is kept, so it is offered again next time.
+        if ($run->chosen !== null && !isset($run->chosen[grade_pull_result::key($entry)])) {
+            $entry->outcome = grade_pull_result::SKIPPED;
+            $entry->reason = 'subreasonnotchosen';
+
             return $entry;
         }
 

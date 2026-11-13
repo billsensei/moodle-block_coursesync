@@ -56,19 +56,19 @@ Feature: Pulling every attempt of an assignment from the other site
     When I am on the "DEST" "block_coursesync > Submissions" page logged in as "teacher1"
     Then I should see "Include every attempt each student handed in, not only the latest"
     # To begin with only the latest attempt is shown: attempt 2.
-    And "//table[@id='coursesync-submissions-written']//tr[td[normalize-space(.)='Sam Student'] and td[3][normalize-space(.)='2']]" "xpath_element" should exist
-    And "//table[@id='coursesync-submissions-written']//tr[td[normalize-space(.)='Sam Student'] and td[3][normalize-space(.)='1']]" "xpath_element" should not exist
+    And "//table[@id='coursesync-student-1']//tr[td[3][normalize-space(.)='2']]" "xpath_element" should exist
+    And "//table[@id='coursesync-student-1']//tr[td[3][normalize-space(.)='1']]" "xpath_element" should not exist
 
     When I set the field "Include every attempt each student handed in, not only the latest" to "1"
     And I press "Update the preview"
     Then I should see "every attempt they handed in"
     And I should see "The counts below are of attempts, not students."
-    And "//table[@id='coursesync-submissions-written']//tr[td[normalize-space(.)='Sam Student'] and td[3][normalize-space(.)='1']]" "xpath_element" should exist
-    And "//table[@id='coursesync-submissions-written']//tr[td[normalize-space(.)='Sam Student'] and td[3][normalize-space(.)='2']]" "xpath_element" should exist
+    And "//table[@id='coursesync-student-1']//tr[td[3][normalize-space(.)='1']]" "xpath_element" should exist
+    And "//table[@id='coursesync-student-1']//tr[td[3][normalize-space(.)='2']]" "xpath_element" should exist
     # Previewing wrote nothing.
     And I should not see "Submission attempts pulled"
 
-    When I press "Pull the ticked assignments"
+    When I press "Pull the ticked work"
     Then I should see "Submission attempts pulled: 2 (2 new, 0 updated)."
     And "student1" has 2 attempts in the synced "Essay one" in course "DEST", the last of them the latest
 
@@ -94,28 +94,45 @@ Feature: Pulling every attempt of an assignment from the other site
     When I am on the "DEST" "block_coursesync > Submissions" page logged in as "teacher1"
     And I set the field "Include every attempt each student handed in, not only the latest" to "1"
     And I press "Update the preview"
-    And I press "Pull the ticked assignments"
+    And I press "Pull the ticked work"
     Then I should see "Submission attempts pulled: 2"
 
     When I am on the "DEST" "block_coursesync > Marks" page
     Then I should see "Include every attempt each student handed in, not only the latest"
     # The latest alone would put a mark on the wrong attempt, so it is left.
-    And I should see "Marks for several attempts of this student were pulled before, or their attempts were" in the "coursesync-marks-skipped" "table"
+    And I should see "Marks for several attempts of this student were pulled before, or their attempts were" in the "#coursesync-student-1" "css_element"
 
     When I set the field "Include every attempt each student handed in, not only the latest" to "1"
     And I press "Update the preview"
     Then I should see "the mark for every attempt each student handed in"
-    And I should see "Attempt" in the "coursesync-marks-written" "table"
-    And "//table[@id='coursesync-marks-written']//tr[td[normalize-space(.)='Sam Student'] and td[3][normalize-space(.)='1']]" "xpath_element" should exist
-    And "//table[@id='coursesync-marks-written']//tr[td[normalize-space(.)='Sam Student'] and td[3][normalize-space(.)='2']]" "xpath_element" should exist
+    And I should see "Attempt" in the "#coursesync-student-1" "css_element"
+    And "//table[@id='coursesync-student-1']//tr[td[3][normalize-space(.)='1']]" "xpath_element" should exist
+    And "//table[@id='coursesync-student-1']//tr[td[3][normalize-space(.)='2']]" "xpath_element" should exist
 
-    When I press "Pull the ticked assignments"
+    When I press "Pull the ticked marks"
     Then I should see "Mark attempts pulled: 2 (2 new, 0 updated)."
     And "student1" has a mark of 40 for attempt 1 in the synced "Essay one" in course "DEST"
     And "student1" has a mark of 70 for attempt 2 in the synced "Essay one" in course "DEST"
 
     When I am on the "DEST" "block_coursesync > History" page
     Then I should see "Mark attempts pulled: 2, kept as they were: 0, skipped: 0"
+
+  Scenario: Unticking an attempt holds back the student's later attempts
+    Given Course Sync submission sharing is switched on
+    And Course Sync submission pulling is switched on
+    And Course Sync attempts sharing is switched on
+    And Course Sync attempts pulling is switched on
+    When I am on the "DEST" "block_coursesync > Submissions" page logged in as "teacher1"
+    And I set the field "Include every attempt each student handed in, not only the latest" to "1"
+    And I press "Update the preview"
+    Then the field "Pull attempt 1 of Essay one for Sam Student" matches value "1"
+    And the field "Pull attempt 2 of Essay one for Sam Student" matches value "1"
+
+    When I set the field "Pull attempt 1 of Essay one for Sam Student" to ""
+    And I press "Pull the ticked work"
+    Then I should see "You left this unticked" in the "#coursesync-student-1" "css_element"
+    And I should see "later attempts wait" in the "#coursesync-student-1" "css_element"
+    And I should see "2 skipped" in the "#coursesync-student-section-1" "css_element"
 
   Scenario: A source that does not share every attempt is not asked, and the teacher can go back to the latest
     Given Course Sync submission sharing is switched on
@@ -128,7 +145,7 @@ Feature: Pulling every attempt of an assignment from the other site
     And I should not see "Sam Student"
 
     When I follow "Preview the latest attempts instead"
-    Then I should see "Sam Student" in the "coursesync-submissions-written" "table"
+    Then I should see "Sam Student" in the "#coursesync-student-section-1" "css_element"
 
   Scenario: A warning where this assignment allows fewer attempts than the other site has
     Given Course Sync submission sharing is switched on
@@ -141,7 +158,7 @@ Feature: Pulling every attempt of an assignment from the other site
     And I press "Update the preview"
     Then I should see "Essay one: the other site has students with 2 attempts, but this assignment allows 1 here."
     # A warning, not a stop: the attempts are still offered.
-    And "Pull the ticked assignments" "button" should exist
+    And "Pull the ticked work" "button" should exist
 
   Scenario: The choice is not offered where this site has not allowed it
     Given Course Sync submission sharing is switched on
@@ -151,7 +168,7 @@ Feature: Pulling every attempt of an assignment from the other site
     And Course Sync attempts sharing is switched on
     When I am on the "DEST" "block_coursesync > Submissions" page logged in as "teacher1"
     Then I should not see "Include every attempt each student handed in"
-    And I should see "Sam Student" in the "coursesync-submissions-written" "table"
+    And I should see "Sam Student" in the "#coursesync-student-section-1" "css_element"
 
     When I am on the "DEST" "block_coursesync > Marks" page
     Then I should not see "Include every attempt each student handed in"
