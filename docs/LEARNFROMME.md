@@ -5692,3 +5692,28 @@ pass both ways). Behat 67 scenarios / 1707 steps on 5.0, 5.1, 5.2, 5.3; after th
 features (15 scenarios) again on 5.1. phplint, phpcs `--max-warnings 0`, phpdoc, validate, savepoints, grunt clean.
 **Not done:** no pull between two real sites; no look in a real browser; Pull Grades still has its own copy of the section
 code (it could use `student_sections` later).
+
+## Phase 110 - Removed submissions are offered again (v1.34.0-beta, build 2026111302, not committed), 2026-11-13
+
+**Ask.** "When pulling submissions, if they have been pulled previously but removed they are not allowed to be pulled again.
+Can you make them available to be pulled again if they are not on the receiving server."
+
+**What changed.** One decision in `submission_pull::classify()`: nothing here but a ledger row (a pull wrote it, someone
+removed it) used to be SKIPPED `subreasondeleted`; it is now ADD with reason `subreasonreturned` ("... offered again. Untick
+it to leave it out."). Nothing else needed to change: `submission_writer::save_record()` already updates the ledger row when
+one is passed, and `save_row()` reuses the emptied row for that attempt, so the work comes back into the same record, not a
+second one. An ADD with a reason is fine for the pages (they print a reason when there is one) and for the pull code (it
+looks at the outcome, and only looks at the reason of a SKIPPED). The page still needs the line ticked, so the not-chosen
+check from Phase 109 applies: a removed submission left unticked stays removed. With every attempt, one removed attempt
+comes back alone as the same attempt.
+
+**Decisions.** Pull Marks keeps its "removed is not brought back" rule (`markreasondeleted`): only submissions were asked
+for, and I said so in the release notes rather than guess. Version v1.34.0-beta rather than a patch: it reverses a rule
+that was documented as a safeguard (SECURITY.md, DEVELOPER.md, the design doc and the teacher guide all said so, and are
+updated). If a student has since started new work in the removed one's place, that is work "in the way" and is left alone,
+as before.
+
+**Traps hit.** The same two-newline ending in a test file I appended to (phpcs `EndFileNewline`) - the Phase 109 lesson, made
+again. Checked against the old rule with a mutation (put the SKIPPED line back): both new/changed tests fail.
+**Checked.** PHPUnit 780 on 5.0-5.3; Behat assignment features 15 scenarios / 519 steps on 5.0-5.3; gates clean.
+**Not done:** a pull between two real sites; a Behat scenario (no step to remove a submission).

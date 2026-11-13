@@ -844,10 +844,9 @@ class submission_pull {
     ): array {
         if (!$local) {
             // Nothing here. If an earlier pull wrote it and it has gone, a
-            // person removed it: it is not brought back.
-            return $ledger
-                ? [grade_pull_result::SKIPPED, 'subreasondeleted']
-                : [grade_pull_result::ADD, null];
+            // person removed it: it is offered again, and says why, so the
+            // teacher can leave it out. Writing it uses the same record.
+            return [grade_pull_result::ADD, $ledger ? 'subreasonreturned' : null];
         }
 
         $here = self::fingerprint_here($context, $local);

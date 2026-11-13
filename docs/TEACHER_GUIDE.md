@@ -457,7 +457,9 @@ was kept. Each line says what would happen to it:
 
 - **New** or **Updated** - will be written. These have a tick box, ticked to begin
   with. **Untick** the work you do not want; it is not pulled, nothing is
-  remembered about it, and the next preview offers it again. The box at the top of a
+  remembered about it, and the next preview offers it again. Work that an earlier
+  pull brought across and that has since been **removed here** is offered again as
+  New, with a note saying so; leave it unticked if you removed it on purpose. The box at the top of a
   student's section ticks or unticks all of theirs, and **Select all / none** does
   the whole page. Closing a section does not untick anything in it.
 - **Kept as they were** - the student already has different work here, or an
@@ -466,8 +468,7 @@ was kept. Each line says what would happen to it:
 - **Skipped** - and why: the assignment here does not take that kind of
   submission (switch files or online text on in its settings), a file is larger
   than your course allows, the assignment is a team assignment, a file did not
-  arrive intact, or you left it unticked. Work a teacher removed here after it was
-  pulled is not brought back.
+  arrive intact, or you left it unticked.
 - **Already the same** - nothing to do.
 
 A pull brings up to 512 MB of files at a time; if there is more, the rest wait

@@ -124,7 +124,7 @@ Unique on `(assignid, userid)`.
 | Ledger row exists, local content differs from `localfingerprint` | **Flagged**, untouched (a teacher or the student changed it) |
 | A submission exists that Course Sync did not write | **Flagged**, untouched. Never overwritten, never duplicated |
 | Source fingerprint equals ledger | Unchanged, nothing written |
-| Submission deleted here after import | Not brought back (as for quiz attempts) |
+| Submission deleted here after import | Offered again as New, with a reason, and written into the same record (changed in v1.34.0; it was "not brought back") |
 
 This keeps the project's standing rule: nobody's work is ever overwritten.
 

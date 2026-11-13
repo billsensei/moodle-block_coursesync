@@ -710,7 +710,7 @@ history reuse the grade machinery (`history::KIND_SUBMISSIONS` labels the run).
 | Situation here | Outcome |
 | --- | --- |
 | nothing, no ledger row | ADD |
-| nothing, ledger row | SKIPPED `subreasondeleted` (a person removed it) |
+| nothing, ledger row | ADD with reason `subreasonreturned` (a person removed it; offered again, written into the same record) |
 | work not written by a pull, identical | SAME |
 | work not written by a pull, different or a draft | CONFLICT |
 | ledger row, source fingerprint unchanged | SAME (even if edited here: nothing to bring) |

@@ -753,22 +753,41 @@ final class submission_pull_test extends advanced_testcase {
     }
 
     /**
-     * Work a teacher removed here after it was brought is not brought back.
+     * Work a teacher removed here after it was brought is offered again, with
+     * the reason, and comes back into the same record when it is pulled. Left
+     * unticked, it stays removed.
      */
-    public function test_a_removed_submission_is_not_brought_back(): void {
+    public function test_a_removed_submission_is_offered_again(): void {
         global $DB;
 
         $this->hand_in('work');
         $this->pull();
+        $before = $DB->get_record('block_coursesync_submission', ['assignid' => $this->here->id]);
 
         $this->assign_object($this->here)->remove_submission($this->sam->id);
-
-        $entry = $this->only_entry($this->pull());
-
-        $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
-        $this->assertSame('subreasondeleted', $entry->reason);
         $this->assertNull($this->text_here());
-        $this->assertSame(1, $DB->count_records('block_coursesync_submission'));
+
+        // Previewing says so and writes nothing.
+        $entry = $this->only_entry($this->preview());
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $this->assertSame('subreasonreturned', $entry->reason);
+        $this->assertNull($this->text_here());
+
+        // Left unticked, it stays removed.
+        $left = $this->only_entry(submission_pull::run($this->instanceid, $this->course->id, $this->source(), null, false, []));
+        $this->assertSame('skipped:subreasonnotchosen', $left->outcome . ':' . $left->reason);
+        $this->assertNull($this->text_here());
+
+        // Ticked (here, everything), it comes back, into the one record.
+        $entry = $this->only_entry($this->pull());
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $this->assertSame('work', $this->text_here());
+        $after = $DB->get_records('block_coursesync_submission', ['assignid' => $this->here->id]);
+        $this->assertCount(1, $after);
+        $this->assertSame((int) $before->id, (int) reset($after)->id);
+
+        // And a pull after that has nothing to do.
+        $this->assertSame(grade_pull_result::SAME, $this->only_entry($this->pull())->outcome);
     }
 
     /**

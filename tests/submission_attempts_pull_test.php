@@ -812,4 +812,36 @@ final class submission_attempts_pull_test extends advanced_testcase {
         $this->assertSame([0 => 'same', 1 => 'add', 2 => 'add'], $this->outcomes($result));
         $this->assertSame(['first', 'second', 'third'], array_column($this->attempts_here(), 'text'));
     }
+
+    /**
+     * One attempt removed here is offered again on its own, comes back as the
+     * same attempt without disturbing the others, and the latest stays the
+     * latest.
+     */
+    public function test_a_removed_attempt_comes_back_as_the_same_attempt(): void {
+        global $DB;
+
+        $this->three_goes();
+        $this->pull_all();
+        $row = $DB->get_record('assign_submission', [
+            'assignment' => $this->here->id, 'userid' => $this->sam->id, 'attemptnumber' => 1,
+        ], '*', MUST_EXIST);
+        $DB->delete_records('assignsubmission_onlinetext', ['submission' => $row->id]);
+        $DB->delete_records('assignsubmission_file', ['submission' => $row->id]);
+        $DB->delete_records('assign_submission', ['id' => $row->id]);
+        $this->assertSame(['first', 'third'], array_column($this->attempts_here(), 'text'));
+
+        $preview = $this->preview_all();
+        $this->assertSame([0 => 'same', 1 => 'add:subreasonreturned', 2 => 'same'], $this->outcomes($preview));
+
+        $this->assertSame([0 => 'same', 1 => 'add:subreasonreturned', 2 => 'same'], $this->outcomes($this->pull_all()));
+
+        $here = $this->attempts_here();
+        $this->assertSame([0, 1, 2], array_keys($here));
+        $this->assertSame(['first', 'second', 'third'], array_column($here, 'text'));
+        $this->assertSame(['b.txt' => 'two'], $here[1]['files']);
+        $this->assertSame([2], $this->latest_here());
+        $this->assertSame([0, 1, 2], array_keys($this->ledger()));
+        $this->assertSame([0 => 'same', 1 => 'same', 2 => 'same'], $this->outcomes($this->preview_all()));
+    }
 }

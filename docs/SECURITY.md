@@ -339,8 +339,10 @@ mod_assign does; so anything showing it must not skip that.
 
 **Never overwritten.** Work is written only where the student has nothing, or
 where an earlier pull wrote it and nobody has touched it since (compared by
-fingerprint). Anything else is flagged and left as it is; work a person
-removed is not brought back. Limits: the site's and the course's `maxbytes` per
+fingerprint). Anything else is flagged and left as it is. Work a person removed
+after a pull is offered again on the next preview (with a reason, ticked like
+any other, and written only if ticked); that is the one case where a
+record exists and the work does not, and it writes into the same record. Limits: the site's and the course's `maxbytes` per
 file, 512 MB of files per pull, 100 assignments per request.
 
 ### What is kept, and where
