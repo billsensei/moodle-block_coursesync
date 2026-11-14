@@ -8,6 +8,31 @@ Builds before v1.3.0 predate the git history. v1.14.0 was a real build but was
 never committed on its own: its changes are in the v1.15.0 commit, so git's
 version file goes from v1.13.0 straight to v1.15.0.
 
+## v1.36.1-beta (build 2026111403, 2026-11-14)
+
+### Changed
+
+- **The privacy declaration says what leaves the site when every attempt is shared.** The notes on what another site can
+  read (Site administration > Users > Privacy and policies > Plugin privacy registry) said "latest submitted work" and
+  "the student's mark". When an administrator has ticked "Let other sites read every attempt of assignment submissions
+  and marks from this site", every attempt each student handed in, with its mark, can be read. Both notes now say so.
+  Only the wording changed: nothing is sent or stored differently.
+
+### Unchanged
+
+- No code, schema, setting or permission changed. Two strings were reworded.
+
+### Upgrade
+
+- Nothing to do. If you keep your own copy of the privacy registry text, update it to match.
+
+### Tested
+
+- PHPUnit 792 tests, 4002 assertions, 1 skipped, identical on Moodle 5.0, 5.1, 5.2 and 5.3. That includes the privacy tests
+  that check every declared string exists and that the export matches what is declared. phplint, phpcs with no warnings,
+  phpdoc, validate, savepoints and `grunt --max-lint-warnings 0` clean.
+- Behat was not re-run: only two privacy strings were reworded, and no Behat scenario reads them.
+
 ## v1.36.0-beta (build 2026111402, 2026-11-14)
 
 ### Added

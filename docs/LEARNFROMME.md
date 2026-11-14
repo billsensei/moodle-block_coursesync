@@ -5765,3 +5765,14 @@ unticking a file. Offered to the user as follow-ups.
 
 **Checked.** PHPUnit 792 / 4002 assertions and Behat 69 scenarios / 1775 steps on 5.0-5.3; gates clean. **Not done:** a
 two-site pull, a real-browser look.
+
+## Phase 113 - Privacy wording for every-attempt sharing (v1.36.1-beta, build 2026111403, not committed), 2026-11-14
+
+**Ask.** Found by the privacy audit: `privacy:metadata:othersite:submissions` said "latest submitted work" and `:marks` said "the
+student's mark", but with "Let other sites read every attempt" switched on, every attempt and its mark can be read. The user
+asked for the wording to be changed.
+
+**What changed.** Two lang strings only (each now adds "or, when sharing every attempt is switched on, ... every attempt they
+handed in"). No code, schema or setting. Version v1.36.1-beta (patch) since it is wording only.
+**Checked.** PHPUnit 792 / 4002 assertions on 5.0-5.3 (the privacy tests that check every string exists included); gates clean.
+**Not done:** Behat (no scenario reads these strings - grep found none).
