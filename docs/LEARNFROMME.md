@@ -5735,3 +5735,33 @@ too and were started with `docker compose up -d` (no `down -v`).
 **Version v1.35.0-beta (build 2026111401), asked for by the user.** Full PHPUnit 780 / 3908 assertions on 5.0-5.3; full Behat 67
 scenarios / 1707 steps on 5.0-5.3; phplint, phpcs, phpdoc, validate, savepoints, grunt clean (phpmd: 2 old findings).
 **Not done:** a two-site pull. The "teacher reopened the assignment" case (Phase 99 note) is still guarded first by `mixing_problem()`.
+
+## Phase 112 - Choose which uploaded files to pull (v1.36.0-beta, build 2026111402, not committed), 2026-11-14
+
+**Ask.** "Add per-file selection, because I may only want or need one of the files submitted." Two decisions asked and
+answered: files left out are offered again as "more files" (not treated as done), and only uploaded files are
+selectable (online text and its images always come with the work). Per-file is its own version, v1.36.0-beta, apart from
+v1.35.0-beta (removed marks), which was verified first and is also not committed.
+
+**Design.** No schema change. The ledger already keeps the source's full fingerprint and the local one, so "an uploaded
+source file is not here while the copy is untouched" means "left out on purpose": `classify()` returns UPDATE with
+`subreasonmorefiles`. Ticks are `pickfile[]` -> `$chosenfiles` (set of `grade_pull_result::file_key()`; null = all).
+
+**Trap found by the advisor before building.** `submission_writer::write()` deletes every file area and plugin row and
+rewrites from the file list, so an update that passed only the newly ticked files would have wiped the files already
+pulled. `files_to_bring()` now keeps files already here (copied from storage by `copy_here()`), fetches only the rest, and
+only fetched bytes count against the run limit. A test pulls b, then adds a, and asserts a and b are both there.
+
+**Also found.** Core's tick-all script matches `data-togglegroup` by prefix, so student 1's group `coursesync-s1` also took
+`coursesync-s10`..`s19`. Groups now end in a dash (student_sections and grades.php). Not run with 10+ students.
+
+**Left as it was, on purpose.** A file over the course limit still skips the whole line (`content_problem()` unchanged), and
+a line whose files together exceed the 512 MB run limit is still skipped in the preview, so neither can be fixed by
+unticking a file. Offered to the user as follow-ups.
+
+**Traps hit.** Behat only finds a new feature file after `behat/cli/init.php`; the file plugin's generator needs
+`assignsubmission_file_maxfiles` and `_maxsizebytes`; run Behat with the path relative to the web root
+(`blocks/coursesync/tests/behat/x.feature`) after init. The CI site's Postgres and the Docker sites were stopped at the start.
+
+**Checked.** PHPUnit 792 / 4002 assertions and Behat 69 scenarios / 1775 steps on 5.0-5.3; gates clean. **Not done:** a
+two-site pull, a real-browser look.

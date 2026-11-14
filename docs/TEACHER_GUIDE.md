@@ -462,6 +462,14 @@ was kept. Each line says what would happen to it:
   New, with a note saying so; leave it unticked if you removed it on purpose. The box at the top of a
   student's section ticks or unticks all of theirs, and **Select all / none** does
   the whole page. Closing a section does not untick anything in it.
+- **Choosing files.** Work with uploaded files lists each file under **Files** with a tick box of its own.
+  Untick the ones you do not want: only the ticked files come across, with the online text, if any.
+  The images inside online text are not listed - they always come with the text. If you untick
+  every file of work that has no online text, nothing is pulled and it is offered again. After a pull that left files out,
+  the next preview shows that work as **Updated**, with the note "An earlier pull left some of these
+  files out": the files already here are marked **already here** and keep no box, and ticking one of
+  the others adds it without touching the rest. It is offered each time, so leave its files unticked
+  if you meant to leave them out. A file over your course's upload limit still stops the whole piece of work.
 - **Kept as they were** - the student already has different work here, or an
   earlier pull brought work across and someone has changed it since. It is **never
   replaced**; look at it and decide.

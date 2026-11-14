@@ -40,6 +40,8 @@ $confirm = optional_param('confirm', 0, PARAM_BOOL);
 // that says nothing was ticked is a decision, not a request for everything.
 $picking = optional_param('picking', 0, PARAM_BOOL);
 $pick = optional_param_array('pick', [], PARAM_ALPHANUM);
+// The uploaded files ticked within that work, which can only leave files out of it.
+$pickfile = optional_param_array('pickfile', [], PARAM_ALPHANUM);
 // Every attempt each student handed in, not only the latest. Asked for on the preview and carried to the
 // confirmation; the pull itself checks that this site allows it.
 $allattempts = (bool) optional_param('allattempts', 0, PARAM_BOOL);
@@ -100,7 +102,15 @@ if ($confirm) {
     }
 
     long_run::begin();
-    $result = submission_pull::run($instanceid, $course->id, null, null, $allattempts, $chosen);
+    $result = submission_pull::run(
+        $instanceid,
+        $course->id,
+        null,
+        null,
+        $allattempts,
+        $chosen,
+        array_fill_keys(array_values($pickfile), true)
+    );
 } else {
     // Following a link writes nothing: this asks the other site, shows what
     // a pull would do, and the button below (with a sesskey) does it.
@@ -233,7 +243,7 @@ echo student_sections::render(
     $result->of_kind(grade_pull_result::KIND_SUBMISSION),
     $users,
     $columns,
-    static function (stdClass $entry) use ($outcomelabels, $coursecontext): array {
+    static function (stdClass $entry, ?array $tick = null) use ($outcomelabels, $coursecontext): array {
         $reason = match (true) {
             $entry->reason !== null => get_string($entry->reason, 'block_coursesync'),
             $entry->outcome === grade_pull_result::UPDATE => get_string('submissionsreasonupdate', 'block_coursesync'),
@@ -243,7 +253,7 @@ echo student_sections::render(
         return [
             format_string($entry->activity, true, ['context' => $coursecontext]),
             $entry->userid ? (string) ((int) $entry->attempt + 1) : '-',
-            $entry->userid ? (string) (int) $entry->files : '-',
+            $entry->userid ? (string) (int) $entry->files . student_sections::file_list($entry, $tick) : '-',
             get_string($outcomelabels[$entry->outcome], 'block_coursesync'),
             $reason,
         ];

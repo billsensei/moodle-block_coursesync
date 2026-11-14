@@ -151,6 +151,27 @@ class grade_pull_result {
     }
 
     /**
+     * The identity of one file of one entry's submission, for the tick box beside it.
+     *
+     * Like key(), it only narrows a pull: a key that matches no file of the submission as
+     * the source describes it does nothing. It includes the content hash, so a file that has
+     * changed on the source is a different file to tick.
+     *
+     * @param \stdClass $entry see $entries
+     * @param array $file as described by the source: area, filepath, filename and contenthash
+     * @return string
+     */
+    public static function file_key(\stdClass $entry, array $file): string {
+        return sha1(implode('|', [
+            self::key($entry),
+            (string) $file['area'],
+            (string) $file['filepath'],
+            (string) $file['filename'],
+            (string) $file['contenthash'],
+        ]));
+    }
+
+    /**
      * May this entry be written, as far as the person's ticks go?
      *
      * @param \stdClass $entry see $entries

@@ -125,6 +125,20 @@ Unique on `(assignid, userid)`.
 | A submission exists that Course Sync did not write | **Flagged**, untouched. Never overwritten, never duplicated |
 | Source fingerprint equals ledger | Unchanged, nothing written |
 | Submission deleted here after import | Offered again as New, with a reason, and written into the same record (changed in v1.34.0; it was "not brought back") |
+| Source fingerprint equals ledger, local content equals `localfingerprint`, but an uploaded file of the source is not here | **Updated** with reason `subreasonmorefiles`: files left out of an earlier pull are offered (v1.36.0) |
+
+**Choosing files (v1.36.0).** Each uploaded file (`submission_files` area) has its own tick box on the preview,
+posted as `pickfile[]` and passed to `preview()` / `run()` as `$chosenfiles`, a set of
+`grade_pull_result::file_key()` values (line key, area, path, name, content hash). `null` is every file, so
+callers without a page are as before. A file is brought only if its line is ticked and the file is ticked; the images
+inside online text (`submissions_onlinetext`) are not selectable and always follow the text. A file already here
+with the same content is kept: writing replaces the whole submission, so `files_to_bring()` copies kept files from
+file storage (`submission_writer::copy_here()`) and fetches only the rest, and only the fetched bytes count against
+the 512 MB run limit. Nothing needs recording: the ledger keeps the source's full fingerprint and the local one, so
+"a source file that is not here while the copy is untouched" is exactly "left out on purpose". A ticked line with no
+file ticked and no online text, or a "more files" offer with nothing new ticked, is `subreasonnotchosen` (so with
+every attempt it holds back later attempts, as an unticked attempt does). A file over the course's limit still stops the
+whole line (`content_problem()` is unchanged).
 
 This keeps the project's standing rule: nobody's work is ever overwritten.
 

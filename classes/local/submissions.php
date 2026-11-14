@@ -167,6 +167,33 @@ class submissions {
     }
 
     /**
+     * Which file this is, for telling the same file in two lists apart: where it is,
+     * what it is called and what it holds.
+     *
+     * @param array $file as returned by content()
+     * @return string
+     */
+    public static function file_id(array $file): string {
+        return implode('|', [
+            (string) $file['area'],
+            (string) $file['filepath'],
+            (string) $file['filename'],
+            (string) $file['contenthash'],
+        ]);
+    }
+
+    /**
+     * The files of a submission that a person uploaded, as against the images inside online
+     * text. Only these can be chosen one by one: the others belong to the text.
+     *
+     * @param array[] $files as returned by content()
+     * @return array[]
+     */
+    public static function uploaded(array $files): array {
+        return array_values(array_filter($files, static fn(array $file): bool => $file['area'] === self::AREA_FILES));
+    }
+
+    /**
      * The files in one of a submission's areas, in a fixed order.
      *
      * @param \context_module $context

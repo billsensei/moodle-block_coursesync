@@ -78,6 +78,8 @@ class submission_pull {
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
      * @param bool $allattempts every attempt each student handed in, not only the latest
      * @param bool[]|null $chosen the work the teacher ticked, as a set of grade_pull_result::key() values; null means all of it
+     * @param bool[]|null $chosenfiles the uploaded files the teacher ticked, as a set of grade_pull_result::file_key()
+     *      values; null means all of them. A file already here is kept whatever this says.
      * @return grade_pull_result
      */
     public static function preview(
@@ -86,9 +88,10 @@ class submission_pull {
         ?http_client $client = null,
         ?array $only = null,
         bool $allattempts = false,
-        ?array $chosen = null
+        ?array $chosen = null,
+        ?array $chosenfiles = null
     ): grade_pull_result {
-        $result = self::pull($blockinstanceid, $courseid, false, $client, $only, $allattempts, $chosen);
+        $result = self::pull($blockinstanceid, $courseid, false, $client, $only, $allattempts, $chosen, $chosenfiles);
         $result->preview = true;
 
         return $result;
@@ -107,6 +110,8 @@ class submission_pull {
      * @param int[]|null $only remote course module ids the teacher chose; null means every copied assignment
      * @param bool $allattempts every attempt each student handed in, not only the latest
      * @param bool[]|null $chosen the work the teacher ticked, as a set of grade_pull_result::key() values; null means all of it
+     * @param bool[]|null $chosenfiles the uploaded files the teacher ticked, as a set of grade_pull_result::file_key()
+     *      values; null means all of them. A file already here is kept whatever this says.
      * @return grade_pull_result
      */
     public static function run(
@@ -115,7 +120,8 @@ class submission_pull {
         ?http_client $client = null,
         ?array $only = null,
         bool $allattempts = false,
-        ?array $chosen = null
+        ?array $chosen = null,
+        ?array $chosenfiles = null
     ): grade_pull_result {
         global $USER;
 
@@ -127,7 +133,7 @@ class submission_pull {
             $result = grade_pull_result::failure('errorsyncinprogress');
         } else {
             try {
-                $result = self::pull($blockinstanceid, $courseid, true, $client, $only, $allattempts, $chosen);
+                $result = self::pull($blockinstanceid, $courseid, true, $client, $only, $allattempts, $chosen, $chosenfiles);
             } finally {
                 $lock->release();
             }
@@ -220,6 +226,7 @@ class submission_pull {
      * @param int[]|null $only remote course module ids to cover; null means every copied assignment
      * @param bool $allattempts every attempt each student handed in, not only the latest
      * @param bool[]|null $chosen the work the teacher ticked (see run()); null means all of it
+     * @param bool[]|null $chosenfiles the files the teacher ticked (see run()); null means all of them
      * @return grade_pull_result
      */
     protected static function pull(
@@ -229,7 +236,8 @@ class submission_pull {
         ?http_client $client,
         ?array $only = null,
         bool $allattempts = false,
-        ?array $chosen = null
+        ?array $chosen = null,
+        ?array $chosenfiles = null
     ): grade_pull_result {
         $notallowed = self::check_allowed($courseid, $allattempts);
 
@@ -328,6 +336,7 @@ class submission_pull {
             'client' => $client,
             'allattempts' => $allattempts,
             'chosen' => $chosen,
+            'chosenfiles' => $chosenfiles,
         ];
 
         foreach ($copies as $remotecmid => $cm) {
@@ -509,6 +518,7 @@ class submission_pull {
         [$outcome, $reason] = self::classify($submission, $ledger, $local, $context);
         $entry->outcome = $outcome;
         $entry->reason = $reason;
+        self::describe_files($entry, $submission, $local, $context);
 
         return self::write_one($run, $cm, $remotecmid, $submission, $student, $ledger, $local, $entry);
     }
@@ -607,6 +617,7 @@ class submission_pull {
             [$outcome, $reason] = self::classify($attempt, $ledger, $local, $context, true);
             $entry->outcome = $outcome;
             $entry->reason = $reason;
+            self::describe_files($entry, $attempt, $local, $context);
             self::write_one($run, $cm, $remotecmid, $attempt, $student, $ledger, $local, $entry);
 
             if ($entry->outcome === grade_pull_result::SKIPPED && in_array($entry->reason, self::STOPS, true)) {
@@ -697,7 +708,28 @@ class submission_pull {
             return $entry;
         }
 
-        $bytes = array_sum(array_column($submission->files, 'filesize'));
+        $context = \context_module::instance($cm->id);
+        [$target, $keep, $fetch] = self::files_to_bring($run, $entry, $submission, $local, $context);
+
+        // Nothing left to bring: every file was left unticked and there is no text, or the only thing
+        // on offer was files and none of them was ticked. Treated as unticked, so it is offered again.
+        $newuploads = submissions::uploaded($fetch);
+
+        if (
+            $run->chosenfiles !== null
+            && (
+                (!submissions::uploaded($target) && $submission->onlinetext === null)
+                || ($entry->reason === 'subreasonmorefiles' && !$newuploads)
+            )
+        ) {
+            $entry->outcome = grade_pull_result::SKIPPED;
+            $entry->reason = 'subreasonnotchosen';
+
+            return $entry;
+        }
+
+        // Only what has to come from the other site counts against the budget: a file already here is kept.
+        $bytes = array_sum(array_column($fetch, 'filesize'));
 
         if ($bytes > $run->budget) {
             // Not an error: the next pull carries on from here.
@@ -713,36 +745,50 @@ class submission_pull {
             return $entry;
         }
 
+        $paths = [];
+
         try {
             // Everything is fetched before anything here changes, so a
             // transfer that fails leaves the student exactly as they were.
-            $paths = submission_writer::fetch_files(
+            $wanted = clone $submission;
+            $wanted->files = $fetch;
+            $fetched = submission_writer::fetch_files(
                 $run->record,
                 $run->token,
                 $remotecmid,
-                $submission,
+                $wanted,
                 $run->client,
                 $run->allattempts
             );
 
             try {
-                submission_writer::write(
-                    $run->course,
-                    $cm,
-                    $submission,
-                    $student,
-                    $run->blockinstanceid,
-                    $remotecmid,
-                    $ledger,
-                    $local,
-                    $paths,
-                    $run->allattempts
-                );
+                // The submission as it will be here: the files kept, copied from where they are, and the
+                // files fetched, in the order the other site lists them. Writing replaces them all.
+                foreach ($target as $file) {
+                    $paths[] = isset($keep[submissions::file_id($file)])
+                        ? submission_writer::copy_here($context, $local, $file)
+                        : array_shift($fetched);
+                }
             } finally {
-                foreach ($paths as $path) {
+                foreach ($fetched as $path) {
                     @unlink($path);
                 }
             }
+
+            $final = clone $submission;
+            $final->files = $target;
+            submission_writer::write(
+                $run->course,
+                $cm,
+                $final,
+                $student,
+                $run->blockinstanceid,
+                $remotecmid,
+                $ledger,
+                $local,
+                $paths,
+                $run->allattempts
+            );
         } catch (\moodle_exception $e) {
             $entry->outcome = grade_pull_result::SKIPPED;
             $entry->reason = match (true) {
@@ -750,9 +796,129 @@ class submission_pull {
                 $e instanceof \dml_exception => 'subreasonfailed',
                 default => 'subreasontransfer',
             };
+        } finally {
+            foreach ($paths as $path) {
+                @unlink($path);
+            }
         }
 
         return $entry;
+    }
+
+    /**
+     * The files of the other site's submission that the copy here does not have, as far as the
+     * ones a person uploaded go.
+     *
+     * @param \stdClass $submission what the source described
+     * @param \stdClass $local the submission here
+     * @param \context_module $context
+     * @return array[] the source's files
+     */
+    protected static function missing_files(\stdClass $submission, \stdClass $local, \context_module $context): array {
+        $have = self::files_here($context, $local);
+
+        return array_values(array_filter(
+            submissions::uploaded($submission->files),
+            static fn(array $file): bool => !isset($have[submissions::file_id($file)])
+        ));
+    }
+
+    /**
+     * The files a submission here holds, by submissions::file_id().
+     *
+     * @param \context_module $context
+     * @param \stdClass $local the assign_submission row
+     * @return array[]
+     */
+    protected static function files_here(\context_module $context, \stdClass $local): array {
+        $have = [];
+
+        foreach (submissions::content($context, $local, submissions::PLUGINS)[2] as $file) {
+            $have[submissions::file_id($file)] = $file;
+        }
+
+        return $have;
+    }
+
+    /**
+     * Put on the entry the uploaded files that can be ticked, for the page to show.
+     *
+     * A file that is already here is listed but cannot be unticked: an update keeps it.
+     *
+     * @param \stdClass $entry
+     * @param \stdClass $submission what the source described
+     * @param \stdClass|null $local the submission here that is in the way, if any
+     * @param \context_module $context
+     * @return void
+     */
+    protected static function describe_files(
+        \stdClass $entry,
+        \stdClass $submission,
+        ?\stdClass $local,
+        \context_module $context
+    ): void {
+        if (!in_array($entry->outcome, [grade_pull_result::ADD, grade_pull_result::UPDATE], true)) {
+            return;
+        }
+
+        $have = $entry->outcome === grade_pull_result::UPDATE && $local ? self::files_here($context, $local) : [];
+
+        foreach (submissions::uploaded($submission->files) as $file) {
+            $entry->filelist[] = (object) [
+                'key' => grade_pull_result::file_key($entry, $file),
+                'name' => ltrim($file['filepath'], '/') . $file['filename'],
+                'size' => (int) $file['filesize'],
+                'here' => isset($have[submissions::file_id($file)]),
+            ];
+        }
+    }
+
+    /**
+     * Which files the submission will hold after this pull, and which of them have to come from the other site.
+     *
+     * Uploaded files go by the ticks, and by nothing else: a key that is not one of the source's files
+     * matches nothing. A file already here, with the same content, is kept - an update writes the whole
+     * submission again, so leaving it out would remove it. The images inside online text go with the text.
+     *
+     * @param \stdClass $run what the whole pull shares
+     * @param \stdClass $entry the entry for this submission
+     * @param \stdClass $submission what the source described
+     * @param \stdClass|null $local the submission here that is in the way, if any
+     * @param \context_module $context
+     * @return array [files after the pull, file ids kept from here (as keys), files to fetch]
+     */
+    protected static function files_to_bring(
+        \stdClass $run,
+        \stdClass $entry,
+        \stdClass $submission,
+        ?\stdClass $local,
+        \context_module $context
+    ): array {
+        $have = $entry->outcome === grade_pull_result::UPDATE && $local ? self::files_here($context, $local) : [];
+        $target = [];
+        $keep = [];
+        $fetch = [];
+
+        foreach ($submission->files as $file) {
+            $id = submissions::file_id($file);
+
+            if (isset($have[$id])) {
+                $target[] = $file;
+                $keep[$id] = true;
+                continue;
+            }
+
+            $ticked = $file['area'] !== submissions::AREA_FILES
+                || $run->chosenfiles === null
+                || isset($run->chosenfiles[grade_pull_result::file_key($entry, $file)]);
+
+            if ($ticked) {
+                $target[] = $file;
+                $fetch[] = $file;
+            }
+        }
+
+        return [$target, $keep, $fetch];
     }
 
     /**
@@ -866,6 +1032,18 @@ class submission_pull {
         // Nothing new on the source: whatever has happened here since is no
         // business of this pull, and not worth flagging on every pull after.
         if ($submission->fingerprint === $ledger->fingerprint) {
+            // Everything the other site has is what an earlier pull saw. If that pull left some of the
+            // files out and nobody has touched the copy since, they are offered: what is here is then
+            // exactly what the pull wrote, so a file missing from it was left out on purpose.
+            if (
+                $here === $ledger->localfingerprint
+                && $local->status === submissions::STATUS_SUBMITTED
+                && ($everyattempt || (int) $local->latest === 1)
+                && self::missing_files($submission, $local, $context) !== []
+            ) {
+                return [grade_pull_result::UPDATE, 'subreasonmorefiles'];
+            }
+
             return [grade_pull_result::SAME, null];
         }
 
@@ -924,6 +1102,7 @@ class submission_pull {
             'localgrade' => null,
             'attempt' => 0,
             'files' => 0,
+            'filelist' => [],
         ];
     }
 }

@@ -90,6 +90,33 @@ class submission_writer {
     }
 
     /**
+     * A temporary copy of a file the submission here already holds, so that it can be written again with the others.
+     *
+     * @param \context_module $context
+     * @param \stdClass $local the assign_submission row
+     * @param array $file as returned by submissions::content()
+     * @return string path of the temporary file
+     * @throws \moodle_exception if the file is no longer there
+     */
+    public static function copy_here(\context_module $context, \stdClass $local, array $file): string {
+        $stored = get_file_storage()->get_file(
+            $context->id,
+            submissions::AREAS[$file['area']],
+            $file['area'],
+            (int) $local->id,
+            $file['filepath'],
+            $file['filename']
+        );
+        $path = $stored ? $stored->copy_content_to_temp('block_coursesync') : false;
+
+        if ($path === false) {
+            throw new \moodle_exception('errorfilecorrupt', 'block_coursesync');
+        }
+
+        return $path;
+    }
+
+    /**
      * Write one submission, and the record of having written it.
      *
      * @param \stdClass $course

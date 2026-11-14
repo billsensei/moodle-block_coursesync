@@ -332,7 +332,8 @@ $number = 0;
 
 foreach ($sections as $key => $section) {
     $number++;
-    $group = 'coursesync-s' . $number;
+    // Ends in a dash because core's tick-all script matches groups by their start: s1 would take s10 too.
+    $group = 'coursesync-s' . $number . '-';
     // The name can be a username from the other site, and labels are not escaped for us.
     $safename = s($section['name']);
     $counts = array_fill_keys(grade_pull_result::OUTCOMES, 0);

@@ -844,6 +844,12 @@ state or a grade sync override. `allattempts` and `attemptnumber` are sent only 
 this mode: an older source refuses parameters it does not know. `*_result::from_response($data, true)` requires
 `attempts[]` and holds it to ascending, unique, at most 100.
 
+**File choice (v1.36.0).** `submission_pull::preview()` / `run()` take a last argument `$chosenfiles` beside
+`$chosen`. `classify()` returns UPDATE with `subreasonmorefiles` when the source is unchanged, the copy is untouched
+and an uploaded source file is missing here; `files_to_bring()` decides the files after the pull (kept, fetched,
+left out); `describe_files()` puts `$entry->filelist` (key, name, size, here) on each writable entry and
+`student_sections::file_list()` draws the boxes (names escaped). No schema change. Tests: `submission_files_pull_test`.
+
 **Pages.** `submissions.php` and `marks.php` take `allattempts` (GET to preview,
 carried as a hidden field to confirm); `attempts::choice_form()` is the box,
 offered only where `allowattemptspull` is on. `grade_pull_result::$warnings` carries

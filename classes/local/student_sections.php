@@ -61,6 +61,43 @@ class student_sections {
     }
 
     /**
+     * The uploaded files of one line, each with a tick box when the line can be ticked.
+     *
+     * A file already here has none: an update keeps it. The names come from the other site, so they are escaped.
+     *
+     * @param \stdClass $entry
+     * @param array|null $tick attributes that tie a box to the student's box, or null when nothing can be ticked
+     * @return string HTML, empty if the line has no uploaded files to list
+     */
+    public static function file_list(\stdClass $entry, ?array $tick): string {
+        if (empty($entry->filelist)) {
+            return '';
+        }
+
+        $items = '';
+
+        foreach ($entry->filelist as $file) {
+            $label = s($file->name) . ' (' . display_size($file->size) . ')';
+
+            if ($tick === null) {
+                $items .= html_writer::tag('li', $label);
+            } else if ($file->here) {
+                $items .= html_writer::tag('li', $label . ' - ' . get_string('submissionsfilehere', 'block_coursesync'));
+            } else {
+                $items .= html_writer::tag('li', html_writer::checkbox(
+                    'pickfile[]',
+                    $file->key,
+                    true,
+                    $label,
+                    ['id' => 'coursesync-pickfile-' . $file->key, 'data-action' => 'toggle'] + $tick
+                ));
+            }
+        }
+
+        return html_writer::tag('ul', $items, ['class' => 'list-unstyled small mb-0 coursesync-files']);
+    }
+
+    /**
      * The roles core's tick-all script uses for the box that ticks and the boxes that are ticked.
      *
      * @return string[] [toggler, target]
@@ -117,7 +154,9 @@ class student_sections {
      * @param \stdClass[] $entries
      * @param \stdClass[] $users the accounts here, by id
      * @param string[] $columns language string identifiers of the column headings after the tick box
-     * @param callable $cells fn(\stdClass $entry): string[] the HTML of each cell for one entry, in the order of $columns
+     * @param callable $cells fn(\stdClass $entry, ?array $tick): string[] the HTML of each cell for one entry, in the order of
+     *      $columns. $tick is null when nothing on this line can be ticked, else the data-toggle and data-togglegroup
+     *      attributes that make a box of its own follow the student's box and the box that ticks everything.
      * @param bool $ticking whether tick boxes are offered (a preview with something to write)
      * @param bool $preview whether this is a preview, not a pull that happened
      * @param callable $label fn(\stdClass $entry, string $student): string the name of one tick box; $student is already escaped
@@ -139,7 +178,8 @@ class student_sections {
         foreach (self::group($entries, $users) as $section) {
             $number++;
             $forastudent = $section['username'] !== '';
-            $group = 'coursesync-s' . $number;
+            // Ends in a dash because core's tick-all script matches groups by their start: s1 would take s10 too.
+            $group = 'coursesync-s' . $number . '-';
             // The name can be a username from the other site, and labels are not escaped for us.
             $safename = s($section['name']);
             $counts = array_fill_keys(grade_pull_result::OUTCOMES, 0);
@@ -168,9 +208,10 @@ class student_sections {
                     );
                 }
 
+                $tick = $pick !== '' ? ['data-toggle' => $target, 'data-togglegroup' => $group] : null;
                 $rows .= html_writer::tag('tr', html_writer::tag('td', $pick) . implode('', array_map(
                     static fn(string $cell): string => html_writer::tag('td', $cell),
-                    $cells($entry)
+                    $cells($entry, $tick)
                 )));
             }
 
