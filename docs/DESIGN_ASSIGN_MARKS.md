@@ -50,7 +50,7 @@ row fixes that.
    gradebook shows); locally the user flag is set to released.
 9. **Never overwritten.** Same rule as everything else: written only where the
    student has no mark and no comment here, or where an earlier pull wrote it and
-   nobody has touched it; "removed here" is not brought back; a locked gradebook
+   nobody has touched it; "removed here" is offered again as New (changed in v1.35.0; it was "not brought back"); a locked gradebook
    grade is skipped.
 
 ## Ledger

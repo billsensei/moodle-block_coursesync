@@ -5717,3 +5717,21 @@ as before.
 again. Checked against the old rule with a mutation (put the SKIPPED line back): both new/changed tests fail.
 **Checked.** PHPUnit 780 on 5.0-5.3; Behat assignment features 15 scenarios / 519 steps on 5.0-5.3; gates clean.
 **Not done:** a pull between two real sites; a Behat scenario (no step to remove a submission).
+
+## Phase 111 - Removed marks are offered again (v1.35.0-beta, build 2026111401, not committed), 2026-11-14
+
+**Ask.** "Change Pull Marks to bring back removed marks" - the open offer from Phase 110.
+
+**What changed.** One decision in `marks_pull::classify()`: nothing here but a ledger row used to be SKIPPED
+`markreasondeleted`; it is now ADD with reason `markreasonreturned` (string replaced, sorted position kept in the lang file).
+`mark_writer::write()` already passes the ledger row to `save_record()`, which updates it, so the mark comes back into the
+same ledger record (test asserts the row count is unchanged). It is ticked like any mark: unticked, it stays removed.
+Docs that said "not brought back" for marks updated (TEACHER_GUIDE, SECURITY, DEVELOPER x2, DESIGN_ASSIGN_MARKS).
+
+**Checked.** `test_a_removed_mark_is_not_brought_back` became `test_a_removed_mark_is_offered_again` (preview says ADD +
+`markreasonreturned` and writes nothing; the pull writes the new mark). Mutation: with the SKIPPED line put back it fails on
+5.0. marks/submission tests 154 on 5.0-5.3 pass. The CI site's Postgres (port 5433) was down; the Docker sites were stopped
+too and were started with `docker compose up -d` (no `down -v`).
+**Version v1.35.0-beta (build 2026111401), asked for by the user.** Full PHPUnit 780 / 3908 assertions on 5.0-5.3; full Behat 67
+scenarios / 1707 steps on 5.0-5.3; phplint, phpcs, phpdoc, validate, savepoints, grunt clean (phpmd: 2 old findings).
+**Not done:** a two-site pull. The "teacher reopened the assignment" case (Phase 99 note) is still guarded first by `mixing_problem()`.

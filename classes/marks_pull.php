@@ -664,10 +664,9 @@ class marks_pull {
     ): array {
         if (!mark_writer::has_mark($context, $local, $assignid)) {
             // Nothing here. If an earlier pull wrote it and it has gone, a
-            // person removed it: it is not brought back.
-            return $ledger
-                ? [grade_pull_result::SKIPPED, 'markreasondeleted']
-                : [grade_pull_result::ADD, null];
+            // person removed it: it is offered again, written into the same
+            // ledger record, and a mark that is not ticked stays removed.
+            return [grade_pull_result::ADD, $ledger ? 'markreasonreturned' : null];
         }
 
         $here = mark_writer::fingerprint_here($context, $local, $assignid);

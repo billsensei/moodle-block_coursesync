@@ -425,7 +425,7 @@ range before it is compared or written and never exceeds it (mod_assign's
 **Never overwritten.** A mark is written only where the student has no mark and
 no comment here, or where an earlier pull wrote it and nobody has touched it since
 (compared by fingerprint, including the comment). Anything else is flagged and
-left as it is; one a person removed is not brought back. The one thing it does
+left as it is; one a person removed is offered again (ticked by the teacher, written into the same record). The one thing it does
 remove is a **gradebook override that grade sync wrote and nobody has changed**
 (`grade_pull::untouched()`), and only after the real grade is in; a teacher's own
 override stays (`test_an_override_changed_here_stays`). Grade sync in turn skips a

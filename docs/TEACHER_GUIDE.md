@@ -571,7 +571,8 @@ Each line says what would happen to it:
 - **Skipped** - and why: the assignment here is not graded in points, the
   comments feedback is not switched on here, the grade is locked in the
   gradebook, a file did not arrive intact, or you left it unticked. A mark a
-  teacher removed here after it was pulled is not brought back.
+  teacher removed here after it was pulled is offered again as **New**, with a note;
+  leave it unticked to keep it removed.
 - **Already the same** - nothing to do.
 
 If **Pull grades** had already put a gradebook override on that student's grade,

@@ -778,7 +778,7 @@ a different maximum.
 **Destination:** `marks_pull::preview()` / `run()` return a `grade_pull_result` of
 `KIND_MARK` entries (`history::KIND_MARKS`), and `marks.php` is a thin page.
 `classify()` is the submissions table with marks for work: nothing here and no
-ledger row → ADD; ledger row but nothing here → SKIPPED `markreasondeleted`; a mark
+ledger row → ADD; ledger row but nothing here → ADD with reason `markreasonreturned` (a person removed it; offered again, written into the same ledger record); a mark
 not written by a pull → SAME if it equals what would be written, else CONFLICT;
 ledger row with the source fingerprint unchanged → SAME; changed and the local
 fingerprint is still the recorded one → UPDATE, else CONFLICT. "A mark here" is a
@@ -806,7 +806,7 @@ comments plugin's table. `marks_pull_test` drives the real source functions on t
 same site (as the submissions test does); `external/get_marks_test` covers the
 gates. Mutation-checked: each switch, each permission, the workflow gate, the
 student gate on the file function, the scaling, the "changed here is kept" and
-"existing is kept" rules, "removed is not brought back", the lock, the override
+"existing is kept" rules, "removed is offered again", the lock, the override
 release and the grade-sync skip.
 
 ## Every attempt of assignments

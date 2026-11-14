@@ -405,9 +405,9 @@ final class marks_pull_test extends advanced_testcase {
     }
 
     /**
-     * A mark that was pulled and then removed here is not brought back.
+     * A mark that was pulled and then removed here is offered again, into the same record.
      */
-    public function test_a_removed_mark_is_not_brought_back(): void {
+    public function test_a_removed_mark_is_offered_again(): void {
         global $DB;
 
         $this->mark_there(80, 'Good');
@@ -417,13 +417,19 @@ final class marks_pull_test extends advanced_testcase {
         $row = $this->assign_object($this->here)->get_user_grade((int) $this->sam->id, false);
         $row->grade = -1;
         $this->assign_object($this->here)->update_grade($row);
+        $ledgerrows = $DB->count_records('block_coursesync_mark');
 
         $this->mark_there(90, 'Even better');
-        $entry = $this->only_entry($this->pull());
-
-        $this->assertSame(grade_pull_result::SKIPPED, $entry->outcome);
-        $this->assertSame('markreasondeleted', $entry->reason);
+        $entry = $this->only_entry($this->preview());
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $this->assertSame('markreasonreturned', $entry->reason);
         $this->assertFalse(marks::is_marked($this->grade_here()));
+
+        $entry = $this->only_entry($this->pull());
+        $this->assertSame(grade_pull_result::ADD, $entry->outcome);
+        $this->assertTrue(marks::is_marked($this->grade_here()));
+        $this->assertEquals(90, $this->grade_here()->grade);
+        $this->assertSame($ledgerrows, $DB->count_records('block_coursesync_mark'));
     }
 
     /**
